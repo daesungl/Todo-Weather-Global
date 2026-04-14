@@ -1,20 +1,37 @@
+import React, { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import './src/i18n'; 
+import HomeScreen from './src/screens/HomeScreen';
+import TasksScreen from './src/screens/TasksScreen';
+import FlowScreen from './src/screens/FlowScreen';
+import RegionManagementScreen from './src/screens/RegionManagementScreen';
 
 export default function App() {
+  const [currentScreen, setCurrentScreen] = useState('Weather');
+
+  const navigate = (screenName) => {
+    setCurrentScreen(screenName);
+  };
+
+  const renderScreen = () => {
+    switch(currentScreen) {
+      case 'Weather':
+        return <HomeScreen navigation={{ navigate }} />;
+      case 'Tasks':
+        return <TasksScreen navigation={{ navigate }} />;
+      case 'Flow':
+        return <FlowScreen navigation={{ navigate, goBack: () => navigate('Weather') }} />;
+      case 'RegionManagement':
+        return <RegionManagementScreen navigation={{ navigate, goBack: () => navigate('Weather') }} />;
+      default:
+        return <HomeScreen navigation={{ navigate }} />;
+    }
+  };
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <>
+      <StatusBar style="dark" />
+      {renderScreen()}
+    </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

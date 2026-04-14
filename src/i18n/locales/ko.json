@@ -1,0 +1,55 @@
+{
+  "common": {
+    "appName": "Todo Weather",
+    "edit": "편집",
+    "lock": "잠금",
+    "premium": "프리미엄",
+    "humidity": "습도",
+    "loading": "불러오는 중..."
+  },
+  "home": {
+    "interest_regions": "날씨 관심 지역",
+    "region_limit_guide": "최대 5개까지 관리할 수 있습니다.",
+    "widget_display": "📌 위젯 표시",
+    "locked_slot_guide": "프리미엄 슬롯 업그레이드가 필요합니다",
+    "upgrade": "업그레이드"
+  },
+  "management": {
+    "title": "날씨 관심 지역 관리",
+    "guide_text": "날씨를 확인할 지역을 최대 5개까지\n관리할 수 있습니다.",
+    "add_region": "지역 추가하기"
+  },
+  "menu": {
+    "premium": "프리미엄 업그레이드",
+    "premium_sub": "광고 제거 및 정밀 데이터",
+    "source": "날씨 정보원",
+    "source_sub": "기상청 / 글로벌 모델",
+    "preferences": "환경 설정",
+    "preferences_sub": "단위, 알림 설정",
+    "reset": "모든 데이터 초기화",
+    "reset_sub": "할 일 및 캐시 삭제",
+    "privacy": "개인정보 처리방침",
+    "help": "고객 지원 및 도움말",
+    "language": "언어 설정",
+    "version": "투두 웨더 v2.0.0 프리미엄"
+  },
+  "weather": {
+    "sunny": "맑음",
+    "mostly_sunny": "대체로 맑음",
+    "partly_cloudy": "구름 조금",
+    "cloudy": "흐림",
+    "overcast": "흐림",
+    "mist": "박무",
+    "fog": "안개",
+    "light_rain": "약한 비",
+    "moderate_rain": "보통 비",
+    "heavy_rain": "강한 비",
+    "thunderstorm": "뇌우",
+    "snow": "눈",
+    "light_snow": "약한 눈",
+    "heavy_snow": "강한 눈",
+    "strong_wind": "강풍",
+    "haze": "연무",
+    "dust": "미세먼지"
+  }
+}

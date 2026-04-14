@@ -1,0 +1,55 @@
+{
+  "common": {
+    "appName": "Todo Weather",
+    "edit": "Edit",
+    "lock": "Lock",
+    "premium": "Premium",
+    "humidity": "Humidity",
+    "loading": "Loading..."
+  },
+  "home": {
+    "interest_regions": "Interest Regions",
+    "region_limit_guide": "Manage up to 5 regions.",
+    "widget_display": "📌 WIDGET",
+    "locked_slot_guide": "Premium slot upgrade required",
+    "upgrade": "UPGRADE"
+  },
+  "management": {
+    "title": "Manage Regions",
+    "guide_text": "You can manage up to 5 regions\nto check the weather.",
+    "add_region": "Add New Region"
+  },
+  "menu": {
+    "premium": "Premium Upgrade",
+    "premium_sub": "Ad-free & Precision data",
+    "source": "Weather Source",
+    "source_sub": "KMA / Global Models",
+    "preferences": "Preferences",
+    "preferences_sub": "Units, Notifications",
+    "reset": "Reset All Data",
+    "reset_sub": "Clear tasks & cache",
+    "privacy": "Privacy Policy",
+    "help": "Support & Help",
+    "language": "Language",
+    "version": "Todo Weather v2.0.0 PREMIUM"
+  },
+  "weather": {
+    "sunny": "Sunny",
+    "mostly_sunny": "Mostly Sunny",
+    "partly_cloudy": "Partly Cloudy",
+    "cloudy": "Cloudy",
+    "overcast": "Overcast",
+    "mist": "Mist",
+    "fog": "Fog",
+    "light_rain": "Light Rain",
+    "moderate_rain": "Moderate Rain",
+    "heavy_rain": "Heavy Rain",
+    "thunderstorm": "Thunderstorm",
+    "snow": "Snow",
+    "light_snow": "Light Snow",
+    "heavy_snow": "Heavy Snow",
+    "strong_wind": "Strong Wind",
+    "haze": "Haze",
+    "dust": "Fine Dust"
+  }
+}
