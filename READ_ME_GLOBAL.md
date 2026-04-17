@@ -16,6 +16,9 @@ This is the global version of the **Todo Weather** application. It is designed t
 - `src/screens`: UI screens.
 - `src/components`: Reusable UI components.
 
+## 📚 Documentation
+- [CODING_GUIDELINES.md](./CODING_GUIDELINES.md): 플랫폼별 개발 주의사항 및 코딩 규칙 가이드.
+
 ## 🚀 Running the Project
 1. Install dependencies: `npm install`
 2. Start the dev server: `npx expo start`

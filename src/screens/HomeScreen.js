@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import Constants from 'expo-constants';
+import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
-import { Sun, CheckCircle2, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Sun, CheckCircle2, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
+import { getWeather } from '../services/weather/WeatherService';
 
 const { width } = Dimensions.get('window');
 
@@ -12,6 +15,33 @@ const HomeScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [currentWeather, setCurrentWeather] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Initial load: Fetch real location weather
+  React.useEffect(() => {
+    const fetchMainWeather = async () => {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        let lat = 37.5665; // Seoul Fallback
+        let lon = 126.9780;
+
+        if (status === 'granted') {
+          const location = await Location.getCurrentPositionAsync({});
+          lat = location.coords.latitude;
+          lon = location.coords.longitude;
+        }
+
+        const data = await getWeather(lat, lon);
+        setCurrentWeather(data);
+      } catch (err) {
+        console.error('Initial Weather Fetch Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMainWeather();
+  }, []);
 
   // Mock data for paginated regions (Page 1: 3 regions, Page 2: Empty, Page 3: Locked)
   const paginatedData = {
@@ -26,6 +56,40 @@ const HomeScreen = ({ navigation }) => {
 
   const isPremium = false; // Business logic flag
 
+  const renderMainWeatherIcon = (condKey) => {
+    const size = 115;
+    const color = "white";
+    const strokeWidth = 1.2;
+    const style = { opacity: 0.95 };
+
+    switch (condKey) {
+      case 'sunny':
+      case 'clear':
+        return <Sun size={size} color={color} strokeWidth={strokeWidth} style={style} />;
+      case 'rainy':
+      case 'rain':
+        return <CloudRain size={size} color={color} strokeWidth={strokeWidth} style={style} />;
+      case 'snowy':
+      case 'snow':
+        return <CloudSnow size={size} color={color} strokeWidth={strokeWidth} style={style} />;
+      case 'thunder':
+      case 'lightning':
+        return <CloudLightning size={size} color={color} strokeWidth={strokeWidth} style={style} />;
+      case 'cloudy':
+      case 'overcast':
+        return <Cloud size={size} color={color} strokeWidth={strokeWidth} style={style} />;
+      case 'partly_cloudy':
+        return (
+          <>
+            <Cloud size={size * 0.6} color="rgba(255,255,255,0.7)" style={[styles.decoCloud, { top: -10, right: -10 }]} />
+            <Sun size={size} color={color} strokeWidth={strokeWidth} style={style} />
+          </>
+        );
+      default:
+        return <Sun size={size} color={color} strokeWidth={strokeWidth} style={style} />;
+    }
+  };
+
   return (
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -34,36 +98,52 @@ const HomeScreen = ({ navigation }) => {
           <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.headerIcon}>
             <Menu size={24} color={Colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t('common.appName')}</Text>
+          <Text style={styles.headerTitle}>Todo Weather</Text>
           <View style={styles.headerIcon} />
         </View>
 
         {/* Hero Weather Section - Immersive Glassmorphism */}
-        <View style={styles.heroSection}>
-          <View style={styles.weatherCard}>
-            <View style={styles.glassBackground} />
+        <TouchableOpacity 
+          style={styles.heroSection}
+          onPress={() => navigation.navigate('WeatherDetail', { weatherData: currentWeather })}
+        >
+          <LinearGradient
+            colors={['#00B4DB', '#0083B0']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.weatherCard}
+          >
             <View style={styles.cardContent}>
                 <View style={styles.weatherTop}>
-                  <View>
-                    <View style={styles.locationChip}>
-                      <MapPin size={14} color="white" style={{ marginRight: 4 }} />
-                      <Text style={styles.locationText}>서울</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.locationContainer}>
+                      <MapPin size={18} color="white" />
+                      <Text style={styles.mainLocationText}>
+                        {(currentWeather?.locationName || '서울').split(' ')[1] || (currentWeather?.locationName || '서울').split(' ')[0]}
+                      </Text>
                     </View>
-                    <View style={styles.tempRow}>
-                       <Text style={styles.heroTemp}>24°</Text>
-                       <View style={styles.weatherMeta}>
-                          <Text style={styles.conditionText}>{t('weather.sunny')}</Text>
-                          <Text style={styles.humidityText}>{t('common.humidity')} 45%</Text>
+                    
+                    <View style={styles.tempMainRow}>
+                       <Text style={styles.heroTempBig}>{parseInt(currentWeather?.temp) || '--'}°</Text>
+                       <View style={styles.weatherVerticalMeta}>
+                          <Text style={styles.conditionTextBold}>
+                            {currentWeather?.condKey ? t(`weather.${currentWeather.condKey}`) : t('common.loading')}
+                          </Text>
+                          <Text style={styles.humidityTextSmall}>
+                            {t('common.humidity')} {currentWeather?.humidity || '--%'}
+                          </Text>
                        </View>
                     </View>
                   </View>
-                  <View style={styles.heroIconWrap}>
-                    <Sun size={120} color="rgba(255, 255, 255, 0.9)" strokeWidth={0.8} />
+
+                  {/* Clean Dynamic Icon */}
+                  <View style={styles.heroVisualWrap}>
+                    {renderMainWeatherIcon(currentWeather?.condKey || 'sunny')}
                   </View>
                 </View>
             </View>
-          </View>
-        </View>
+          </LinearGradient>
+        </TouchableOpacity>
 
         {/* Interest Regions Section */}
         <View style={styles.sectionHeader}>
@@ -204,75 +284,65 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   weatherCard: {
-    backgroundColor: '#00668a',
-    borderRadius: 36,
+    borderRadius: 32,
     overflow: 'hidden',
     shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.1,
-    shadowRadius: 30,
-    elevation: 8,
-  },
-  glassBackground: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 150, 255, 0.35)',
-    borderRadius: 36,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.15,
+    shadowRadius: 25,
+    elevation: 10,
   },
   cardContent: {
-    padding: Spacing.xl,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
   },
   weatherTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+    alignItems: 'center',
   },
-  locationChip: {
+  locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: Spacing.xs,
+    gap: 6,
+    marginBottom: 8,
   },
-  locationText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: 'white',
-    textTransform: 'uppercase',
-  },
-  tempRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  heroTemp: {
-    fontSize: 72,
-    fontWeight: '800',
-    color: 'white',
-    letterSpacing: -2,
-  },
-  weatherMeta: {
-    justifyContent: 'center',
-  },
-  conditionText: {
+  mainLocationText: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: 'white',
+    letterSpacing: -0.5,
+  },
+  tempMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  heroTempBig: {
+    fontSize: 76,
+    fontWeight: '900',
+    color: 'white',
+    letterSpacing: -3,
+  },
+  weatherVerticalMeta: {
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  conditionTextBold: {
+    fontSize: 22,
+    fontWeight: '800',
     color: 'white',
   },
-  humidityText: {
+  humidityTextSmall: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 2,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '600',
+    marginTop: 1,
   },
-  heroIconWrap: {
-    position: 'absolute',
-    right: -20,
-    top: -10,
-    opacity: 0.9,
+  heroVisualWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -10,
   },
   sectionHeader: {
     flexDirection: 'row',

@@ -5,11 +5,14 @@ import HomeScreen from './src/screens/HomeScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import FlowScreen from './src/screens/FlowScreen';
 import RegionManagementScreen from './src/screens/RegionManagementScreen';
+import WeatherDetailScreen from './src/screens/WeatherDetailScreen';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('Weather');
+  const [screenParams, setScreenParams] = useState({});
 
-  const navigate = (screenName) => {
+  const navigate = (screenName, params = {}) => {
+    setScreenParams(params);
     setCurrentScreen(screenName);
   };
 
@@ -23,6 +26,8 @@ export default function App() {
         return <FlowScreen navigation={{ navigate, goBack: () => navigate('Weather') }} />;
       case 'RegionManagement':
         return <RegionManagementScreen navigation={{ navigate, goBack: () => navigate('Weather') }} />;
+      case 'WeatherDetail':
+        return <WeatherDetailScreen navigation={{ navigate, goBack: () => navigate('Weather') }} route={{ params: screenParams }} />;
       default:
         return <HomeScreen navigation={{ navigate }} />;
     }
