@@ -5,7 +5,9 @@
     "lock": "Lock",
     "premium": "Premium",
     "humidity": "Humidity",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "high": "High",
+    "low": "Low"
   },
   "home": {
     "interest_regions": "Interest Regions",
@@ -50,6 +52,8 @@
     "heavy_snow": "Heavy Snow",
     "strong_wind": "Strong Wind",
     "haze": "Haze",
-    "dust": "Fine Dust"
+    "dust": "Fine Dust",
+    "current_location": "Current Location",
+    "summary_loading": "Analyzing detailed weather..."
   }
 }

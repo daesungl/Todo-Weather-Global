@@ -134,7 +134,10 @@ const HomeScreen = ({ navigation }) => {
               }
               return;
             }
-            navigation.navigate('WeatherDetail', { weatherData: currentWeather });
+            navigation.navigate('WeatherDetail', { 
+              weatherData: currentWeather,
+              isCurrentLocation: true 
+            });
           }}
         >
           <LinearGradient

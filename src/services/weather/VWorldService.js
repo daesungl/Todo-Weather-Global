@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const VWORLD_API_KEY = '81A27DF2-32B9-33CA-91A3-A3FAF5F6A2CC';
+// 보안을 위해 환경 변수(.env)에서 키를 불러옵니다.
+const VWORLD_API_KEY = process.env.EXPO_PUBLIC_VWORLD_API_KEY || '';
 
 /**
  * VWorld Service

@@ -5,7 +5,9 @@
     "lock": "잠금",
     "premium": "프리미엄",
     "humidity": "습도",
-    "loading": "불러오는 중..."
+    "loading": "불러오는 중...",
+    "high": "최고",
+    "low": "최저"
   },
   "home": {
     "interest_regions": "날씨 관심 지역",
@@ -50,6 +52,8 @@
     "heavy_snow": "강한 눈",
     "strong_wind": "강풍",
     "haze": "연무",
-    "dust": "미세먼지"
+    "dust": "미세먼지",
+    "current_location": "내 위치",
+    "summary_loading": "상세 날씨 정보 분석 중..."
   }
 }

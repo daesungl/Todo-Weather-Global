@@ -340,8 +340,12 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <ChevronLeft size={24} color={Colors.text} />
         </TouchableOpacity>
         <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerTitle}>{weatherData.locationName}</Text>
-          <Text style={styles.headerSubtitle}>{weatherData.addressName || weatherData.locationName}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {route.params?.isCurrentLocation ? t('weather.current_location') : weatherData.locationName}
+          </Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {route.params?.isCurrentLocation ? weatherData.locationName : ''}
+          </Text>
         </View>
         <View style={styles.iconBtnPlaceholder} />
       </View>
@@ -356,9 +360,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <View style={styles.heroMain}>
             {renderWeatherIcon(weatherData.condKey)}
             <Text style={styles.heroTemp}>{weatherData.temp}</Text>
-            <Text style={styles.conditionSub}>{weatherData.conditionText || t(`weather.${weatherData.condKey}`)}</Text>
+            <Text style={styles.conditionSub}>{t(`weather.${weatherData.condKey || 'sunny'}`)}</Text>
             <View style={styles.heroHighLow}>
-              <Text style={styles.heroHLText}>{`최고 ${weatherData.highTemp}  |  최저 ${weatherData.lowTemp}`}</Text>
+              <Text style={styles.heroHLText}>{`${t('common.high')} ${weatherData.highTemp}  |  ${t('common.low')} ${weatherData.lowTemp}`}</Text>
             </View>
           </View>
         </LinearGradient>

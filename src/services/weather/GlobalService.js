@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const WEATHER_API_KEY = '9ec649060fca47d8ac621847261804';
+// 보안을 위해 환경 변수(.env)에서 키를 불러옵니다.
+const WEATHER_API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY || '';
 
 // Helper to map WeatherAPI condition text to app's icon keys
 const mapConditionToKey = (conditionText, isDay = 1) => {

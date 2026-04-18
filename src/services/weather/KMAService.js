@@ -5,7 +5,8 @@ import SkyRegionCode from './data/Sky_RegionCityCode.json';
 import SummaryRegionCode from './data/Summary_RegionCode.json';
 import WeatherWarnStationCode from './data/WeatherWarnStationCode.json';
 
-const KMA_SERVICE_KEY = decodeURIComponent('7tVKsVRy1O3q85q7nMJA7BpHLKZ38NzZN8BMdMtHWhTrIhkoGQJZ%2Flz2X4NNVQ%2Bxygo%2FDFCLk8eHRE9JmB7j0g%3D%3D');
+// 보안을 위해 환경 변수(.env)에서 키를 불러옵니다.
+const KMA_SERVICE_KEY = decodeURIComponent(process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '');
 
 const pad = (n) => n.toString().padStart(2, '0');
 
