@@ -167,7 +167,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     // Use raw key in URL to prevent Axios double encoding issues
     const serviceKey = process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '';
 
-    const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes, airQuality] = await Promise.all([
+    const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes] = await Promise.all([
       axios.get(`${baseUrl}/getUltraSrtNcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y }
       }).catch(() => null),
@@ -185,8 +185,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       }).catch(() => null),
       axios.get(`${midUrl}/getMidFcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime }
-      }).catch(() => null),
-      fetchAirQuality(lat, lon, addressObj.address || addressObj.region || addressObj.city).catch(() => null)
+      }).catch(() => null)
     ]);
 
     const liveItems = safeGetItemArray(ncstRes);
@@ -401,21 +400,14 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       dailyForecast,
       hourlyForecast,
       wfSv: wfSv,
-      airQuality: airQuality ? getGradeText(airQuality.khaiGrade, 'khai') : '--',
-      aqiValue: airQuality ? airQuality.khaiValue : '--',
-      aqiText: airQuality ? getActionGuide(airQuality.khaiGrade) : '대기질 정보를 불러올 수 없습니다.',
-      stationName: airQuality?.stationName || '', // 별도 필드로 분리
-      aqiForecast: airQuality?.forecast?.overall || '', 
-      aqiColor: airQuality ? getGradeColor(airQuality.khaiGrade) : '#bdbdbd',
-      aqiIndex: airQuality ? (parseInt(airQuality.khaiGrade || 1) / 4) : 0,
-      pollutants: airQuality ? {
-        pm10: { value: airQuality.pm10, unit: 'µg/m³', label: getGradeText(airQuality.pm10, 'pm10'), color: getGradeColor(getGradeLevel(airQuality.pm10, 'pm10')) },
-        pm25: { value: airQuality.pm25, unit: 'µg/m³', label: getGradeText(airQuality.pm25, 'pm25'), color: getGradeColor(getGradeLevel(airQuality.pm25, 'pm25')) },
-        o3: { value: airQuality.o3, unit: 'ppm', label: getGradeText(airQuality.o3, 'o3'), color: getGradeColor(getGradeLevel(airQuality.o3, 'o3')) },
-        no2: { value: airQuality.no2, unit: 'ppm', label: getGradeText(airQuality.no2, 'no2'), color: getGradeColor(getGradeLevel(airQuality.no2, 'no2')) },
-        co: { value: airQuality.co, unit: 'ppm', label: getGradeText(airQuality.co, 'co'), color: getGradeColor(getGradeLevel(airQuality.co, 'co')) },
-        so2: { value: airQuality.so2, unit: 'ppm', label: getGradeText(airQuality.so2, 'so2'), color: getGradeColor(getGradeLevel(airQuality.so2, 'so2')) },
-      } : null,
+      airQuality: '--',
+      aqiValue: '--',
+      aqiText: '대기질 정보를 업데이트 중입니다.',
+      stationName: '',
+      aqiForecast: '', 
+      aqiColor: '#bdbdbd',
+      aqiIndex: 0,
+      pollutants: null,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {

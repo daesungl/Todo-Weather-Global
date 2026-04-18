@@ -118,16 +118,16 @@ const HomeScreen = ({ navigation }) => {
       const saved = await getBookmarkedRegions();
       setRegions(saved);
       
-      // Fetch weather for each region in parallel to prevent blocking
+      // Fetch weather sequentially to prevent Public Data Portal API 429 Too Many Requests
       const weatherMap = {};
-      await Promise.all(saved.map(async (region) => {
+      for (const region of saved) {
         try {
           const w = await getWeather(region.lat, region.lon, false, region.id, region.address);
           weatherMap[region.id] = w;
         } catch (e) {
           console.error(`Failed to fetch weather for ${region.name}`, e);
         }
-      }));
+      }
       setRegionsWeather(prev => ({ ...prev, ...weatherMap }));
     } catch (err) {
       console.error('loadRegions Error:', err);
