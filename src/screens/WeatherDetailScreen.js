@@ -530,6 +530,18 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           ))}
         </View>
 
+        {weatherData.wfSv && (
+          <View style={[styles.moduleCard, { backgroundColor: '#f0fbff' }]}>
+            <View style={styles.moduleHeader}>
+              <Info size={16} color={Colors.primary} />
+              <Text style={styles.moduleTitle}>기상 전망</Text>
+            </View>
+            <View style={styles.summaryContainer}>
+              <Text style={styles.summaryText}>{weatherData.wfSv}</Text>
+            </View>
+          </View>
+        )}
+
         <View style={styles.metricsGrid}>
           <View style={styles.metricCardWide}>
             <View style={styles.metricHeader}>
@@ -818,6 +830,15 @@ const styles = StyleSheet.create({
   attribution: { paddingVertical: Spacing.xxl, alignItems: 'center' },
   attrLabel: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1 },
   attrValue: { fontSize: 10, fontWeight: '600', color: Colors.outline, marginTop: 4 },
+  summaryContainer: {
+    paddingVertical: 4,
+  },
+  summaryText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: Colors.text,
+    fontWeight: '500',
+  },
 
   // Alert Sheet Overlay (Global Todo Weather Design System)
   alertOverlay: {

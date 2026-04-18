@@ -2,6 +2,7 @@ import axios from 'axios';
 import { dfs_xy_conv } from './KMAUtils';
 import TempRegionCode from './data/Temp_RegionCityCode.json';
 import SkyRegionCode from './data/Sky_RegionCityCode.json';
+import SummaryRegionCode from './data/Summary_RegionCode.json';
 import WeatherWarnStationCode from './data/WeatherWarnStationCode.json';
 
 const KMA_SERVICE_KEY = decodeURIComponent('7tVKsVRy1O3q85q7nMJA7BpHLKZ38NzZN8BMdMtHWhTrIhkoGQJZ%2Flz2X4NNVQ%2Bxygo%2FDFCLk8eHRE9JmB7j0g%3D%3D');
@@ -134,8 +135,12 @@ const findMidRegionCodes = (addressObj) => {
   if (!taCode) { taCode = TempRegionCode.find(d => fullName.includes(d.City))?.Code || '11B10101'; }
   let landCode = SkyRegionCode.find(d => region.includes(d.Region) && city.includes(d.City))?.Code;
   if (!landCode) { landCode = SkyRegionCode.find(d => fullName.includes(d.Region))?.Code || '11B00000'; }
-  console.log(`[KMA] region="${region}" city="${city}" → landCode=${landCode} taCode=${taCode}`);
-  return { taCode, landCode };
+  
+  // 전망 구역 코드 (stnId)
+  let stnId = SummaryRegionCode.find(d => region.includes(d.Region))?.Code || '108';
+
+  console.log(`[KMA] region="${region}" city="${city}" → landCode=${landCode} taCode=${taCode} stnId=${stnId}`);
+  return { taCode, landCode, stnId };
 };
 
 // Safe helper to extract item array from complex KMA responses
@@ -155,9 +160,9 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     const ultraTime = getUltraBaseTime();
     const vilageTime = getVilageBaseTime();
     const midTime = getMidBaseTime();
-    const { taCode, landCode } = findMidRegionCodes(addressObj);
+    const { taCode, landCode, stnId } = findMidRegionCodes(addressObj);
 
-    const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes] = await Promise.all([
+    const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes] = await Promise.all([
       axios.get('http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst', {
         params: { serviceKey: KMA_SERVICE_KEY, pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y }
       }).catch(() => null),
@@ -172,6 +177,9 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       }).catch(() => null),
       axios.get('http://apis.data.go.kr/1360000/MidFcstInfoService/getMidTa', {
         params: { serviceKey: KMA_SERVICE_KEY, pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime }
+      }).catch(() => null),
+      axios.get('http://apis.data.go.kr/1360000/MidFcstInfoService/getMidFcst', {
+        params: { serviceKey: KMA_SERVICE_KEY, pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime }
       }).catch(() => null)
     ]);
 
@@ -181,6 +189,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     
     const midLandData = safeGetItemArray(midLandRes)?.[0] || {};
     const midTaData = safeGetItemArray(midTaRes)?.[0] || {};
+    const midFcstData = safeGetItemArray(midFcstRes)?.[0] || {};
+    const wfSv = midFcstData.wfSv || '';
 
     const liveWeather = {};
     liveItems.forEach(item => {
@@ -396,6 +406,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       condKey: mapKMAtoCondKey(liveWeather.sky, liveWeather.pty),
       dailyForecast,
       hourlyForecast,
+      wfSv: wfSv,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
