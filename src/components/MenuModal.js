@@ -30,7 +30,7 @@ const MenuModal = ({ visible, onClose }) => {
             onPress: async () => {
               try {
                 const keys = await AsyncStorage.getAllKeys();
-                const weatherKeys = keys.filter(k => k.startsWith('weather_'));
+                const weatherKeys = keys.filter(k => k.startsWith('@weather_cache_'));
                 if (weatherKeys.length > 0) {
                   await AsyncStorage.multiRemove(weatherKeys);
                 }

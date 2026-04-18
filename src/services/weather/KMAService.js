@@ -4,7 +4,7 @@ import TempRegionCode from './data/Temp_RegionCityCode.json';
 import SkyRegionCode from './data/Sky_RegionCityCode.json';
 import SummaryRegionCode from './data/Summary_RegionCode.json';
 import WeatherWarnStationCode from './data/WeatherWarnStationCode.json';
-import { fetchAccurateAirQuality } from './AirKoreaService';
+import { fetchAirQuality } from './AirService';
 
 // 보안을 위해 환경 변수(.env)에서 키를 불러옵니다.
 const KMA_SERVICE_KEY = decodeURIComponent(process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '');
@@ -12,16 +12,13 @@ const KMA_SERVICE_KEY = decodeURIComponent(process.env.EXPO_PUBLIC_KMA_SERVICE_K
 const pad = (n) => n.toString().padStart(2, '0');
 
 const getKSTDate = (date = new Date()) => {
-  const kstOffset = 9 * 60 * 60 * 1000;
-  // If the date passed already seems to be adjusted, don't add again? 
-  // Better use a clean implementation.
-  return new Date(date.getTime() + (date.getTimezoneOffset() * 60000) + kstOffset);
+  // Convert standard epoch time directly into a +9h shifted Date object
+  // Using getUTC* functions on this object guarantees perfect KST mapping
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000);
 };
 
 const getKSTDateString = (date = new Date()) => {
-  // Use local methods correctly for KST (since server/local might differ)
-  // Simply add 9 hours to a UTC date or use a simpler approach
-  const kst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const kst = getKSTDate(date);
   const year = kst.getUTCFullYear();
   const month = pad(kst.getUTCMonth() + 1);
   const day = pad(kst.getUTCDate());
@@ -189,7 +186,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       axios.get(`${midUrl}/getMidFcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime }
       }).catch(() => null),
-      fetchAccurateAirQuality(lat, lon, addressObj.address || addressObj.region || addressObj.city).catch(() => null)
+      fetchAirQuality(lat, lon, addressObj.address || addressObj.region || addressObj.city).catch(() => null)
     ]);
 
     const liveItems = safeGetItemArray(ncstRes);
@@ -312,8 +309,11 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       const kstNow = getKSTDate(now);
       const todayUTC = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
       const targetUTC = new Date(todayUTC.getTime() + dayOffset * 24 * 60 * 60 * 1000);
-      return Math.round((targetUTC.getTime() - midBaseDateObj.getTime()) / (24 * 60 * 60 * 1000));
+      const diffDays = Math.round((targetUTC.getTime() - midBaseDateObj.getTime()) / (24 * 60 * 60 * 1000));
+      return diffDays;
     };
+
+    console.log(`[KMA-Debug] MidBaseDate: ${midBaseDateObj.toISOString().split('T')[0]}, Now: ${getKSTDate(now).toISOString()}`);
 
     for (let i = 0; i < 10; i++) {
       const targetDate = new Date(now.getTime() + (i * 24 * 60 * 60 * 1000));
@@ -353,7 +353,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         });
         if (hasData) {
           highTemp = dayHigh !== -100 ? dayHigh : highLimit;
-          lowTemp = dayLow !== 100 ? dayLow : highLimit;
+          lowTemp = dayLow !== 100 ? dayLow : lowLimit;
           amPop = amPopMax.toString();
           pmPop = pmPopMax.toString();
           amCond = safeMapKMA(skyAm, ptyAm);
@@ -383,6 +383,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
           amCond = pmCond = getMidCond(wf);
         }
       }
+      
+      console.log(`[KMA-Forecast] D+${i} (${dayLabel}): H=${highTemp}, L=${lowTemp}, idx=${i < 3 ? 'ShortTerm' : getMidIdx(i)}`);
       dailyForecast.push({ day: dayLabel, high: Math.round(highTemp), low: Math.round(lowTemp), amPop: `${amPop}%`, pmPop: `${pmPop}%`, amCond, pmCond, condition: pmCond });
     }
 

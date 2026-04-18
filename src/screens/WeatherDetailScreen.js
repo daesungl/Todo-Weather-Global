@@ -4,7 +4,7 @@ import {
   ChevronLeft, Sun, Cloud, CloudRain, Wind, Droplets, 
   SunMedium, AlertTriangle, Calendar, Navigation,
   Eye, Thermometer, Gauge, Activity, CloudLightning,
-  Info, Umbrella, X, CloudSnow
+  Info, Umbrella, X, CloudSnow, RefreshCw
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors, Spacing, Typography } from '../theme';
@@ -112,13 +112,16 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     const lat = initialData?.lat;
     const lon = initialData?.lon;
 
-    // 애니메이션이 완전히 끝난 후 정밀 데이터 로딩 시작 (깜빡임 방지)
     const interaction = InteractionManager.runAfterInteractions(() => {
-      // pollutants가 있고 수치가 유효할 때만 정밀 데이터가 있는 것으로 판단
-      const hasAccurateAQ = !!initialData?.pollutants && 
-                           initialData?.aqiValue !== '--' && 
-                           initialData?.aqiText !== '실시간 대기질 정보를 업데이트 중입니다.';
+      // aqiValue가 실제로 유효한 값(숫자 또는 문자)인지 확인 - undefined와 '--' 모두 누락으로 처리
+      const aqiOk = initialData?.aqiValue !== undefined &&
+                    initialData?.aqiValue !== '--' &&
+                    initialData?.aqiValue !== null &&
+                    String(initialData?.aqiValue).trim() !== '';
+      const hasAccurateAQ = aqiOk && (!!initialData?.pollutants || !!initialData?.stationName);
       const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
+
+      console.log(`[Detail] hasAccurateAQ=${hasAccurateAQ}, stationName=${initialData?.stationName}, aqiValue=${initialData?.aqiValue}`);
 
       if (!hasAccurateAQ && lat && lon) {
         loadAsyncData(lat, lon, needsExtra);
@@ -138,24 +141,31 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       // Minimum loading time for "演出" (visual effect)
       const minDelay = new Promise(resolve => setTimeout(resolve, 1200));
 
-      // AirQuality re-fetch for domestic locations or if pollutants missing
+      // AirQuality re-fetch
       let airData = null;
-      
-      // Domestic location identification
       const isDomestic = lat > 32 && lat < 39 && lon > 124 && lon < 132;
+      const address = initialData.locationName || '';
       
       if (isDomestic) {
         try {
-          const tm = await AirService.getTMCoord(lat, lon);
-          const station = await AirService.getNearestStation(tm.x, tm.y);
-          if (station) {
-            airData = await AirService.fetchAirQuality(station);
-            if (airData) airData.stationName = station;
+          // New unified service call
+          const result = await AirService.fetchAirQuality(lat, lon, address);
+          
+          if (result && result.error === 'LIMIT_HIT') {
+             airData = { 
+               airQuality: '--', 
+               aqiValue: '--',
+               aqiText: '에어코리아 사용량이 초과되었습니다. 글로벌 데이터로 대체하거나 잠시 후 시도해주세요.',
+               aqiColor: Colors.outline,
+               stationName: result.stationName || 'Limit Reached'
+             };
+          } else if (result) {
+             airData = result;
           }
         } catch (aqErr) {
           console.error('[Detail] Air fetch error:', aqErr);
           
-          // Fallback to WeatherAPI data if domestic fetch fails
+          // Fallback to WeatherAPI data if domestic fetch fails drastically
           if (extra && extra.aqiSource === 'WeatherAPI') {
             airData = {
               airQuality: extra.airQuality,
@@ -166,12 +176,6 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               pollutants: extra.pollutants,
               stationName: 'Global Source (Backup)'
             };
-          } else if (aqErr.response?.status === 429) {
-             airData = { 
-               airQuality: '--', 
-               aqiText: 'API 호출 한도가 초과되었습니다. 잠시 후 다시 시도해주세요.',
-               aqiColor: Colors.outline
-             };
           }
         }
       }
@@ -180,17 +184,33 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       await Promise.all([minDelay]);
 
       if (extra || airData) {
-        setWeatherData(prev => ({
-          ...prev,
-          ...(airData || {}),
-          ...(extra || {}),
-          stationName: airData?.stationName || (extra?.aqiSource === 'WeatherAPI' ? 'Global Source' : '')
-        }));
+        setWeatherData(prev => {
+          // Explicit cleanup for station name to prevent state bleeding from Previous Screen/Location
+          const updated = {
+            ...prev,
+            ...(airData || {}),
+            ...(extra || {}),
+          };
+          
+          // Force stationName update
+          updated.stationName = airData?.stationName || (extra?.aqiSource === 'WeatherAPI' ? 'Global Source' : '');
+          
+          return updated;
+        });
       }
     } catch (err) {
       console.error('[Detail] Async load error:', err);
     } finally {
       setLoadingAir(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setLoadingAir(true);
+    const lat = weatherData.lat;
+    const lon = weatherData.lon;
+    if (lat && lon) {
+      loadAsyncData(lat, lon, true);
     }
   };
 
@@ -244,6 +264,14 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
   const hourlyForecast = useMemo(() => {
     if (weatherData.hourlyForecast && weatherData.hourlyForecast.length > 0) {
+      // 현재 KST 시간을 기준으로 nowKey 생성 (캐시된 데이터도 재필터링)
+      const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      const y = nowKST.getUTCFullYear();
+      const mo = String(nowKST.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(nowKST.getUTCDate()).padStart(2, '0');
+      const h = String(nowKST.getUTCHours()).padStart(2, '0');
+      const nowKey = `${y}${mo}${d}${h}00`; // e.g. "202604182100"
+
       let dayOffset = 0;
       const getDayLabel = (offset) => {
         if (offset === 0) return '오늘';
@@ -252,7 +280,16 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         return `${offset}일 후`;
       };
 
-      return weatherData.hourlyForecast.map((h, idx) => {
+      // fullTime 필드 기준으로 현재 시간 이후 데이터만 필터링
+      const filtered = weatherData.hourlyForecast.filter(h => {
+        const ft = h.fullTime || '';
+        return ft >= nowKey;
+      });
+
+      // fullTime이 없는 데이터 (구형 캐시)는 필터 없이 통과
+      const source = filtered.length > 0 ? filtered : weatherData.hourlyForecast;
+
+      return source.map((h, idx) => {
         if (idx > 0 && (h.time === '0시' || h.time === 'Midnight')) {
           dayOffset++;
         }
@@ -384,7 +421,6 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     />
   );
 
-  // 기본 데이터(기온 등)만 있으면 일단 화면을 보여줍니다 (훨씬 빠릿하게 느껴짐)
   const isLoading = !initialData || (!initialData.temp && !initialData.locationName);
 
   if (isLoading) {
@@ -418,8 +454,6 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       <ScrollView 
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.scrollContent}
-        style={{ backgroundColor: '#E6F7FF' }}
-        bounces={true}
       >
         <LinearGradient colors={['#E6F7FF', '#f7f9ff']} style={styles.heroSection}>
           <View style={styles.heroMain}>
@@ -505,33 +539,33 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <View style={styles.metricCardWide}>
             <View style={styles.metricHeader}><Wind size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>대기 질</Text></View>
             <View style={styles.aqiContent}>
-               <View style={styles.aqiValueContainer}>
-                  {loadingAir ? (
-                    <SkeletonBlock width={100} height={28} borderRadius={14} style={{ marginRight: 8 }} />
-                  ) : (
-                    <>
-                      <Text style={styles.aqiValue}>{weatherData.aqiValue} - </Text>
-                      <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{weatherData.airQuality}</Text>
-                    </>
-                  )}
-                  {!loadingAir && weatherData.stationName && (
-                    <View style={styles.stationTag}>
-                      <Text style={styles.stationTagName}>{weatherData.stationName}</Text>
-                    </View>
-                  )}
-               </View>
+              <View style={styles.aqiValueContainer}>
                 {loadingAir ? (
-                  <SkeletonBlock width="100%" height={16} borderRadius={8} style={{ marginTop: 8 }} />
+                  <SkeletonBlock width={100} height={28} borderRadius={14} style={{ marginRight: 8 }} />
                 ) : (
-                  <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
+                  <>
+                    <Text style={styles.aqiValue}>{weatherData.aqiValue} - </Text>
+                    <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{weatherData.airQuality}</Text>
+                  </>
                 )}
-                {!loadingAir && weatherData.aqiForecast ? (
-                  <View style={styles.aqiForecastBox}>
-                    <Text style={styles.aqiForecastLabel}>공식 예보 브리핑</Text>
-                    <Text style={styles.aqiForecastText}>{weatherData.aqiForecast}</Text>
+                {!loadingAir && weatherData.stationName && (
+                  <View style={styles.stationTag}>
+                    <Text style={styles.stationTagName}>{weatherData.stationName}</Text>
                   </View>
-                ) : null}
-             </View>
+                )}
+              </View>
+              {loadingAir ? (
+                <SkeletonBlock width="100%" height={16} borderRadius={8} style={{ marginTop: 8 }} />
+              ) : (
+                <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
+              )}
+              {!loadingAir && weatherData.aqiForecast ? (
+                <View style={styles.aqiForecastBox}>
+                  <Text style={styles.aqiForecastLabel}>공식 예보 브리핑</Text>
+                  <Text style={styles.aqiForecastText}>{weatherData.aqiForecast}</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.aqiBarContainer}><View style={styles.aqiFullBar} /><View style={[styles.aqiProgressMarker, { left: `${(weatherData.aqiIndex || 0.1) * 100}%`, backgroundColor: weatherData.aqiColor || Colors.primary }]} /></View>
             <View style={styles.pollutantGrid}>
               {loadingAir ? [1, 2, 3, 4, 5, 6].map(i => (
@@ -543,7 +577,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               )) : 
                 weatherData.pollutants && Object.entries(weatherData.pollutants).map(([key, data]) => (
                   <View key={key} style={styles.pollutantCard}>
-                    <Text style={styles.pollutantName}>{key.toUpperCase()}</Text>
+                    <Text style={styles.pollutantName}>{
+                      { pm10: 'PM10', pm25: 'PM2.5', o3: 'O₃', no2: 'NO₂', co: 'CO', so2: 'SO₂' }[key] || key.toUpperCase()
+                    }</Text>
                     <View style={styles.pollutantValueRow}><Text style={styles.pollutantValue}>{data.value}</Text><Text style={styles.pollutantUnit}>{data.unit}</Text></View>
                     <View style={[styles.pollutantBadge, { backgroundColor: `${data.color}25` }]}><View style={[styles.pollutantDot, { backgroundColor: data.color }]} /><Text style={styles.pollutantStatus}>{data.label}</Text></View>
                   </View>
@@ -573,9 +609,25 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         <Animated.View style={[styles.alertOverlay, { opacity: slideAnim }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handleCloseAlert} />
           <Animated.View style={[styles.alertSheet, { backgroundColor: Colors.surfaceContainerLowest, transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [height * 0.8, 0] }) }] }]}>
-            <TouchableOpacity activeOpacity={0.9} onPress={handleCloseAlert}><LinearGradient colors={['#ba1a1a', '#93000a']} style={styles.alertSheetHeader} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}><AlertTriangle size={20} color="white" /><View style={{ flex: 1, alignItems: 'center' }}><Text style={styles.alertSheetTitle}>기상특보 상세정보</Text></View><View style={styles.alertCloseInner}><X size={20} color="white" /></View></LinearGradient></TouchableOpacity>
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl, paddingBottom: 40 }}><Text style={styles.alertSheetBody}>{initialData.alert}</Text></ScrollView>
-            <View style={styles.alertSheetFooter}><TouchableOpacity style={styles.alertSheetConfirmBtn} onPress={handleCloseAlert}><Text style={styles.modalFooterBtnText}>닫기</Text></TouchableOpacity></View>
+            <TouchableOpacity activeOpacity={0.9} onPress={handleCloseAlert}>
+              <LinearGradient colors={['#ba1a1a', '#93000a']} style={styles.alertSheetHeader} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                <AlertTriangle size={20} color="white" />
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={styles.alertSheetTitle}>기상특보 상세정보</Text>
+                </View>
+                <View style={styles.alertCloseInner}>
+                  <X size={20} color="white" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl, paddingBottom: 40 }}>
+              <Text style={styles.alertSheetBody}>{initialData.alert}</Text>
+            </ScrollView>
+            <View style={styles.alertSheetFooter}>
+              <TouchableOpacity style={styles.alertSheetConfirmBtn} onPress={handleCloseAlert}>
+                <Text style={styles.modalFooterBtnText}>닫기</Text>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         </Animated.View>
       )}
@@ -651,6 +703,7 @@ const styles = StyleSheet.create({
   pollutantBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4 },
   pollutantDot: { width: 4, height: 4, borderRadius: 2, marginRight: 4 },
   pollutantStatus: { fontSize: 10, fontWeight: '700' },
+  locationName: { fontSize: 34, fontWeight: '800', color: Colors.text, textAlign: 'center' },
   sunCycleRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   sunSide: { width: 70 },
   sunLabel: { fontSize: 11, color: Colors.textSecondary },

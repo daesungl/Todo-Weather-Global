@@ -122,7 +122,7 @@ const HomeScreen = ({ navigation }) => {
       const weatherMap = {};
       await Promise.all(saved.map(async (region) => {
         try {
-          const w = await getWeather(region.lat, region.lon, false, region.id);
+          const w = await getWeather(region.lat, region.lon, false, region.id, region.address);
           weatherMap[region.id] = w;
         } catch (e) {
           console.error(`Failed to fetch weather for ${region.name}`, e);
