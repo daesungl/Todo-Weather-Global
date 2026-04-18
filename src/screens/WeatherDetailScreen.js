@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { 
   ChevronLeft, Sun, Cloud, CloudRain, Wind, Droplets, 
   SunMedium, AlertTriangle, Calendar, Navigation, 
   Eye, Thermometer, Gauge, Activity, CloudLightning,
-  Info, Umbrella
+  Info, Umbrella, X
 } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
@@ -13,9 +14,10 @@ import Constants from 'expo-constants';
 const { width } = Dimensions.get('window');
 
 const WeatherDetailScreen = ({ navigation, route }) => {
+  const { t } = useTranslation();
   const { weatherData: initialData } = route.params || {};
   
-  const [weatherData] = useState(initialData || {
+  const defaultData = {
     locationName: '강남구',
     addressName: '서울특별시 강남구 역삼동',
     temp: '24°',
@@ -36,36 +38,129 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     precipChance: '10%',
     sunrise: '06:02 AM',
     sunset: '07:06 PM',
-    alert: '오후 4시경 소나기 가능성이 있습니다.',
     source: 'KOREA METEOROLOGICAL ADMINISTRATION'
-  });
+  };
+
+  const [weatherData] = useState({ ...defaultData, ...initialData });
+  const [alertModalVisible, setAlertModalVisible] = useState(false);
 
   const goBack = () => navigation.goBack();
 
-  // 1. Hourly Forecast with Wind Degrees for rotation
-  const hourlyForecast = [
-    { time: '지금', temp: '24°', icon: <Sun size={20} color={Colors.primary} />, pop: '10%', wind: '2m/s', windDeg: 135, hum: '45%' }, // 북서
-    { time: '16시', temp: '26°', icon: <Sun size={20} color={Colors.primary} />, pop: '10%', wind: '3m/s', windDeg: 135, hum: '42%' }, // 북서
-    { time: '17시', temp: '25°', icon: <Cloud size={20} color={Colors.outline} />, pop: '30%', wind: '4m/s', windDeg: 90, hum: '50%' },  // 서
-    { time: '18시', temp: '23°', icon: <CloudRain size={20} color={Colors.primary} />, pop: '80%', wind: '4m/s', windDeg: 45, hum: '65%' }, // 남서
-    { time: '19시', temp: '22°', icon: <Cloud size={20} color={Colors.outline} />, pop: '40%', wind: '3m/s', windDeg: 45, hum: '60%' }, // 남서
-    { time: '20시', temp: '21°', icon: <Cloud size={20} color={Colors.outline} />, pop: '20%', wind: '2m/s', windDeg: 0, hum: '58%' },  // 남
-    { time: '21시', temp: '20°', icon: <CloudLightning size={20} color={Colors.tertiary} />, pop: '15%', wind: '2m/s', windDeg: 0, hum: '55%' }, // 남
-  ];
+  const renderHourlyIcon = (condKey) => {
+    const size = 20;
+    const color = Colors.primary;
+    switch (condKey) {
+      case 'rainy':
+      case 'rain':
+      case 'light_rain':
+      case 'moderate_rain':
+        return <CloudRain size={size} color="#64b5f6" />;
+      case 'snowy':
+      case 'snow':
+        return <CloudSnow size={size} color="#90caf9" />;
+      case 'cloudy':
+      case 'overcast':
+        return <Cloud size={size} color="#90a4ae" />;
+      case 'partly_cloudy':
+      case 'mostly_sunny':
+        return <Sun size={size} color="#FFD700" />;
+      default:
+        return <Sun size={size} color="#FFD700" />;
+    }
+  };
 
-  // 2. 10-Day Forecast Data
-  const dailyForecast = [
-    { day: '오늘', high: 28, low: 19, amIcon: <Sun size={18} color={Colors.primary} />, amPop: '0%', pmIcon: <Sun size={18} color={Colors.primary} />, pmPop: '10%' },
-    { day: '내일', high: 26, low: 18, amIcon: <Cloud size={18} color={Colors.primary} />, amPop: '20%', pmIcon: <Cloud size={18} color={Colors.primary} />, pmPop: '30%' },
-    { day: '수요일', high: 24, low: 17, amIcon: <CloudRain size={18} color={Colors.secondary} />, amPop: '60%', pmIcon: <Cloud size={18} color={Colors.primary} />, pmPop: '40%' },
-    { day: '목요일', high: 27, low: 19, amIcon: <Sun size={18} color={Colors.primary} />, amPop: '10%', pmIcon: <Sun size={18} color={Colors.primary} />, pmPop: '0%' },
-    { day: '금요일', high: 29, low: 20, amIcon: <Sun size={18} color={Colors.primary} />, amPop: '0%', pmIcon: <Sun size={18} color={Colors.primary} />, pmPop: '0%' },
-    { day: '토요일', high: 25, low: 18, amIcon: <Cloud size={18} color={Colors.primary} />, amPop: '30%', pmIcon: <Cloud size={18} color={Colors.primary} />, pmPop: '20%' },
-    { day: '일요일', high: 23, low: 16, amIcon: <CloudRain size={18} color={Colors.secondary} />, amPop: '80%', pmIcon: <CloudRain size={18} color={Colors.secondary} />, pmPop: '70%' },
-    { day: '월요일', high: 24, low: 17, amIcon: <Cloud size={18} color={Colors.primary} />, amPop: '20%', pmIcon: <Sun size={18} color={Colors.primary} />, pmPop: '10%' },
-    { day: '화요일', high: 26, low: 18, amIcon: <Sun size={18} color={Colors.primary} />, amPop: '0%', pmIcon: <Sun size={18} color={Colors.primary} />, pmPop: '0%' },
-    { day: '수요일', high: 25, low: 17, amIcon: <Cloud size={18} color={Colors.primary} />, amPop: '10%', pmIcon: <Cloud size={18} color={Colors.primary} />, pmPop: '20%' },
-  ];
+  const [currentHourlyDay, setCurrentHourlyDay] = useState('오늘');
+
+  const hourlyForecast = useMemo(() => {
+    if (weatherData.hourlyForecast && weatherData.hourlyForecast.length > 0) {
+      let dayOffset = 0;
+      
+      const getDayLabel = (offset) => {
+        if (offset === 0) return '오늘';
+        if (offset === 1) return '내일';
+        if (offset === 2) return '모레';
+        return `${offset}일 후`;
+      };
+
+      return weatherData.hourlyForecast.map((h, idx) => {
+        // 첫 번째 데이터가 0시가 아닐 때, 중간에 0시를 만나면 날짜가 변경됨
+        if (idx > 0 && (h.time === '0시' || h.time === 'Midnight')) {
+          dayOffset++;
+        }
+        return {
+          ...h,
+          time: idx === 0 ? '지금' : h.time,
+          icon: renderHourlyIcon(h.condKey),
+          dayLabel: getDayLabel(dayOffset)
+        };
+      });
+    }
+    // Fallback Mock if no data
+    return [
+      { time: '지금', temp: '24°', icon: <Sun size={20} color={Colors.primary} />, pop: '10%', wind: '2m/s', windDeg: 135, hum: '45%' },
+    ];
+  }, [weatherData]);
+
+  // 2. Dynamic 10-Day Forecast Generation
+  const dailyForecast = useMemo(() => {
+    // If the API provided a daily forecast, map it to our UI format
+    if (weatherData.dailyForecast && Array.isArray(weatherData.dailyForecast)) {
+      return weatherData.dailyForecast.map((item, index) => {
+        const isRainy = item.condition === 'rainy';
+        const isCloudy = item.condition === 'cloudy';
+        
+        // Map day labels to Korean
+        let dayLabel = item.day;
+        if (dayLabel === 'Today') dayLabel = '오늘';
+        else if (dayLabel === 'Tomorrow') dayLabel = '내일';
+        else {
+          // Translate English weekdays if necessary
+          const engToKor = { 'Sun': '일요일', 'Mon': '월요일', 'Tue': '화요일', 'Wed': '수요일', 'Thu': '목요일', 'Fri': '금요일', 'Sat': '토요일' };
+          dayLabel = engToKor[item.day] || item.day;
+        }
+
+        return {
+          day: dayLabel,
+          high: parseInt(item.high),
+          low: parseInt(item.low),
+          amIcon: isRainy ? <CloudRain size={18} color={Colors.secondary} /> : (isCloudy ? <Cloud size={18} color={Colors.outline} /> : <Sun size={18} color={Colors.primary} />),
+          amPop: isRainy ? '60%' : '10%',
+          pmIcon: isRainy ? <CloudRain size={18} color={Colors.secondary} /> : (isCloudy ? <Cloud size={18} color={Colors.outline} /> : <Sun size={18} color={Colors.primary} />),
+          pmPop: isRainy ? '80%' : '0%'
+        };
+      });
+    }
+
+    // Fallback to dummy generation if no API data
+    const days = [];
+    const weekdays = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+    const now = new Date();
+
+    for (let i = 0; i < 10; i++) {
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() + i);
+      
+      let dayLabel = '';
+      if (i === 0) dayLabel = '오늘';
+      else if (i === 1) dayLabel = '내일';
+      else dayLabel = weekdays[targetDate.getDay()];
+
+      const baseHigh = parseInt(weatherData.highTemp) || 24;
+      const baseLow = parseInt(weatherData.lowTemp) || 16;
+      const variation = Math.sin(i * 0.5) * 3;
+
+      days.push({
+        day: dayLabel,
+        high: Math.round(baseHigh + variation),
+        low: Math.round(baseLow + variation - (Math.random() * 2)),
+        amIcon: i % 3 === 2 ? <CloudRain size={18} color={Colors.secondary} /> : <Sun size={18} color={Colors.primary} />,
+        amPop: i % 3 === 2 ? '60%' : '10%',
+        pmIcon: i % 4 === 3 ? <Cloud size={18} color={Colors.outline} /> : <Sun size={18} color={Colors.primary} />,
+        pmPop: i % 4 === 3 ? '40%' : '0%'
+      });
+    }
+    return days;
+  }, [weatherData]);
 
   // Calculate global min/max for the 10-day period to make the range bar accurate
   const { globalMin, globalMax } = useMemo(() => {
@@ -95,6 +190,49 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     );
   };
 
+  const renderWeatherIcon = (condKey) => {
+    const size = 80;
+    const strokeWidth = 2;
+    const style = styles.heroIconTop;
+
+    switch (condKey) {
+      case 'rainy':
+      case 'rain':
+      case 'light_rain':
+      case 'moderate_rain':
+        return <CloudRain size={size} color="#64b5f6" strokeWidth={strokeWidth} style={style} />;
+      case 'snowy':
+      case 'snow':
+        return <CloudSnow size={size} color="#90caf9" strokeWidth={strokeWidth} style={style} />;
+      case 'cloudy':
+      case 'overcast':
+        return <Cloud size={size} color="#90a4ae" strokeWidth={strokeWidth} style={style} />;
+      case 'partly_cloudy':
+      case 'mostly_sunny':
+        return (
+          <View style={[style, { width: size, height: size, justifyContent: 'center', alignItems: 'center' }]}>
+            <Sun size={size * 0.8} color="#FFD700" strokeWidth={strokeWidth} />
+            <Cloud size={size * 0.5} color="#cfd8dc" style={{ position: 'absolute', bottom: 5, right: -5 }} />
+          </View>
+        );
+      default:
+        return <Sun size={size} color="#FFD700" strokeWidth={strokeWidth} style={style} />;
+    }
+  };
+
+  const isLoading = !initialData || !initialData.hourlyForecast;
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: Spacing.md }} />
+        <Text style={{ fontSize: 16, color: Colors.textSecondary, fontWeight: '600' }}>
+          {t('common.loading', '기상 정보를 불러오는 중입니다...')}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={[styles.stickyHeader, { paddingTop: Constants.statusBarHeight }]}>
@@ -103,11 +241,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         </TouchableOpacity>
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle}>{weatherData.locationName}</Text>
-          <Text style={styles.headerSubtitle}>{weatherData.addressName}</Text>
+          <Text style={styles.headerSubtitle}>{weatherData.addressName || weatherData.locationName}</Text>
         </View>
-        <TouchableOpacity style={styles.iconBtn}>
-          <Info size={20} color={Colors.text} />
-        </TouchableOpacity>
+        <View style={styles.iconBtnPlaceholder} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -116,51 +252,103 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           style={styles.heroSection}
         >
           <View style={styles.heroMain}>
-            <Sun size={80} color="#FFD700" strokeWidth={2} style={styles.heroIconTop} />
+            {renderWeatherIcon(weatherData.condKey)}
             <Text style={styles.heroTemp}>{weatherData.temp}</Text>
-            <Text style={styles.conditionSub}>{weatherData.conditionText}</Text>
+            <Text style={styles.conditionSub}>{weatherData.conditionText || t(`weather.${weatherData.condKey}`)}</Text>
             <View style={styles.heroHighLow}>
               <Text style={styles.heroHLText}>{`최고 ${weatherData.highTemp}  |  최저 ${weatherData.lowTemp}`}</Text>
             </View>
           </View>
         </LinearGradient>
 
-        {weatherData.alert && (
-          <View style={styles.alertModule}>
+        {initialData.alert && (
+          <TouchableOpacity 
+            activeOpacity={0.7} 
+            onPress={() => {
+              console.log('Alert banner pressed, opening modal. Data:', initialData.alert);
+              setAlertModalVisible(true);
+            }}
+            style={[styles.alertModule, { zIndex: 999 }]}
+          >
             <LinearGradient
               colors={['#ba1a1a', '#93000a']}
-              style={styles.alertGradient}
+              style={[styles.alertGradient, { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }]}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             >
-              <AlertTriangle size={20} color="white" />
-              <Text style={styles.alertText}>{weatherData.alert}</Text>
+              <AlertTriangle size={18} color="white" />
+              <Text style={[styles.alertText, { flex: 1, fontWeight: '700', textAlign: 'center' }]} numberOfLines={1}>
+                {t('weather.alert_summary', '현재 지역에 실시간 기상특보가 있습니다.')}
+              </Text>
+              <ChevronLeft size={16} color="white" style={{ transform: [{ rotate: '180deg' }] }} />
             </LinearGradient>
-          </View>
+          </TouchableOpacity>
         )}
 
         <View style={styles.moduleCard}>
           <View style={styles.moduleHeader}>
             <Activity size={16} color={Colors.primary} />
-            <Text style={styles.moduleTitle}>시간별 예보</Text>
+            <Text style={styles.moduleTitle}>시간별 예보 {currentHourlyDay !== '오늘' ? `- ${currentHourlyDay}` : ''}</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hourlyList}>
-            {hourlyForecast.map((item, index) => (
-              <View key={index} style={styles.hourlyItem}>
-                <Text style={styles.hourlyTime}>{item.time}</Text>
-                <View style={styles.hourlyIcon}>{item.icon}</View>
-                <Text style={styles.hourlyTemp}>{item.temp}</Text>
-                <View style={styles.hourlyMeta}>
-                   <View style={styles.metaRow}><Umbrella size={12} color={Colors.primary} /><Text style={styles.metaText}>{item.pop}</Text></View>
-                   <View style={styles.metaRow}>
-                      <View style={{ transform: [{ rotate: `${item.windDeg}deg` }] }}>
-                        <Navigation size={12} color={Colors.textSecondary} />
-                      </View>
-                      <Text style={styles.metaText}>{item.wind}</Text>
-                   </View>
-                   <View style={styles.metaRow}><Droplets size={12} color={Colors.textSecondary} /><Text style={styles.metaText}>{item.hum}</Text></View>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            style={{ marginHorizontal: -Spacing.md }}
+            contentContainerStyle={[styles.hourlyList, { paddingHorizontal: Spacing.md }]}
+            scrollEventThrottle={32}
+            onScroll={(event) => {
+              // 약 88px가 아이템 하나(너비 78 + 여백 10)의 공간입니다. 중앙정렬 보정을 위해 화면 가로폭 일부를 더합니다.
+              const scrollPos = event.nativeEvent.contentOffset.x;
+              const activeIndex = Math.max(0, Math.floor((scrollPos + 60) / 88));
+              if (hourlyForecast[activeIndex] && hourlyForecast[activeIndex].dayLabel !== currentHourlyDay) {
+                setCurrentHourlyDay(hourlyForecast[activeIndex].dayLabel);
+              }
+            }}
+          >
+            {hourlyForecast.map((item, index) => {
+              // 0시 기준 뱃지 부활
+              let dayBadge = null;
+              if (item.time === '0시' || item.time === 'Midnight') {
+                dayBadge = item.dayLabel;
+              }
+              
+              // 날짜별 배경(Background) 색상 지정
+              let bgColor = Colors.surfaceContainerLow; // 오늘
+              if (item.dayLabel === '내일') bgColor = '#EDF7FF';       // 라이트 블루
+              else if (item.dayLabel === '모레') bgColor = '#F4EEFB';  // 라이트 퍼플
+              else if (item.dayLabel === '3일 후') bgColor = '#E8F5E9'; // 라이트 그린
+              else if (item.dayLabel === '4일 후') bgColor = '#FFF3E0'; // 라이트 오렌지
+              else if (item.dayLabel === '5일 후') bgColor = '#FFFDE7'; // 라이트 옐로우
+
+              return (
+                <View 
+                  key={index} 
+                  style={[
+                    styles.hourlyItem, 
+                    { backgroundColor: bgColor } // 전체 배경색 변경으로 블록감 극대화
+                  ]}
+                >
+                  {dayBadge ? (
+                    <View style={styles.dayBadge}>
+                      <Text style={styles.dayBadgeText}>{dayBadge}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.hourlyTime}>{item.time}</Text>
+                  )}
+                  <View style={styles.hourlyIcon}>{item.icon}</View>
+                  <Text style={styles.hourlyTemp}>{item.temp}</Text>
+                  <View style={styles.hourlyMeta}>
+                     <View style={styles.metaRow}><Umbrella size={12} color={Colors.primary} /><Text style={styles.metaText}>{item.pop}</Text></View>
+                     <View style={styles.metaRow}>
+                        <View style={{ transform: [{ rotate: `${item.windDeg}deg` }] }}>
+                          <Navigation size={12} color={Colors.textSecondary} />
+                        </View>
+                        <Text style={styles.metaText}>{item.wind}</Text>
+                     </View>
+                     <View style={styles.metaRow}><Droplets size={12} color={Colors.textSecondary} /><Text style={styles.metaText}>{item.hum}</Text></View>
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -252,6 +440,51 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <Text style={styles.attrValue}>{weatherData.source}</Text>
         </View>
       </ScrollView>
+
+      {/* Absolute overlay — Global Todo Weather Design System Version */}
+      {alertModalVisible && (
+        <View style={styles.alertOverlay}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setAlertModalVisible(false)}
+          />
+          <View style={[styles.alertSheet, { backgroundColor: Colors.surfaceContainerLowest }]}>
+            <LinearGradient
+              colors={['#ba1a1a', '#93000a']}
+              style={styles.alertSheetHeader}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            >
+              <AlertTriangle size={20} color="white" />
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={styles.alertSheetTitle}>기상특보 상세정보</Text>
+              </View>
+              <TouchableOpacity onPress={() => setAlertModalVisible(false)} style={styles.alertCloseInner}>
+                <X size={20} color="white" />
+              </TouchableOpacity>
+            </LinearGradient>
+            
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl, paddingBottom: 40 }}
+              showsVerticalScrollIndicator={true}
+            >
+              <Text style={[styles.alertSheetBody, { color: Colors.text, fontWeight: '500' }]}>
+                {initialData.alert}
+              </Text>
+            </ScrollView>
+            
+            <View style={styles.alertSheetFooter}>
+              <TouchableOpacity
+                style={styles.alertSheetConfirmBtn}
+                onPress={() => setAlertModalVisible(false)}
+              >
+                <Text style={styles.modalFooterBtnText}>닫기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -259,7 +492,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   stickyHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, backgroundColor: '#E6F7FF', zIndex: 100 },
-  iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.surfaceContainer, justifyContent: 'center', alignItems: 'center' },
+  iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center' },
+  iconBtnPlaceholder: { width: 44 },
   headerTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm },
   headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
   headerSubtitle: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500', marginTop: 2 },
@@ -324,7 +558,46 @@ const styles = StyleSheet.create({
   sunPoint: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primaryContainer, position: 'absolute', top: 5, left: '20%' },
   attribution: { paddingVertical: Spacing.xxl, alignItems: 'center' },
   attrLabel: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1 },
-  attrValue: { fontSize: 10, fontWeight: '600', color: Colors.outline, marginTop: 4 }
+  attrValue: { fontSize: 10, fontWeight: '600', color: Colors.outline, marginTop: 4 },
+
+  // Alert Sheet Overlay (Global Todo Weather Design System)
+  alertOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+    zIndex: 9999,
+  },
+  alertSheet: {
+    borderTopLeftRadius: 32, borderTopRightRadius: 32,
+    height: '80%',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 20,
+    backgroundColor: 'white',
+    overflow: 'hidden',
+  },
+  alertSheetHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 20, paddingHorizontal: Spacing.xl,
+    gap: 12,
+  },
+  alertSheetTitle: { fontSize: 18, fontWeight: '800', color: 'white' },
+  alertCloseInner: { padding: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 },
+  alertSheetBody: { fontSize: 16, lineHeight: 26, color: Colors.text },
+  alertSheetFooter: {
+    padding: Spacing.xl,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderTopWidth: 1, borderTopColor: Colors.outlineVariant,
+  },
+  alertSheetConfirmBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 16,
+    borderRadius: 28,
+    alignItems: 'center',
+  },
+  modalFooterBtnText: { color: 'white', fontSize: 16, fontWeight: '700' }
 });
 
 export default WeatherDetailScreen;

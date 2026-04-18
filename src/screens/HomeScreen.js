@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +18,7 @@ const HomeScreen = ({ navigation }) => {
   const [currentWeather, setCurrentWeather] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Initial load: Fetch real location weather
+  // Initial load: Fetch real location weather with safety fallbacks
   React.useEffect(() => {
     const fetchMainWeather = async () => {
       try {
@@ -27,9 +27,24 @@ const HomeScreen = ({ navigation }) => {
         let lon = 126.9780;
 
         if (status === 'granted') {
-          const location = await Location.getCurrentPositionAsync({});
-          lat = location.coords.latitude;
-          lon = location.coords.longitude;
+          try {
+            // Try last known position first as it's much faster and reliable on emulators
+            const lastLocation = await Location.getLastKnownPositionAsync({});
+            if (lastLocation) {
+              lat = lastLocation.coords.latitude;
+              lon = lastLocation.coords.longitude;
+            } else {
+              // If no last location, try current position with a timeout
+              const location = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+              });
+              lat = location.coords.latitude;
+              lon = location.coords.longitude;
+            }
+          } catch (locationErr) {
+            console.warn('Location fetch failed, using fallback:', locationErr.message);
+            // lat and lon remain as Seoul fallback
+          }
         }
 
         const data = await getWeather(lat, lon);
@@ -68,6 +83,8 @@ const HomeScreen = ({ navigation }) => {
         return <Sun size={size} color={color} strokeWidth={strokeWidth} style={style} />;
       case 'rainy':
       case 'rain':
+      case 'light_rain':
+      case 'moderate_rain':
         return <CloudRain size={size} color={color} strokeWidth={strokeWidth} style={style} />;
       case 'snowy':
       case 'snow':
@@ -79,11 +96,12 @@ const HomeScreen = ({ navigation }) => {
       case 'overcast':
         return <Cloud size={size} color={color} strokeWidth={strokeWidth} style={style} />;
       case 'partly_cloudy':
+      case 'mostly_sunny':
         return (
-          <>
-            <Cloud size={size * 0.6} color="rgba(255,255,255,0.7)" style={[styles.decoCloud, { top: -10, right: -10 }]} />
-            <Sun size={size} color={color} strokeWidth={strokeWidth} style={style} />
-          </>
+          <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+            <Sun size={size * 0.8} color={color} strokeWidth={strokeWidth} style={style} />
+            <Cloud size={size * 0.6} color="rgba(255,255,255,0.8)" style={{ position: 'absolute', bottom: 10, right: -5 }} />
+          </View>
         );
       default:
         return <Sun size={size} color={color} strokeWidth={strokeWidth} style={style} />;
@@ -105,7 +123,17 @@ const HomeScreen = ({ navigation }) => {
         {/* Hero Weather Section - Immersive Glassmorphism */}
         <TouchableOpacity 
           style={styles.heroSection}
-          onPress={() => navigation.navigate('WeatherDetail', { weatherData: currentWeather })}
+          onPress={() => {
+            if (loading || !currentWeather || !currentWeather.condKey) {
+              if (Platform.OS === 'android') {
+                ToastAndroid.show('실시간 기상 데이터를 불러오는 중입니다...', ToastAndroid.SHORT);
+              } else {
+                Alert.alert('잠시만 기다려주세요', '기상 정보를 업데이트하고 있습니다.');
+              }
+              return;
+            }
+            navigation.navigate('WeatherDetail', { weatherData: currentWeather });
+          }}
         >
           <LinearGradient
             colors={['#00B4DB', '#0083B0']}

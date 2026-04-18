@@ -1,0 +1,1388 @@
+[
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "괴산",
+    "Code": "11C10303"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "단양",
+    "Code": "11C10202"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "보은",
+    "Code": "11C10302"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "영동",
+    "Code": "11C10402"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "옥천",
+    "Code": "11C10403"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "음성",
+    "Code": "11C10103"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "제천",
+    "Code": "11C10201"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "증평",
+    "Code": "11C10304"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "진천",
+    "Code": "11C10102"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "청주",
+    "Code": "11C10301"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "추풍령",
+    "Code": "11C10401"
+  },
+  {
+    "Region1": "충청북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "충주",
+    "Code": "11C10101"
+  },
+  {
+    "Region1": "제주특별자치도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "고산",
+    "Code": "11G00501"
+  },
+  {
+    "Region1": "제주특별자치도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "서귀포",
+    "Code": "11G00401"
+  },
+  {
+    "Region1": "제주특별자치도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "성산",
+    "Code": "11G00101"
+  },
+  {
+    "Region1": "제주특별자치도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "성판악",
+    "Code": "11G00302"
+  },
+  {
+    "Region1": "제주특별자치도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "이어도",
+    "Code": "11G00601"
+  },
+  {
+    "Region1": "제주특별자치도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "제주시",
+    "Code": "11G00201"
+  },
+  {
+    "Region1": "제주특별자치도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "추자도",
+    "Code": "11G00800"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "고창",
+    "Code": "21F10601"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "군산",
+    "Code": "21F10501"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "김제",
+    "Code": "21F10502"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "남원",
+    "Code": "11F10401"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "무주",
+    "Code": "11F10302"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "부안",
+    "Code": "21F10602"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "순창",
+    "Code": "11F10403"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "완주",
+    "Code": "11F10204"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "익산",
+    "Code": "11F10202"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "임실",
+    "Code": "11F10402"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "장수",
+    "Code": "11F10301"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "전주",
+    "Code": "11F10201"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "정읍",
+    "Code": "11F10203"
+  },
+  {
+    "Region1": "전라북도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "진안",
+    "Code": "11F10303"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "가평",
+    "Code": "11B20404"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "강화",
+    "Code": "11B20101"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "고양",
+    "Code": "11B20302"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "과천",
+    "Code": "11B10102"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "광명",
+    "Code": "11B10103"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "광주",
+    "Code": "11B20702"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "구리",
+    "Code": "11B20501"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "군포",
+    "Code": "11B20610"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "김포",
+    "Code": "11B20102"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "남양주",
+    "Code": "11B20502"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "동두천",
+    "Code": "11B20401"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "백령",
+    "Code": "11A00101"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "부천",
+    "Code": "11B20204"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "서울",
+    "Code": "11B10101"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "성남",
+    "Code": "11B20605"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "수원",
+    "Code": "11B20601"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "시흥",
+    "Code": "11B20202"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "안산",
+    "Code": "11B20203"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "안성",
+    "Code": "11B20611"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "안양",
+    "Code": "11B20602"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "양주",
+    "Code": "11B20304"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "양평",
+    "Code": "11B20503"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "여주",
+    "Code": "11B20703"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "연천",
+    "Code": "11B20402"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "오산",
+    "Code": "11B20603"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "용인",
+    "Code": "11B20612"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "의왕",
+    "Code": "11B20609"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "의정부",
+    "Code": "11B20301"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "이천",
+    "Code": "11B20701"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "인천",
+    "Code": "11B20201"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "파주",
+    "Code": "11B20305"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "평택",
+    "Code": "11B20606"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "포천",
+    "Code": "11B20403"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "하남",
+    "Code": "11B20504"
+  },
+  {
+    "Region1": "서울특별시",
+    "Region2": "인천광역시",
+    "Region3": "경기도",
+    "City": "화성",
+    "Code": "11B20604"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "거제",
+    "Code": "11H20403"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "거창",
+    "Code": "11H20502"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "고성",
+    "Code": "11H20404"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "김해",
+    "Code": "11H20304"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "남해",
+    "Code": "11H20405"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "밀양",
+    "Code": "11H20601"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "부산",
+    "Code": "11H20201"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "사천",
+    "Code": "11H20402"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "산청",
+    "Code": "11H20703"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "양산",
+    "Code": "11H20102"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "울산",
+    "Code": "11H20101"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "의령",
+    "Code": "11H20602"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "진주",
+    "Code": "11H20701"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "창녕",
+    "Code": "11H20604"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "창원",
+    "Code": "11H20301"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "통영",
+    "Code": "11H20401"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "하동",
+    "Code": "11H20704"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "함안",
+    "Code": "11H20603"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "함양",
+    "Code": "11H20501"
+  },
+  {
+    "Region1": "부산광역시",
+    "Region2": "울산광역시",
+    "Region3": "경상남도",
+    "City": "합천",
+    "Code": "11H20503"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "계룡",
+    "Code": "11C20403"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "공주",
+    "Code": "11C20402"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "금산",
+    "Code": "11C20601"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "논산",
+    "Code": "11C20602"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "당진",
+    "Code": "11C20103"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "대전",
+    "Code": "11C20401"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "보령",
+    "Code": "11C20201"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "부여",
+    "Code": "11C20501"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "서산",
+    "Code": "11C20101"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "서천",
+    "Code": "11C20202"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "세종",
+    "Code": "11C20404"
+  },
+  {
+    "Region1": "세종특별자치시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "세종",
+    "Code": "11C20404"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "아산",
+    "Code": "11C20302"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "예산",
+    "Code": "11C20303"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "천안",
+    "Code": "11C20301"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "청양",
+    "Code": "11C20502"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "태안",
+    "Code": "11C20102"
+  },
+  {
+    "Region1": "대전광역시",
+    "Region2": "세종",
+    "Region3": "충청남도",
+    "City": "홍성",
+    "Code": "11C20104"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "경산",
+    "Code": "11H10703"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "경주",
+    "Code": "11H10202"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "고령",
+    "Code": "11H10604"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "구미",
+    "Code": "11H10602"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "군위",
+    "Code": "11H10603"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "김천",
+    "Code": "11H10601"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "대구",
+    "Code": "11H10701"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "독도",
+    "Code": "11E00102"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "문경",
+    "Code": "11H10301"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "봉화",
+    "Code": "11H10402"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "상주",
+    "Code": "11H10302"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "성주",
+    "Code": "11H10605"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "안동",
+    "Code": "11H10501"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "영덕",
+    "Code": "11H10102"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "영양",
+    "Code": "11H10403"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "영주",
+    "Code": "11H10401"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "영천",
+    "Code": "11H10702"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "예천",
+    "Code": "11H10303"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "울릉",
+    "Code": "11E00101"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "울진",
+    "Code": "11H10101"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "의성",
+    "Code": "11H10502"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "청도",
+    "Code": "11H10704"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "청송",
+    "Code": "11H10503"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "칠곡",
+    "Code": "11H10705"
+  },
+  {
+    "Region1": "대구광역시",
+    "Region2": "NULL",
+    "Region3": "경상북도",
+    "City": "포항",
+    "Code": "11H10201"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "강진",
+    "Code": "11F20303"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "고흥",
+    "Code": "11F20403"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "곡성",
+    "Code": "11F20602"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "광양",
+    "Code": "11F20402"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "광주",
+    "Code": "11F20501"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "구례",
+    "Code": "11F20601"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "나주",
+    "Code": "11F20503"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "담양",
+    "Code": "11F20504"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "목포",
+    "Code": "21F20801"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "무안",
+    "Code": "21F20804"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "보성",
+    "Code": "11F20404"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "순천",
+    "Code": "11F20603"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "신안",
+    "Code": "21F20803"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "여수",
+    "Code": "11F20401"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "영광",
+    "Code": "21F20102"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "영암",
+    "Code": "21F20802"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "완도",
+    "Code": "11F20301"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "장성",
+    "Code": "11F20502"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "장흥",
+    "Code": "11F20304"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "진도",
+    "Code": "21F20201"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "함평",
+    "Code": "21F20101"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "해남",
+    "Code": "11F20302"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "화순",
+    "Code": "11F20505"
+  },
+  {
+    "Region1": "광주광역시",
+    "Region2": "NULL",
+    "Region3": "전라남도",
+    "City": "흑산도",
+    "Code": "11F20701"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "강릉",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "고성",
+    "Code": "11D20402"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "대관령",
+    "Code": "11D20201"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "동해",
+    "Code": "11D20601"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "삼척",
+    "Code": "11D20602"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "속초",
+    "Code": "11D20401"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "양구",
+    "Code": "11D10202"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "양양",
+    "Code": "11D20403"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "영월",
+    "Code": "11D10501"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "원주",
+    "Code": "11D10401"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "인제",
+    "Code": "11D10201"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "정선",
+    "Code": "11D10502"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "철원",
+    "Code": "11D10101"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "춘천",
+    "Code": "11D10301"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "태백",
+    "Code": "11D20301"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "평창",
+    "Code": "11D10503"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "홍천",
+    "Code": "11D10302"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "화천",
+    "Code": "11D10102"
+  },
+  {
+    "Region1": "강원도",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "횡성",
+    "Code": "11D10402"
+  },
+  {
+    "Region1": "Seoul",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11B10101"
+  },
+  {
+    "Region1": "Incheon",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11B20201"
+  },
+  {
+    "Region1": "Gyeonggi-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11B20601"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11D10401"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Samcheog",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Goseong",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Sokcho",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Yangyang",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Gangneung",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Donghae",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "Gangwon-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Taebaek",
+    "Code": "11D20501"
+  },
+  {
+    "Region1": "Daejeon",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11C20401"
+  },
+  {
+    "Region1": "Chungcheongnam-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11C20404"
+  },
+  {
+    "Region1": "Chungcheongbuk-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11C10101"
+  },
+  {
+    "Region1": "Jeollanam-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11F20501"
+  },
+  {
+    "Region1": "Jeollanam-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Gwangju",
+    "Code": "11F20501"
+  },
+  {
+    "Region1": "Jeollabuk-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11F10201"
+  },
+  {
+    "Region1": "Gyeongsangbuk-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11H10701"
+  },
+  {
+    "Region1": "Gyeongsangbuk-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Daegu",
+    "Code": "11H10701"
+  },
+  {
+    "Region1": "Gyeongsangnam-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "NULL",
+    "Code": "11H20201"
+  },
+  {
+    "Region1": "Gyeongsangnam-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Busan",
+    "Code": "11H20201"
+  },
+  {
+    "Region1": "Gyeongsangnam-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Ulsan",
+    "Code": "11H20101"
+  },
+  {
+    "Region1": "Jeju-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Cheju",
+    "Code": "11G00201"
+  },
+  {
+    "Region1": "Jeju-do",
+    "Region2": "NULL",
+    "Region3": "NULL",
+    "City": "Seogwipo",
+    "Code": "11G00401"
+  }
+]

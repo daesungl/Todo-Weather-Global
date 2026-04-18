@@ -23,9 +23,15 @@ export const checkIsKorea = async (lat, lon) => {
     });
 
     if (response.data?.response?.status === 'OK') {
+      const result = response.data.response.result[0];
+      const structure = result.structure;
       return { 
         isKorea: true, 
-        address: response.data.response.result[0].text 
+        address: result.text,
+        region: structure?.level1 || '',
+        city: structure?.level2 || '',
+        district: structure?.level3 || '',
+        street: structure?.level4L || '',
       };
     }
     return { isKorea: false };

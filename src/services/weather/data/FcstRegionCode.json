@@ -1,0 +1,142 @@
+[
+    {
+      "Region": "서울특별시",
+      "Code": "109"
+    },
+    {
+        "Region": "강원도",
+        "Code": "105"
+      },
+      {
+        "Region": "전국",
+        "Code": "108"
+      },
+      {
+        "Region": "인천광역시",
+        "Code": "109"
+      },
+      {
+        "Region": "경기도",
+        "Code": "109"
+      },
+      {
+        "Region": "충청북도",
+        "Code": "131"
+      },
+      {
+        "Region": "대전광역시",
+        "Code": "133"
+      },
+      {
+        "Region": "충청남도",
+        "Code": "133"
+      },
+      {
+        "Region": "세종특별자치시",
+        "Code": "133"
+      },
+      {
+        "Region": "전라북도",
+        "Code": "146"
+      },
+      {
+        "Region": "광주광역시",
+        "Code": "156"
+      },
+      {
+        "Region": "전라남도",
+        "Code": "156"
+      },
+      {
+        "Region": "대구광역시",
+        "Code": "143"
+      },
+      {
+        "Region": "경상북도",
+        "Code": "143"
+      },
+      {
+        "Region": "부산광역시",
+        "Code": "159"
+      },
+      {
+        "Region": "울산광역시",
+        "Code": "159"
+      },
+      {
+        "Region": "경상남도",
+        "Code": "159"
+      },
+      {
+        "Region": "제주특별자치도",
+        "Code": "184"
+      },
+      {
+        "Region": "Seoul",
+        "Code": "109"
+      },
+      {
+          "Region": "Gangwon-do",
+          "Code": "105"
+        },
+        {
+          "Region": "ALL",
+          "Code": "108"
+        },
+        {
+          "Region": "Incheon",
+          "Code": "109"
+        },
+        {
+          "Region": "Gyeonggi-do",
+          "Code": "109"
+        },
+        {
+          "Region": "Chungcheongbuk-do",
+          "Code": "131"
+        },
+        {
+          "Region": "Daejeon",
+          "Code": "133"
+        },
+        {
+          "Region": "Chungcheongnam-do",
+          "Code": "133"
+        },
+        {
+          "Region": "Jeollabuk-do",
+          "Code": "146"
+        },
+        {
+          "Region": "Gwangju",
+          "Code": "156"
+        },
+        {
+          "Region": "Jeollanam-do",
+          "Code": "156"
+        },
+        {
+          "Region": "Daegu",
+          "Code": "143"
+        },
+        {
+          "Region": "Gyeongsangbuk-do",
+          "Code": "143"
+        },
+        {
+          "Region": "Busan",
+          "Code": "159"
+        },
+        {
+          "Region": "Ulsan",
+          "Code": "159"
+        },
+        {
+          "Region": "Gyeongsangnam-do",
+          "Code": "159"
+        },
+        {
+          "Region": "Jeju-do",
+          "Code": "184"
+        }
+]

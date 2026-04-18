@@ -1,5 +1,6 @@
 import { checkIsKorea } from './VWorldService';
-import { fetchKMAWeather } from './KMAService';
+import { fetchKMAWeather, fetchKMAWarning } from './KMAService';
+import { fetchSunInfo } from './SunService';
 import { fetchGlobalWeather } from './GlobalService';
 
 /**
@@ -9,16 +10,33 @@ import { fetchGlobalWeather } from './GlobalService';
 export const getWeather = async (lat, lon) => {
   try {
     // 1. Check if location is in Korea using VWorld
-    const { isKorea, address } = await checkIsKorea(lat, lon);
+    const locationInfo = await checkIsKorea(lat, lon);
+    const { isKorea, address, region, city } = locationInfo;
     console.log(`Location Analysis: ${isKorea ? 'Korea' : 'Outside Korea'} (${address || 'Unknown'})`);
 
     let weatherData = null;
+    let sunData = null;
+    let alertData = null;
 
     if (isKorea) {
       // 2. Try KMA First for high precision in Korea
-      weatherData = await fetchKMAWeather(lat, lon);
+      // Fetch Weather, Sun, and Alerts concurrently
+      const [kma, sun, alert] = await Promise.all([
+        fetchKMAWeather(lat, lon, locationInfo),
+        fetchSunInfo(lat, lon),
+        fetchKMAWarning(region, city)
+      ]);
+      weatherData = kma;
+      sunData = sun;
+      alertData = alert;
+      
       if (weatherData) {
-        return { ...weatherData, locationName: address };
+        return { 
+          ...weatherData, 
+          ...sunData, 
+          alert: alertData, 
+          locationName: address 
+        };
       }
     }
 
