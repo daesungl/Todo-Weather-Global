@@ -123,6 +123,8 @@ const HomeScreen = ({ navigation }) => {
         {/* Hero Weather Section - Immersive Glassmorphism */}
         <TouchableOpacity 
           style={styles.heroSection}
+          activeOpacity={0.85} // 눌렸을 때의 투명도를 적절히 조절 (너무 하얗게 뜨지 않도록)
+          delayPressIn={0}    // 터치 즉시 시각 피드백이 오도록 지연 시간 제거
           onPress={() => {
             if (loading || !currentWeather || !currentWeather.condKey) {
               if (Platform.OS === 'android') {
@@ -141,35 +143,49 @@ const HomeScreen = ({ navigation }) => {
             end={{ x: 1, y: 1 }}
             style={styles.weatherCard}
           >
-            <View style={styles.cardContent}>
-                <View style={styles.weatherTop}>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.locationContainer}>
-                      <MapPin size={18} color="white" />
-                      <Text style={styles.mainLocationText}>
-                        {(currentWeather?.locationName || '서울').split(' ')[1] || (currentWeather?.locationName || '서울').split(' ')[0]}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.tempMainRow}>
-                       <Text style={styles.heroTempBig}>{parseInt(currentWeather?.temp) || '--'}°</Text>
-                       <View style={styles.weatherVerticalMeta}>
-                          <Text style={styles.conditionTextBold}>
-                            {currentWeather?.condKey ? t(`weather.${currentWeather.condKey}`) : t('common.loading')}
-                          </Text>
-                          <Text style={styles.humidityTextSmall}>
-                            {t('common.humidity')} {currentWeather?.humidity || '--%'}
-                          </Text>
-                       </View>
-                    </View>
-                  </View>
-
-                  {/* Clean Dynamic Icon */}
-                  <View style={styles.heroVisualWrap}>
-                    {renderMainWeatherIcon(currentWeather?.condKey || 'sunny')}
+            {loading ? (
+              <View style={styles.skeletonContent}>
+                <View style={styles.skeletonLocation} />
+                <View style={styles.skeletonMainRow}>
+                  <View style={styles.skeletonTemp} />
+                  <View style={styles.skeletonMetaColumn}>
+                    <View style={styles.skeletonTextLine} />
+                    <View style={[styles.skeletonTextLine, { width: 60, marginTop: 10 }]} />
                   </View>
                 </View>
-            </View>
+                <View style={styles.skeletonFloatingIcon} />
+              </View>
+            ) : (
+              <View style={styles.cardContent}>
+                  <View style={styles.weatherTop}>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.locationContainer}>
+                        <MapPin size={18} color="white" />
+                        <Text style={styles.mainLocationText}>
+                          {(currentWeather?.locationName || '서울').split(' ')[1] || (currentWeather?.locationName || '서울').split(' ')[0]}
+                        </Text>
+                      </View>
+                      
+                      <View style={styles.tempMainRow}>
+                         <Text style={styles.heroTempBig}>{parseInt(currentWeather?.temp) || '--'}°</Text>
+                         <View style={styles.weatherVerticalMeta}>
+                            <Text style={styles.conditionTextBold}>
+                              {currentWeather?.condKey ? t(`weather.${currentWeather.condKey}`) : t('common.loading')}
+                            </Text>
+                            <Text style={styles.humidityTextSmall}>
+                              {t('common.humidity')} {currentWeather?.humidity || '--%'}
+                            </Text>
+                         </View>
+                      </View>
+                    </View>
+  
+                    {/* Clean Dynamic Icon */}
+                    <View style={styles.heroVisualWrap}>
+                      {renderMainWeatherIcon(currentWeather?.condKey || 'sunny')}
+                    </View>
+                  </View>
+              </View>
+            )}
           </LinearGradient>
         </TouchableOpacity>
 
@@ -425,6 +441,51 @@ const styles = StyleSheet.create({
   regionName: {
     ...Typography.h3,
     fontSize: 18,
+  },
+
+  // Skeleton Styles
+  skeletonContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    height: 140, // Match typical card height
+    justifyContent: 'center',
+  },
+  skeletonLocation: {
+    width: 80,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  skeletonMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  skeletonTemp: {
+    width: 100,
+    height: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+  },
+  skeletonMetaColumn: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  skeletonTextLine: {
+    width: 100,
+    height: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+  },
+  skeletonFloatingIcon: {
+    position: 'absolute',
+    right: 20,
+    top: 20,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   widgetBadge: {
     backgroundColor: Colors.surfaceContainerLow,
