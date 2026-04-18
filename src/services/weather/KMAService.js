@@ -204,6 +204,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       if (item.category === 'WSD') hourlyMap[key].wind = item.fcstValue;
       if (item.category === 'REH') hourlyMap[key].hum = item.fcstValue;
       if (item.category === 'VEC') hourlyMap[key].windDeg = item.fcstValue;
+      if (item.category === 'PCP') hourlyMap[key].pcp = item.fcstValue;
     });
 
     const nowKST = getKSTDate();
@@ -216,13 +217,21 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       .map(h => {
         const hour = parseInt(h.time.slice(0, 2));
         const hourLabel = hour === 0 ? '0시' : (hour === 12 ? '12시' : `${hour}시`);
+        
+        // Clean up PCP (Precipitation) text
+        let pcpVal = h.pcp;
+        if (!pcpVal || pcpVal === '강수없음' || pcpVal === '0') pcpVal = '0mm';
+        else if (pcpVal === '1mm 미만') pcpVal = '~1mm';
+        else if (!pcpVal.includes('mm') && !isNaN(pcpVal)) pcpVal = `${pcpVal}mm`;
+
         return {
           time: hourLabel,
           temp: `${h.temp}°`,
           condKey: mapKMAtoCondKey(h.sky, h.pty),
           pop: `${h.pop}%`,
+          pcp: pcpVal,
           wind: `${Math.round(h.wind)}m/s`,
-          windDeg: h.windDeg,
+          windDeg: (parseInt(h.windDeg) + 180) % 360,
           hum: `${h.hum}%`,
           fullTime: `${h.date}${h.time}`
         };

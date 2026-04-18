@@ -123,26 +123,22 @@ export const fetchGlobalWeather = async (lat, lon) => {
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
-    console.error('[GlobalService] WeatherAPI Fetch Error:', error.message);
     return null;
   }
 };
 
 export const fetchExtraMetrics = async (lat, lon) => {
   // Utility for KMA regions to grab missing extra elements natively asynchronously
-  console.log(`[GlobalService] Extra fetch for lat:${lat}, lon:${lon}`);
   try {
     const response = await axios.get(`https://api.weatherapi.com/v1/current.json`, {
       params: { key: WEATHER_API_KEY, q: `${lat},${lon}`, aqi: 'no' }
     });
-    console.log(`[GlobalService] Extra data received: UV=${response.data.current.uv}, Vis=${response.data.current.vis_km}`);
     return {
       visibility: `${response.data.current.vis_km}km`,
       uvIndex: mapUVLabel(response.data.current.uv),
       feelsLike: `${Math.round(response.data.current.feelslike_c)}°`,
     };
   } catch (err) {
-    console.warn('[GlobalService] Extra fetch failed:', err.message);
     return null;
   }
 };

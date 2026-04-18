@@ -11,7 +11,6 @@ const VWORLD_API_KEY = '81A27DF2-32B9-33CA-91A3-A3FAF5F6A2CC';
 // 1. Convert WGS84 (lat/lon) to TM Coordinate (epsg:5181) directly via VWorld
 export const getTMCoord = async (lat, lon) => {
   try {
-    console.log(`[AirService] Converting lat/lon to TM: ${lat}, ${lon}`);
     const url = 'https://api.vworld.kr/req/data';
     const response = await axios.get(url, {
       params: {
@@ -51,16 +50,13 @@ export const getTMCoord = async (lat, lon) => {
       // We have the address — now use lat/lon with proj4 math to get TM
       // TM (Korean 5181) conversion from WGS84 using formula
       const tmCoord = wgs84ToTm(lat, lon);
-      console.log(`[AirService] TM Coord (calculated): x=${tmCoord.x}, y=${tmCoord.y}`);
       return tmCoord;
     }
 
     // Fallback: Always use direct math conversion
     const tmCoord = wgs84ToTm(lat, lon);
-    console.log(`[AirService] TM Coord (fallback math): x=${tmCoord.x}, y=${tmCoord.y}`);
     return tmCoord;
   } catch (error) {
-    console.warn('[AirService] VWorld failed, using math conversion:', error.message);
     // Always fallback to math conversion
     const tmCoord = wgs84ToTm(lat, lon);
     return tmCoord;
@@ -136,13 +132,10 @@ export const getNearestStation = async (tmX, tmY) => {
 
     const items = response.data?.response?.body?.items || [];
     if (items.length > 0) {
-      console.log(`[AirService] Found nearest station: ${items[0].stationName}`);
       return items[0].stationName;
     }
-    console.warn(`[AirService] No station found for TM: ${tmX}, ${tmY}`);
     return null;
   } catch (error) {
-    console.error('getNearestStation Error:', error);
     return null;
   }
 };
@@ -220,12 +213,10 @@ export const fetchAirQuality = async (stationName) => {
           so2:  { value: data.so2Value,  unit: 'ppm',   ...getPollutantGrade(data.so2Value,  'so2') },
         }
       };
-      console.log(`[AirService] ✅ Air quality loaded: ${result.aqiValue} (${result.airQuality}) @ ${stationName}`);
       return result;
     }
     return null;
   } catch (error) {
-    console.error('fetchAirQuality Error:', error);
     return null;
   }
 };

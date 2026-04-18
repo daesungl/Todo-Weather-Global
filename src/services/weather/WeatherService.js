@@ -13,7 +13,6 @@ export const getWeather = async (lat, lon) => {
     // 1. Check if location is in Korea using VWorld
     const locationInfo = await checkIsKorea(lat, lon);
     const { isKorea, address, region, city } = locationInfo;
-    console.log(`Location Analysis: ${isKorea ? 'Korea' : 'Outside Korea'} (${address || 'Unknown'})`);
 
     let weatherData = null;
     let sunData = null;
@@ -54,7 +53,6 @@ export const getWeather = async (lat, lon) => {
     return { ...weatherData, locationName: address || 'Global Location', lat, lon };
 
   } catch (error) {
-    console.error('Weather Service Orchestrator Error:', error);
     // Ultimate fallback to hardcoded dummy if everything fails
     return {
       source: 'System Fallback',

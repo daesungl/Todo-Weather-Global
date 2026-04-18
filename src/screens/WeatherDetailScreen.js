@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing } from 'react-native';
 import { 
   ChevronLeft, Sun, Cloud, CloudRain, Wind, Droplets, 
-  SunMedium, AlertTriangle, Calendar, Navigation, 
+  SunMedium, AlertTriangle, Calendar, Navigation,
   Eye, Thermometer, Gauge, Activity, CloudLightning,
   Info, Umbrella, X, CloudSnow
 } from 'lucide-react-native';
@@ -47,14 +47,58 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
+  // Helper to calculate sun position on the arc
+  const getSunPosition = () => {
+    const timeToMinutes = (timeStr) => {
+      if (!timeStr || timeStr === '--:--' || timeStr === '--') return null;
+      const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (!match) return null;
+      let [_, h, m, ampm] = match;
+      let hours = parseInt(h);
+      let minutes = parseInt(m);
+      if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+      if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    };
+
+    const sunriseMins = timeToMinutes(weatherData.sunrise);
+    const sunsetMins = timeToMinutes(weatherData.sunset);
+    
+    // Get current time in KST (normalized to same date as sunrise/sunset)
+    const now = new Date();
+    // For simplicity using device's hour/min, but for accuracy we'd use location's timezone
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+
+    if (sunriseMins === null || sunsetMins === null) return null;
+    
+    // Calculate progress (0 at sunrise, 1 at sunset)
+    let progress = (nowMins - sunriseMins) / (sunsetMins - sunriseMins);
+    progress = Math.max(0, Math.min(1, progress));
+    
+    // Calculate angle on semi-circle (180 degrees)
+    // 0 progress -> 180 deg (left), 0.5 progress -> 90 deg (top), 1 progress -> 0 deg (right)
+    const angle = Math.PI - (progress * Math.PI);
+    
+    // radius of our arc (matching sunArc width/2)
+    const radius = 60; 
+    const x = radius * Math.cos(angle); 
+    const y = radius * Math.sin(angle);
+    
+    // Return relative position adjustments
+    return {
+      left: 60 + x - 6, // center + x - dotRadius
+      bottom: y - 6     // y - dotRadius
+    };
+  };
+
+  const sunPos = getSunPosition();
+
   useEffect(() => {
     // Fetch air quality and extra metrics asynchronously after screen entry
     const lat = initialData?.lat;
     const lon = initialData?.lon;
     const needsAQ = !initialData?.pollutants;
     const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
-
-    console.log(`[DetailScreen] Async Load: lat=${lat}, lon=${lon}, needsAQ=${needsAQ}, needsExtra=${needsExtra}`);
 
     if ((needsAQ || needsExtra) && lat && lon) {
       const loadAsyncData = async () => {
@@ -94,14 +138,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             });
           }
         } catch (err) {
-          console.warn('Post-load Async Fetches Failed:', err);
+          // Silently handle
         } finally {
           setLoadingAir(false);
         }
       };
       loadAsyncData();
     } else {
-      console.log(`[DetailScreen] Skipping AQ fetch — pollutants already present or no coords.`);
       setLoadingAir(false);
     }
   }, []);
@@ -330,7 +373,12 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         <View style={styles.iconBtnPlaceholder} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scrollContent}
+        style={{ backgroundColor: '#E6F7FF' }}
+        bounces={true}
+      >
         <LinearGradient
           colors={['#E6F7FF', '#f7f9ff']}
           style={styles.heroSection}
@@ -349,7 +397,6 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <TouchableOpacity 
             activeOpacity={0.7} 
             onPress={() => {
-              console.log('Alert banner pressed, opening modal. Data:', initialData.alert);
               setAlertModalVisible(true);
             }}
             style={[styles.alertModule, { zIndex: 999 }]}
@@ -421,14 +468,28 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                   <View style={styles.hourlyIcon}>{item.icon}</View>
                   <Text style={styles.hourlyTemp}>{item.temp}</Text>
                   <View style={styles.hourlyMeta}>
-                     <View style={styles.metaRow}><Umbrella size={12} color={Colors.primary} /><Text style={styles.metaText}>{item.pop}</Text></View>
-                     <View style={styles.metaRow}>
-                        <View style={{ transform: [{ rotate: `${item.windDeg}deg` }] }}>
-                          <Navigation size={12} color={Colors.textSecondary} />
+                      <View style={styles.metaRow}>
+                        <View style={styles.metaIcon}><Umbrella size={12} color={Colors.primary} /></View>
+                        <Text style={styles.metaText}>{item.pop}</Text>
+                      </View>
+                      <View style={styles.metaRow}>
+                        <View style={styles.metaIcon}><Umbrella size={12} color={item.pcp !== '0mm' ? Colors.primary : Colors.textSecondary} /></View>
+                        <Text style={[
+                          styles.metaText, 
+                          { color: item.pcp !== '0mm' ? Colors.primary : Colors.textSecondary }
+                        ]}>
+                          {item.pcp}
+                        </Text>
+                      </View>
+                      <View style={styles.metaRow}>
+                        <View style={styles.metaIcon}>
+                          <View style={{ transform: [{ rotate: `${item.windDeg - 45}deg` }] }}>
+                            <Navigation size={12} color={Colors.textSecondary} />
+                          </View>
                         </View>
                         <Text style={styles.metaText}>{item.wind}</Text>
-                     </View>
-                     <View style={styles.metaRow}><Droplets size={12} color={Colors.textSecondary} /><Text style={styles.metaText}>{item.hum}</Text></View>
+                      </View>
+                      <View style={styles.metaRow}><Droplets size={12} color={Colors.textSecondary} /><Text style={styles.metaText}>{item.hum}</Text></View>
                   </View>
                 </View>
               );
@@ -568,8 +629,25 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.sunTime}>{weatherData.sunrise}</Text>
             </View>
             <View style={styles.sunGraphic}>
+              {/* Horizon Line */}
+              <View style={styles.sunHorizon} />
+              {/* Path Arc */}
               <View style={styles.sunArc} />
-              <View style={styles.sunPoint} />
+              {/* Dynamic Sun Point */}
+              {sunPos && (
+                <View 
+                  style={[
+                    styles.sunPoint, 
+                    { 
+                      left: sunPos.left, 
+                      bottom: sunPos.bottom,
+                      backgroundColor: '#FFB800' // Sun color
+                    }
+                  ]} 
+                >
+                  <View style={styles.sunGlow} />
+                </View>
+              )}
             </View>
             <View style={[styles.sunSide, { alignItems: 'flex-end' }]}>
               <Text style={styles.sunLabel}>일몰</Text>
@@ -658,14 +736,14 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  container: { flex: 1, backgroundColor: '#E6F7FF' },
   stickyHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, backgroundColor: '#E6F7FF', zIndex: 100 },
   iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center' },
   iconBtnPlaceholder: { width: 44 },
   headerTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm },
   headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
   headerSubtitle: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500', marginTop: 2 },
-  scrollContent: { paddingBottom: Spacing.xxl },
+  scrollContent: { paddingBottom: Spacing.xxl, backgroundColor: '#f7f9ff' },
   
   heroSection: { paddingTop: Spacing.xl, paddingBottom: Spacing.xxl, alignItems: 'center' },
   heroMain: { alignItems: 'center' },
@@ -688,9 +766,10 @@ const styles = StyleSheet.create({
   hourlyTime: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 },
   hourlyIcon: { marginVertical: 4 },
   hourlyTemp: { fontSize: 17, fontWeight: '800', color: Colors.text, marginBottom: 8 },
-  hourlyMeta: { gap: 6, width: '100%', alignItems: 'center' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary },
+  hourlyMeta: { gap: 4, width: '100%', alignItems: 'flex-start', paddingHorizontal: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
+  metaIcon: { width: 16, alignItems: 'center', justifyContent: 'center' },
+  metaText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, flex: 1, textAlign: 'right', marginLeft: 4 },
   
   dailyTableHead: { flexDirection: 'row', paddingHorizontal: 4, marginBottom: 8 },
   headTxt: { fontSize: 11, fontWeight: '800', color: Colors.outline, width: 50, textAlign: 'center' },
@@ -728,13 +807,15 @@ const styles = StyleSheet.create({
   pollutantDot: { width: 6, height: 6, borderRadius: 3 },
   pollutantStatus: { fontSize: 12, fontWeight: '800' },
 
-  sunCycleRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: Spacing.lg },
-  sunSide: { width: 60 },
+  sunCycleRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingBottom: Spacing.md },
+  sunSide: { width: 70 },
   sunLabel: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, marginBottom: 4 },
-  sunTime: { fontSize: 14, fontWeight: '700', color: Colors.text },
-  sunGraphic: { flex: 1, height: 60, alignItems: 'center', justifyContent: 'center' },
-  sunArc: { width: 120, height: 120, borderRadius: 60, borderWidth: 1.5, borderColor: Colors.outlineVariant, borderStyle: 'dashed', position: 'absolute', bottom: -60 },
-  sunPoint: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primaryContainer, position: 'absolute', top: 5, left: '20%' },
+  sunTime: { fontSize: 13, fontWeight: '800', color: Colors.text },
+  sunGraphic: { width: 120, height: 75, alignItems: 'center', justifyContent: 'flex-end', marginBottom: -5 },
+  sunHorizon: { position: 'absolute', bottom: 0, width: 140, height: 1, backgroundColor: Colors.outline, borderRadius: 1, opacity: 0.3 },
+  sunArc: { width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: Colors.outline, borderStyle: 'dashed', position: 'absolute', bottom: -60, opacity: 0.4 },
+  sunPoint: { width: 12, height: 12, borderRadius: 6, position: 'absolute', zIndex: 10, shadowColor: '#FFB800', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 8, elevation: 5 },
+  sunGlow: { position: 'absolute', top: -4, left: -4, right: -4, bottom: -4, borderRadius: 15, backgroundColor: 'rgba(255, 184, 0, 0.2)' },
   attribution: { paddingVertical: Spacing.xxl, alignItems: 'center' },
   attrLabel: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1 },
   attrValue: { fontSize: 10, fontWeight: '600', color: Colors.outline, marginTop: 4 },
