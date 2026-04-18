@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
+import AirService from '../services/weather/AirService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,15 +36,51 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     feelsLike: '26°',
     pressure: '1013hPa',
     uvIndex: '3 (보통)',
-    precipChance: '10%',
     sunrise: '06:02 AM',
     sunset: '07:06 PM',
     source: 'KOREA METEOROLOGICAL ADMINISTRATION'
   };
 
-  const [weatherData] = useState({ ...defaultData, ...initialData });
+  const [weatherData, setWeatherData] = useState({ ...defaultData, ...initialData });
+  const [loadingAir, setLoadingAir] = useState(!initialData.pollutants);
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Fetch air quality asynchronously after screen entry
+    const lat = initialData?.lat;
+    const lon = initialData?.lon;
+    console.log(`[DetailScreen] Air quality load attempt — lat: ${lat}, lon: ${lon}`);
+
+    if (!initialData?.pollutants && lat && lon) {
+      const loadAirQuality = async () => {
+        try {
+          const tm = await AirService.getTMCoord(lat, lon);
+          if (tm) {
+            const station = await AirService.getNearestStation(tm.x, tm.y);
+            if (station) {
+              const airData = await AirService.fetchAirQuality(station);
+              if (airData) {
+                setWeatherData(prev => ({ 
+                  ...prev, 
+                  ...airData,
+                  pollutants: airData.pollutants 
+                }));
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Post-load Air Quality Fetch Failed:', err);
+        } finally {
+          setLoadingAir(false);
+        }
+      };
+      loadAirQuality();
+    } else {
+      console.log(`[DetailScreen] Skipping AQ fetch — pollutants already present or no coords.`);
+      setLoadingAir(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (alertModalVisible) {
@@ -416,21 +453,46 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.metricLabel}>대기 질</Text>
             </View>
             <View style={styles.aqiContent}>
-              <Text style={[styles.aqiValue, { color: weatherData.aqiColor || Colors.text }]}>
-                {`${weatherData.aqiValue || '--'} - ${weatherData.airQuality || '보통'}`}
-              </Text>
-              <Text style={styles.aqiDesc}>{weatherData.aqiText || '데이터를 불러오는 중입니다...'}</Text>
+              <View style={styles.aqiValueContainer}>
+                {loadingAir ? (
+                  <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 10 }} />
+                ) : (
+                  <Text style={styles.aqiValue}>{weatherData.aqiValue} - </Text>
+                )}
+                <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{weatherData.airQuality}</Text>
+              </View>
+              <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
             </View>
-            <View style={styles.aqiGraphBase}>
-              <View 
-                style={[
-                  styles.aqiPointer, 
-                  { 
-                    left: `${(weatherData.aqiIndex || 0.5) * 100}%`,
-                    backgroundColor: weatherData.aqiColor || Colors.primary 
-                  }
-                ]} 
-              />
+            <View style={styles.aqiBarContainer}>
+               <View style={styles.aqiFullBar} />
+               <View style={[styles.aqiProgressMarker, { left: `${(weatherData.aqiIndex || 0.1) * 100}%`, backgroundColor: weatherData.aqiColor || Colors.primary }]} />
+            </View>
+
+            {/* Detailed Pollutants Grid */}
+            <View style={styles.pollutantGrid}>
+              {loadingAir ? (
+                // Skeleton-like loading state for grid
+                [1, 2, 3, 4, 5, 6].map((i) => (
+                  <View key={i} style={[styles.pollutantCard, { justifyContent: 'center', alignItems: 'center', minHeight: 100 }]}>
+                    <ActivityIndicator size="small" color={Colors.outline} />
+                    <Text style={{ fontSize: 10, color: Colors.outline, marginTop: 10 }}>로딩 중...</Text>
+                  </View>
+                ))
+              ) : (
+                weatherData.pollutants && Object.entries(weatherData.pollutants).map(([key, data]) => (
+                  <View key={key} style={styles.pollutantCard}>
+                    <Text style={styles.pollutantName}>{key.toUpperCase()}</Text>
+                    <View style={styles.pollutantValueRow}>
+                      <Text style={styles.pollutantValue}>{data.value || '--'}</Text>
+                      <Text style={styles.pollutantUnit}>{data.unit}</Text>
+                    </View>
+                    <View style={[styles.pollutantBadge, { backgroundColor: `${data.color}25`, borderWidth: 1, borderColor: `${data.color}60` }]}>
+                      <View style={[styles.pollutantDot, { backgroundColor: data.color }]} />
+                      <Text style={[styles.pollutantStatus, { color: '#333333' }]}>{data.label}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
             </View>
           </View>
 
@@ -628,9 +690,20 @@ const styles = StyleSheet.create({
   aqiContent: { marginBottom: Spacing.md },
   aqiValue: { fontSize: 20, fontWeight: '700', color: Colors.text, marginBottom: 4 },
   aqiDesc: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
-  aqiGraphBase: { height: 4, backgroundColor: Colors.surfaceContainer, borderRadius: 2, position: 'relative', marginTop: Spacing.sm },
+  aqiGraphBase: { height: 4, backgroundColor: Colors.surfaceContainer, borderRadius: 2, position: 'relative', marginTop: Spacing.md, marginBottom: Spacing.lg },
   aqiPointer: { position: 'absolute', top: -4, width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.primaryContainer, borderWidth: 2, borderColor: 'white' },
   
+  // Detailed Pollutants
+  pollutantGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: Spacing.sm },
+  pollutantCard: { width: '48%', backgroundColor: Colors.surfaceContainerLow, borderRadius: 12, padding: 12 },
+  pollutantName: { fontSize: 13, fontWeight: '800', color: Colors.textSecondary, marginBottom: 6 },
+  pollutantValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3, marginBottom: 10 },
+  pollutantValue: { fontSize: 18, fontWeight: '800', color: Colors.text },
+  pollutantUnit: { fontSize: 10, color: Colors.textSecondary, fontWeight: '600' },
+  pollutantBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, gap: 5, borderWeight: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  pollutantDot: { width: 6, height: 6, borderRadius: 3 },
+  pollutantStatus: { fontSize: 12, fontWeight: '800' },
+
   sunCycleRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: Spacing.lg },
   sunSide: { width: 60 },
   sunLabel: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, marginBottom: 4 },

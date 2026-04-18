@@ -32,33 +32,26 @@ export const getWeather = async (lat, lon) => {
       sunData = sun;
       alertData = alert;
 
-      // 2.1 Fetch Korean Air Quality (Sequential because it needs address -> station)
-      try {
-        const tm = await AirService.getTMCoord(address);
-        if (tm) {
-          const station = await AirService.getNearestStation(tm.x, tm.y);
-          if (station) {
-            airData = await AirService.fetchAirQuality(station);
-          }
-        }
-      } catch (airErr) {
-        console.warn('Air Quality Fetch Failed:', airErr);
-      }
+      // 2. Air Quality will be fetched asynchronously in the detail screen to speed up initial loading
+      // (Removed blocking AirService calls from here)
+
       
       if (weatherData) {
         return { 
           ...weatherData, 
           ...sunData, 
-          ...airData, // Merging Air Quality Data
+          ...airData,
           alert: alertData, 
-          locationName: address 
+          locationName: address,
+          lat,
+          lon,
         };
       }
     }
 
     // 3. Fallback to Global Source if not in Korea or KMA failed
     weatherData = await fetchGlobalWeather(lat, lon);
-    return { ...weatherData, locationName: address || 'Global Location' };
+    return { ...weatherData, locationName: address || 'Global Location', lat, lon };
 
   } catch (error) {
     console.error('Weather Service Orchestrator Error:', error);
