@@ -259,7 +259,17 @@ const HomeScreen = ({ navigation }) => {
                 <TouchableOpacity 
                   key={region.id} 
                   style={styles.regionCard}
-                  onPress={() => navigation.navigate('WeatherDetail', { weatherData: regionsWeather[region.id], isCurrentLocation: false, locationName: region.name, regionId: region.id })}
+                  onPress={() => {
+                    if (!regionsWeather[region.id]) {
+                      if (Platform.OS === 'android') {
+                        ToastAndroid.show('날씨 데이터를 불러오는 중입니다. 잠시만 기다려주세요.', ToastAndroid.SHORT);
+                      } else {
+                        Alert.alert('안내', '날씨 데이터를 여전히 불러오는 중입니다. 잠시만 기다려주세요.');
+                      }
+                      return;
+                    }
+                    navigation.navigate('WeatherDetail', { weatherData: regionsWeather[region.id], isCurrentLocation: false, locationName: region.name, regionId: region.id });
+                  }}
                 >
                    <View style={{ flex: 1 }}>
                      <View style={styles.regionMain}>
