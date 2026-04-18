@@ -20,37 +20,43 @@ export const getWeather = async (lat, lon) => {
     let airData = null;
 
     if (isKorea) {
-      // 2. Try KMA First for high precision in Korea
-      // Fetch Weather, Sun, and Alerts concurrently
+      console.log(`[WeatherService] Running Domestic Mode for: ${address}`);
+      // Try KMA & AirKorea First
       const [kma, sun, alert] = await Promise.all([
-        fetchKMAWeather(lat, lon, locationInfo),
-        fetchSunInfo(lat, lon),
-        fetchKMAWarning(region, city)
+        fetchKMAWeather(lat, lon, locationInfo).catch(err => {
+          console.warn('[WeatherService] KMA Main Fetch Failed, will fallback to Global.', err);
+          return null;
+        }),
+        fetchSunInfo(lat, lon).catch(() => null),
+        fetchKMAWarning(region, city).catch(() => null)
       ]);
-      weatherData = kma;
-      sunData = sun;
-      alertData = alert;
 
-      // 2. Air Quality will be fetched asynchronously in the detail screen to speed up initial loading
-      // (Removed blocking AirService calls from here)
-
-      
-      if (weatherData) {
+      // If KMA data successfully returned, use it with its included AirKorea data
+      if (kma && kma.temp !== '--°') {
         return { 
-          ...weatherData, 
-          ...sunData, 
-          ...airData,
-          alert: alertData, 
+          ...kma, 
+          ...sun, 
+          alert: alert, 
           locationName: address,
           lat,
           lon,
+          isAccurateSource: true // Flag to indicate precision data
         };
       }
+      console.warn('[WeatherService] KMA data is invalid/missing. Falling back to Global Source (WeatherAPI).');
     }
 
-    // 3. Fallback to Global Source if not in Korea or KMA failed
+    // 3. Fallback to Global Source if not in Korea OR KMA failed
+    console.log(`[WeatherService] Running Global Mode for: ${address || 'Global Location'}`);
     weatherData = await fetchGlobalWeather(lat, lon);
-    return { ...weatherData, locationName: address || 'Global Location', lat, lon };
+    
+    return { 
+      ...weatherData, 
+      locationName: address || 'Global Location', 
+      lat, 
+      lon,
+      isAccurateSource: false // Use Global Fallback
+    };
 
   } catch (error) {
     // Ultimate fallback to hardcoded dummy if everything fails

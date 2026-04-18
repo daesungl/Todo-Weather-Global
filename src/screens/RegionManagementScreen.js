@@ -1,39 +1,108 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Modal, TextInput, FlatList } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Modal, TextInput, FlatList, ActivityIndicator } from 'react-native';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, GripVertical, Trash2, Plus, Sun, Search, X, MapPin } from 'lucide-react-native';
+import { ChevronLeft, Trash2, Plus, Sun, Search, X, MapPin, Droplets, Wind, Zap, CloudRain } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
+import { getWeather } from '../services/weather/WeatherService';
 
 const { width, height } = Dimensions.get('window');
 
 const RegionManagementScreen = ({ navigation }) => {
   const { t } = useTranslation();
+  const [regions, setRegions] = useState([]);
+  const [weatherDataMap, setWeatherDataMap] = useState({});
+  const [loading, setLoading] = useState(true);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Enhanced Mock Data
-  const [regions, setRegions] = useState([
-    { id: '1', name: '서울', sub: '현재 위치', temp: '24°', icon: <Sun size={20} color={Colors.primary} />, widget: true },
-    { id: '2', name: '강남역', sub: '서울특별시 강남구 역삼동', temp: '22°', icon: <Sun size={20} color={Colors.primary} />, widget: false },
-  ]);
-
   const goBack = () => navigation.goBack();
 
-  const toggleSearch = () => setSearchModalVisible(!searchModalVisible);
+  useEffect(() => {
+    loadRegions();
+  }, []);
 
-  const deleteRegion = (id) => {
-    setRegions(regions.filter(r => r.id !== id));
+  const loadRegions = async () => {
+    setLoading(true);
+    const saved = await getBookmarkedRegions();
+    setRegions(saved);
+    
+    // Fetch weather for each region
+    const weatherMap = {};
+    for (const region of saved) {
+      try {
+        const weather = await getWeather(region.lat, region.lon);
+        weatherMap[region.id] = weather;
+      } catch (e) {
+        console.error(`Failed to fetch weather for ${region.name}`, e);
+      }
+    }
+    setWeatherDataMap(weatherMap);
+    setLoading(false);
+  };
+
+  const handleDelete = async (id) => {
+    const updated = await removeRegion(id);
+    setRegions(updated);
+  };
+
+  const handleAddRegion = async (place) => {
+    // This would normally come from a search result
+    const updated = await addRegion(place.name, place.address, place.lat, place.lon);
+    setRegions(updated);
+    setSearchModalVisible(false);
+    loadRegions(); // Refresh weather
+  };
+
+  const renderRegionCard = (item) => {
+    const weather = weatherDataMap[item.id];
+    
+    return (
+      <View key={item.id} style={styles.regionCard}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.regionTitle}>[{item.name}]</Text>
+          <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteIconBtn}>
+            <Trash2 size={18} color={Colors.outline} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.regionAddress} numberOfLines={1}>{item.address}</Text>
+        
+        <View style={styles.cardBody}>
+          <View style={styles.bodyLeft}>
+            <Sun size={48} color={Colors.primary} style={styles.weatherIcon} />
+            <View style={styles.tempCol}>
+                <Text style={styles.tempLarge}>{weather?.temp || '--'}°</Text>
+                <Text style={styles.conditionTextSmall}>({t(`weather.${weather?.condKey || 'sunny'}`)})</Text>
+            </View>
+          </View>
+          
+          <View style={styles.bodyRight}>
+            <View style={styles.detailRow}>
+              <Droplets size={14} color={Colors.outline} />
+              <Text style={styles.detailText}>{t('common.humidity')}: {weather?.humidity || '--'}%</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <CloudRain size={14} color={Colors.outline} />
+              <Text style={styles.detailText}>강수량: {weather?.rainAmount || '0mm'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Wind size={14} color={Colors.outline} />
+              <Text style={styles.detailText}>바람: {weather?.windDir || '북동'} {weather?.windSpeed || '6'}m/s</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Zap size={14} color={Colors.outline} />
+              <Text style={styles.detailText}>낙뢰: -</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
   };
 
   const SearchModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={searchModalVisible}
-      onRequestClose={toggleSearch}
-    >
+    <Modal animationType="slide" transparent={true} visible={searchModalVisible} onRequestClose={() => setSearchModalVisible(false)}>
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <View style={styles.searchHeader}>
@@ -41,7 +110,7 @@ const RegionManagementScreen = ({ navigation }) => {
               <Search size={20} color={Colors.outline} style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="장소 검색 (예: 강남구, 역삼동)"
+                placeholder="장소 검색 (예: 김포공항)"
                 placeholderTextColor={Colors.outline}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -53,35 +122,31 @@ const RegionManagementScreen = ({ navigation }) => {
                 </TouchableOpacity>
               )}
             </View>
-            <TouchableOpacity onPress={toggleSearch} style={styles.closeBtn}>
+            <TouchableOpacity onPress={() => setSearchModalVisible(false)} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>취소</Text>
             </TouchableOpacity>
           </View>
           
           <View style={styles.searchResultWrap}>
-             {/* Mock Search Results */}
              {searchQuery.length > 0 ? (
                <ScrollView>
-                 <TouchableOpacity style={styles.resultItem}>
+                 {/* Mock result for demo */}
+                 <TouchableOpacity 
+                   style={styles.resultItem} 
+                   onPress={() => handleAddRegion({ name: '김포공항', address: '서울특별시 강서구 공항동 1373', lat: 37.5583, lon: 126.7906 })}
+                 >
                    <MapPin size={18} color={Colors.outline} />
                    <View style={styles.resultTextCol}>
-                     <Text style={styles.resultName}>경기도 성남시 분당구</Text>
-                     <Text style={styles.resultSub}>대한민국</Text>
-                   </View>
-                 </TouchableOpacity>
-                 <TouchableOpacity style={styles.resultItem}>
-                   <MapPin size={18} color={Colors.outline} />
-                   <View style={styles.resultTextCol}>
-                     <Text style={styles.resultName}>성남 중원구</Text>
-                     <Text style={styles.resultSub}>경기도 성남시</Text>
+                     <Text style={styles.resultName}>김포공항</Text>
+                     <Text style={styles.resultSub}>서울특별시 강서구 공항동 1373</Text>
                    </View>
                  </TouchableOpacity>
                </ScrollView>
              ) : (
-               <View style={styles.emptySearch}>
-                 <Search size={48} color={Colors.surfaceContainerHigh} strokeWidth={1} />
-                 <Text style={styles.emptyText}>날씨를 확인할 새로운 지역을{"\n"}검색해 보세요.</Text>
-               </View>
+                <View style={styles.emptySearch}>
+                  <Search size={48} color="#EEE" />
+                  <Text style={styles.emptyText}>추가할 지역을 검색하세요.</Text>
+                </View>
              )}
           </View>
         </View>
@@ -91,162 +156,125 @@ const RegionManagementScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Premium Header - Atmospheric Blending */}
       <View style={[styles.stickyHeader, { paddingTop: Constants.statusBarHeight }]}>
         <TouchableOpacity onPress={goBack} style={styles.iconBtn}>
           <ChevronLeft size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>관심 지역 관리</Text>
+        <Text style={styles.headerTitle}>날씨 관심 지역</Text>
         <View style={styles.iconBtnPlaceholder} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <LinearGradient
-          colors={['#E6F7FF', '#f7f9ff']}
-          style={styles.introSection}
-        >
-          <Text style={styles.guideText}>
-            현재 최대 5개의 지역을 추가하여{"\n"}날씨 정보를 비교하고 관리할 수 있습니다.
-          </Text>
-        </LinearGradient>
-
         <View style={styles.listSection}>
-          {regions.map((item, index) => (
-            <View key={item.id} style={styles.regionCard}>
-              <View style={styles.dragHandle}>
-                <GripVertical size={20} color={Colors.outlineVariant} />
-              </View>
+          {loading && regions.length === 0 ? (
+            <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />
+          ) : (
+            <>
+              {regions.map(renderRegionCard)}
               
-              <View style={styles.cardInfo}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.regionName}>{item.name}</Text>
-                  {item.widget && (
-                    <LinearGradient
-                      colors={['#E3F2FD', '#BBDEFB']}
-                      style={styles.widgetBadge}
-                    >
-                      <Text style={styles.widgetText}>WIDGET</Text>
-                    </LinearGradient>
-                  )}
+              <TouchableOpacity style={styles.addCard} onPress={() => setSearchModalVisible(true)}>
+                <View style={styles.addBtnCircle}>
+                  <Plus size={32} color={Colors.outline} strokeWidth={1.5} />
                 </View>
-                <Text style={styles.regionSub} numberOfLines={1}>{item.sub}</Text>
-              </View>
-
-              <View style={styles.cardRight}>
-                <Text style={styles.tempText}>{item.temp}</Text>
-                {item.icon}
-              </View>
-
-              <TouchableOpacity 
-                style={styles.deleteBtn}
-                onPress={() => deleteRegion(item.id)}
-              >
-                <Trash2 size={20} color={Colors.error} />
+                <Text style={styles.addCardTitle}>여기를 눌러서 관심 지역을 추가하세요.</Text>
+                <Text style={styles.addCardSub}>길게 눌러 순서를 바꿀 수 있습니다.</Text>
               </TouchableOpacity>
-            </View>
-          ))}
-
-          {regions.length < 5 && (
-            <TouchableOpacity style={styles.addSlot} onPress={toggleSearch}>
-              <View style={styles.plusCircle}>
-                <Plus size={24} color={Colors.primary} strokeWidth={2.5} />
-              </View>
-              <Text style={styles.addText}>새로운 지역 추가하기</Text>
-            </TouchableOpacity>
+            </>
           )}
-
-          {/* Empty placeholders to show slots remaining */}
-          {Array.from({ length: Math.max(0, 3 - regions.length) }).map((_, i) => (
-            <View key={`empty-${i}`} style={styles.emptySlot}>
-               <View style={styles.emptyDot} />
-            </View>
-          ))}
         </View>
       </ScrollView>
 
-      {/* Search Interaction - In-place Modal */}
       <SearchModal />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  container: { flex: 1, backgroundColor: '#F8F9FA' },
   stickyHeader: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     paddingHorizontal: Spacing.md, 
     paddingBottom: Spacing.md, 
-    backgroundColor: '#E6F7FF', 
+    backgroundColor: '#00BFFF', 
     zIndex: 100 
   },
-  iconBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  iconBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   iconBtnPlaceholder: { width: 44 },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: Colors.text },
+  headerTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: 'white' },
   
-  scrollContent: { paddingBottom: Spacing.xxl },
-  introSection: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.md, paddingBottom: Spacing.xl },
-  guideText: { fontSize: 15, fontWeight: '500', color: Colors.textSecondary, lineHeight: 22 },
+  scrollContent: { padding: Spacing.md, paddingBottom: 100 },
+  listSection: { gap: Spacing.md },
   
-  listSection: { paddingHorizontal: Spacing.md, marginTop: -Spacing.sm },
   regionCard: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 18, 
-    backgroundColor: Colors.surfaceContainerLowest, 
-    borderRadius: 28, 
-    marginBottom: Spacing.md,
-    shadowColor: Colors.shadow, 
-    shadowOffset: { width: 0, height: 8 }, 
-    shadowOpacity: 1, 
-    shadowRadius: 16, 
-    elevation: 4 
+    backgroundColor: 'white', 
+    borderRadius: 20, 
+    padding: 16, 
+    borderWidth: 1, 
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  dragHandle: { marginRight: 14 },
-  cardInfo: { flex: 1 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  regionName: { fontSize: 20, fontWeight: '800', color: Colors.text },
-  widgetBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  widgetText: { fontSize: 9, fontWeight: '900', color: '#1976D2' },
-  regionSub: { fontSize: 13, color: Colors.outline, marginTop: 4, fontWeight: '500' },
-  cardRight: { alignItems: 'center', marginRight: 14, gap: 4 },
-  tempText: { fontSize: 22, fontWeight: '800', color: Colors.text },
-  deleteBtn: { padding: 8, backgroundColor: Colors.surfaceContainerLow, borderRadius: 14 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  regionTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  deleteIconBtn: { padding: 4 },
+  regionAddress: { fontSize: 13, color: '#888', marginBottom: 16 },
   
-  addSlot: { 
-    height: 110, 
-    borderRadius: 28, 
-    borderWidth: 2, 
+  cardBody: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bodyLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  weatherIcon: { marginRight: 15 },
+  tempCol: { alignItems: 'center' },
+  tempLarge: { fontSize: 42, fontWeight: '300', color: '#333' },
+  conditionTextSmall: { fontSize: 13, color: '#333', marginTop: -5 },
+  
+  bodyRight: { flex: 1, paddingLeft: 20, gap: 4 },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  detailText: { fontSize: 12, color: '#666', fontWeight: '500' },
+
+  addCard: { 
+    height: 180, 
+    borderRadius: 20, 
+    borderWidth: 1, 
+    borderColor: '#E0E0E0', 
     borderStyle: 'dashed', 
-    borderColor: Colors.outlineVariant, 
+    backgroundColor: 'white',
     justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(255, 255, 255, 0.4)', 
-    marginTop: Spacing.xs, 
-    gap: 12 
+    alignItems: 'center',
+    marginTop: Spacing.sm
   },
-  plusCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.surfaceContainerLowest, justifyContent: 'center', alignItems: 'center' },
-  addText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  
-  emptySlot: { height: 80, borderRadius: 28, borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.surfaceContainer, justifyContent: 'center', alignItems: 'center', marginTop: Spacing.md, opacity: 0.5 },
-  emptyDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.outlineVariant },
+  addBtnCircle: { 
+    width: 60, 
+    height: 60, 
+    borderRadius: 30, 
+    borderWidth: 1.5, 
+    borderColor: '#CCC', 
+    borderStyle: 'dashed',
+    justifyContent: 'center', 
+    alignItems: 'center',
+    marginBottom: 15
+  },
+  addCardTitle: { fontSize: 14, fontWeight: '600', color: '#666', marginBottom: 4 },
+  addCardSub: { fontSize: 12, color: '#AAA' },
 
   // Modal Styles
   modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { height: height * 0.85, backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.lg },
+  modalContent: { height: height * 0.85, backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.lg },
   searchHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.xl },
-  searchInputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceContainerLow, borderRadius: 20, paddingHorizontal: 12, height: 48 },
+  searchInputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F0F0', borderRadius: 20, paddingHorizontal: 12, height: 48 },
   searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.text },
+  searchInput: { flex: 1, fontSize: 15, fontWeight: '600', color: '#333' },
   closeBtn: { paddingVertical: 8 },
-  closeBtnText: { fontSize: 15, fontWeight: '700', color: Colors.primary },
+  closeBtnText: { fontSize: 15, fontWeight: '700', color: '#00BFFF' },
   searchResultWrap: { flex: 1 },
-  resultItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant, gap: 14 },
+  resultItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', gap: 14 },
   resultTextCol: { flex: 1 },
-  resultName: { fontSize: 16, fontWeight: '700', color: Colors.text },
-  resultSub: { fontSize: 13, color: Colors.outline, marginTop: 2 },
+  resultName: { fontSize: 16, fontWeight: '700', color: '#333' },
+  resultSub: { fontSize: 13, color: '#888', marginTop: 2 },
   emptySearch: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
-  emptyText: { textAlign: 'center', fontSize: 15, color: Colors.outline, fontWeight: '500', lineHeight: 22 }
+  emptyText: { textAlign: 'center', fontSize: 14, color: '#AAA', fontWeight: '500' }
 });
 
 export default RegionManagementScreen;

@@ -143,3 +143,32 @@ export const fetchExtraMetrics = async (lat, lon) => {
     return null;
   }
 };
+
+/**
+ * 전 세계 도시 및 지역을 검색합니다. (WeatherAPI Search API)
+ */
+export const searchLocations = async (query) => {
+  if (!query || query.length < 2) return [];
+
+  try {
+    const response = await axios.get(`https://api.weatherapi.com/v1/search.json`, {
+      params: {
+        key: WEATHER_API_KEY,
+        q: query
+      }
+    });
+
+    const data = response.data || [];
+    return data.map(item => ({
+      id: (item.id || Date.now() + Math.random()).toString(),
+      name: item.name,
+      address: `${item.region ? item.region + ', ' : ''}${item.country}`,
+      lat: item.lat,
+      lon: item.lon,
+      type: 'global'
+    }));
+  } catch (error) {
+    console.error('WeatherAPI Search API Error:', error);
+    return [];
+  }
+};

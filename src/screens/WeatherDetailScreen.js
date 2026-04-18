@@ -89,52 +89,47 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   useEffect(() => {
     const lat = initialData?.lat;
     const lon = initialData?.lon;
-    const needsAQ = !initialData?.pollutants;
+    // pollutants가 이미 있으면 정밀 데이터가 들어온 것이므로 추가 호출 불필요
+    const hasAccurateAQ = !!initialData?.pollutants;
     const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
 
-    if ((needsAQ || needsExtra) && lat && lon) {
+    console.log(`[Detail] Initial AQ Data: ${initialData?.aqiText || 'No text'}, HasPollutants: ${!!initialData?.pollutants}`);
+    
+    if (!hasAccurateAQ && lat && lon) {
       const loadAsyncData = async () => {
         try {
-          const [tm, extra] = await Promise.all([
-            needsAQ ? AirService.getTMCoord(lat, lon).catch(() => null) : Promise.resolve(null),
-            needsExtra ? fetchExtraMetrics(lat, lon).catch(() => null) : Promise.resolve(null)
-          ]);
-
+          // fetchExtraMetrics for things KMA might not have (UV, Visibility etc if missing)
+          const extra = needsExtra ? await fetchExtraMetrics(lat, lon).catch(() => null) : null;
+          
+          // AirQuality re-fetch for Global source locations if they don't have pollutants
           let airData = null;
-          if (tm) {
-            const station = await AirService.getNearestStation(tm.x, tm.y).catch(() => null);
-            if (station) {
-              airData = await AirService.fetchAirQuality(station).catch(() => null);
-            }
-          }
-
-          if (airData || extra) {
-            setWeatherData(prev => {
-              const updated = { ...prev };
-              if (airData) {
-                updated.airQuality = airData.airQuality;
-                updated.aqiValue = airData.aqiValue;
-                updated.aqiText = airData.aqiText;
-                updated.aqiColor = airData.aqiColor;
-                updated.aqiIndex = airData.aqiIndex;
-                updated.pollutants = airData.pollutants;
-              }
-              if (extra) {
-                updated.uvIndex = extra.uvIndex;
-                updated.visibility = extra.visibility;
-                updated.feelsLike = extra.feelsLike;
-              }
-              return updated;
-            });
+          // Only refetch AQ if it's NOT a domestic (accurate) source
+          // Domestic source KMA already provides everything.
+          
+          if (extra || airData) {
+            setWeatherData(prev => ({
+              ...prev,
+              ...(airData || {}),
+              ...(extra || {})
+            }));
           }
         } catch (err) {
+          console.error('[Detail] Async load error:', err);
         } finally {
           setLoadingAir(false);
         }
       };
       loadAsyncData();
     } else {
+      // Data already exists, just make sure we are not loading.
       setLoadingAir(false);
+      
+      // Still might need UV/Visibility if it's KMA source (as KMA might not provide these in Simple mode)
+      if (needsExtra && lat && lon) {
+         fetchExtraMetrics(lat, lon).then(extra => {
+           if (extra) setWeatherData(prev => ({ ...prev, ...extra }));
+         });
+      }
     }
   }, []);
 

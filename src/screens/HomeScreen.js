@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator } from 'react-native';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Sun, CheckCircle2, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle } from 'lucide-react-native';
+import { Sun, CheckCircle2, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Trash2, Search, X } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import { getWeather } from '../services/weather/WeatherService';
+import { getBookmarkedRegions, removeRegion, addRegion } from '../services/weather/RegionService';
+import { searchPlaces } from '../services/weather/VWorldService';
+import { searchLocations } from '../services/weather/GlobalService';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const HomeScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -17,59 +20,118 @@ const HomeScreen = ({ navigation }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [currentWeather, setCurrentWeather] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Real Regions Data
+  const [regions, setRegions] = useState([]);
+  const [regionsWeather, setRegionsWeather] = useState({});
+  const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Initial load: Fetch real location weather with safety fallbacks
-  React.useEffect(() => {
-    const fetchMainWeather = async () => {
-      try {
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        let lat = 37.5665; // Seoul Fallback
-        let lon = 126.9780;
-
-        if (status === 'granted') {
-          try {
-            // Try last known position first as it's much faster and reliable on emulators
-            const lastLocation = await Location.getLastKnownPositionAsync({});
-            if (lastLocation) {
-              lat = lastLocation.coords.latitude;
-              lon = lastLocation.coords.longitude;
-            } else {
-              // If no last location, try current position with a timeout
-              const location = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Balanced,
-              });
-              lat = location.coords.latitude;
-              lon = location.coords.longitude;
-            }
-          } catch (locationErr) {
-            console.warn('Location fetch failed, using fallback:', locationErr.message);
-            // lat and lon remain as Seoul fallback
-          }
-        }
-
-        const data = await getWeather(lat, lon);
-        setCurrentWeather(data);
-      } catch (err) {
-        console.error('Initial Weather Fetch Error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Initial load
+  useEffect(() => {
     fetchMainWeather();
-  }, []);
+    loadRegions();
+  }, [currentPage]);
 
-  // Mock data for paginated regions (Page 1: 3 regions, Page 2: Empty, Page 3: Locked)
-  const paginatedData = {
-    1: [
-      { id: '1', name: '강남역', condKey: 'partly_cloudy', temp: '22°', widget: true, icon: <Sun size={22} color="#00BFFF" strokeWidth={2} /> },
-      { id: '2', name: '제주도', condKey: 'light_rain', temp: '19°', widget: false, icon: <Wind size={22} color={Colors.outline} strokeWidth={2} /> },
-      { id: '3', name: '부산항', condKey: 'strong_wind', temp: '20°', widget: false, icon: <Wind size={22} color={Colors.outline} strokeWidth={2} /> },
-    ],
-    2: [],
-    3: [],
+  // Search Debounce logic
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchQuery.trim().length >= 2) {
+        performSearch(searchQuery);
+      } else {
+        setSearchResults([]);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const performSearch = async (query) => {
+    setIsSearching(true);
+    try {
+      // Run both domestic and global search concurrently
+      const [domesticResults, globalResults] = await Promise.all([
+        searchPlaces(query),
+        searchLocations(query)
+      ]);
+
+      // Merge and deduplicate if necessary, but here we just combine
+      const combined = [...domesticResults, ...globalResults];
+      setSearchResults(combined);
+    } catch (e) {
+      console.error('Search Error:', e);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
-  const isPremium = false; // Business logic flag
+  const fetchMainWeather = async () => {
+    setLoading(true);
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      let lat = 37.5665;
+      let lon = 126.9780;
+
+      if (status === 'granted') {
+        const lastLocation = await Location.getLastKnownPositionAsync({});
+        if (lastLocation) {
+          lat = lastLocation.coords.latitude;
+          lon = lastLocation.coords.longitude;
+        } else {
+          const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = location.coords.latitude;
+          lon = location.coords.longitude;
+        }
+      }
+      const data = await getWeather(lat, lon);
+      setCurrentWeather(data);
+    } catch (err) {
+      console.error('Initial Weather Fetch Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadRegions = async () => {
+    try {
+      const saved = await getBookmarkedRegions();
+      setRegions(saved);
+      
+      // Fetch weather for each region in parallel to prevent blocking
+      const weatherMap = {};
+      await Promise.all(saved.map(async (region) => {
+        try {
+          const data = await getWeather(region.lat, region.lon);
+          weatherMap[region.id] = data;
+        } catch (e) {
+          console.error(`Failed to fetch weather for ${region.name}`, e);
+        }
+      }));
+      setRegionsWeather(prev => ({ ...prev, ...weatherMap }));
+    } catch (err) {
+      console.error('loadRegions Error:', err);
+    }
+  };
+
+  const handleDeleteRegion = async (id) => {
+    const updated = await removeRegion(id);
+    setRegions(updated);
+    // No need to reload everything, just let the next render handle it or call loadRegions asynchronously
+    loadRegions();
+  };
+
+  const handleAddRegion = async (place) => {
+    const updated = await addRegion(place.name, place.address, place.lat, place.lon);
+    setRegions(updated);
+    setSearchModalVisible(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    loadRegions();
+  };
+
+  const isPremium = false;
 
   const renderMainWeatherIcon = (condKey) => {
     const size = 115;
@@ -111,7 +173,6 @@ const HomeScreen = ({ navigation }) => {
   return (
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* One-Line Premium Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.headerIcon}>
             <Menu size={24} color={Colors.text} />
@@ -120,71 +181,37 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.headerIcon} />
         </View>
 
-        {/* Hero Weather Section - Immersive Glassmorphism */}
         <TouchableOpacity 
           style={styles.heroSection}
-          activeOpacity={0.85} // 눌렸을 때의 투명도를 적절히 조절 (너무 하얗게 뜨지 않도록)
-          delayPressIn={0}    // 터치 즉시 시각 피드백이 오도록 지연 시간 제거
+          activeOpacity={0.85}
           onPress={() => {
-            if (loading || !currentWeather || !currentWeather.condKey) {
-              if (Platform.OS === 'android') {
-                ToastAndroid.show('실시간 기상 데이터를 불러오는 중입니다...', ToastAndroid.SHORT);
-              } else {
-                Alert.alert('잠시만 기다려주세요', '기상 정보를 업데이트하고 있습니다.');
-              }
-              return;
-            }
-            navigation.navigate('WeatherDetail', { 
-              weatherData: currentWeather,
-              isCurrentLocation: true 
-            });
+            if (loading || !currentWeather) return;
+            navigation.navigate('WeatherDetail', { weatherData: currentWeather, isCurrentLocation: true });
           }}
         >
-          <LinearGradient
-            colors={['#00B4DB', '#0083B0']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.weatherCard}
-          >
+          <LinearGradient colors={['#00B4DB', '#0083B0']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.weatherCard}>
             {loading ? (
-              <View style={styles.skeletonContent}>
-                <View style={styles.skeletonLocation} />
-                <View style={styles.skeletonMainRow}>
-                  <View style={styles.skeletonTemp} />
-                  <View style={styles.skeletonMetaColumn}>
-                    <View style={styles.skeletonTextLine} />
-                    <View style={[styles.skeletonTextLine, { width: 60, marginTop: 10 }]} />
-                  </View>
-                </View>
-                <View style={styles.skeletonFloatingIcon} />
-              </View>
+              <ActivityIndicator size="large" color="white" style={{ padding: 40 }} />
             ) : (
               <View style={styles.cardContent}>
+                  <View style={styles.backgroundWeatherIcon}>
+                    {renderMainWeatherIcon(currentWeather?.condKey || 'sunny')}
+                  </View>
                   <View style={styles.weatherTop}>
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, zIndex: 10 }}>
                       <View style={styles.locationContainer}>
                         <MapPin size={18} color="white" />
                         <Text style={styles.mainLocationText}>
-                          {(currentWeather?.locationName || '서울').split(' ')[1] || (currentWeather?.locationName || '서울').split(' ')[0]}
+                          {(currentWeather?.locationName || 'Seoul').split(' ')[1] || (currentWeather?.locationName || 'Seoul').split(' ')[0]}
                         </Text>
                       </View>
-                      
                       <View style={styles.tempMainRow}>
                          <Text style={styles.heroTempBig}>{parseInt(currentWeather?.temp) || '--'}°</Text>
                          <View style={styles.weatherVerticalMeta}>
-                            <Text style={styles.conditionTextBold}>
-                              {currentWeather?.condKey ? t(`weather.${currentWeather.condKey}`) : t('common.loading')}
-                            </Text>
-                            <Text style={styles.humidityTextSmall}>
-                              {t('common.humidity')} {currentWeather?.humidity || '--%'}
-                            </Text>
+                            <Text style={styles.conditionTextBold}>{currentWeather?.condKey ? t(`weather.${currentWeather.condKey}`) : t('common.loading')}</Text>
+                            <Text style={styles.humidityTextSmall}>{t('common.humidity')} {currentWeather?.humidity || '--%'}</Text>
                          </View>
                       </View>
-                    </View>
-  
-                    {/* Clean Dynamic Icon */}
-                    <View style={styles.heroVisualWrap}>
-                      {renderMainWeatherIcon(currentWeather?.condKey || 'sunny')}
                     </View>
                   </View>
               </View>
@@ -192,78 +219,62 @@ const HomeScreen = ({ navigation }) => {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Interest Regions Section */}
         <View style={styles.sectionHeader}>
-          <View>
-             <Text style={Typography.h3}>{t('home.interest_regions')}</Text>
-          </View>
-          <TouchableOpacity 
-            style={styles.editIconBtn}
-            onPress={() => navigation.navigate('RegionManagement')}
-          >
-            <Pencil size={18} color={Colors.text} strokeWidth={2} />
-          </TouchableOpacity>
+           <Text style={Typography.h3}>{t('home.interest_regions')}</Text>
         </View>
 
-        {/* Paginated Content Area */}
         <View style={styles.paginationArea}>
-            {/* Filtered regions for current page, only showing real data */}
             <View style={styles.regionsList}>
-              {(paginatedData[currentPage] || []).map(region => (
-                <TouchableOpacity key={region.id} style={styles.regionCard}>
-                   <View style={styles.dragHandleWrap}>
-                      <View style={styles.dotGrid} />
-                      <View style={styles.dotGrid} />
-                   </View>
+              {/* Pagination logic: Page 1 (index 0,1,2), Page 2 (3,4,5), etc. */}
+              {regions.slice((currentPage - 1) * 3, currentPage * 3).map(region => (
+                <TouchableOpacity 
+                  key={region.id} 
+                  style={styles.regionCard}
+                  onPress={() => navigation.navigate('WeatherDetail', { weatherData: regionsWeather[region.id], isCurrentLocation: false, locationName: region.name })}
+                >
                    <View style={{ flex: 1 }}>
                      <View style={styles.regionMain}>
                        <Text style={styles.regionName}>{region.name}</Text>
-                       {region.widget && (
-                         <View style={styles.widgetBadge}>
-                           <Text style={styles.widgetText}>{t('home.widget_display')}</Text>
-                         </View>
-                       )}
                      </View>
-                     <Text style={styles.regionCond}>{t(`weather.${region.condKey}`)}</Text>
+                     <Text style={styles.regionCond}>
+                       {regionsWeather[region.id] ? t(`weather.${regionsWeather[region.id].condKey}`) : t('common.loading')}
+                     </Text>
                    </View>
                    <View style={styles.regionWeather}>
-                     {region.icon}
-                     <Text style={styles.regionTemp}>{region.temp}</Text>
+                     <Text style={styles.regionTemp}>{regionsWeather[region.id]?.temp || '--'}°</Text>
                    </View>
+                   <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.deleteBtn}>
+                      <Trash2 size={18} color={Colors.outline} />
+                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
               
-              {/* If empty and not locked, show a subtle guide instead of a button */}
-              {currentPage > 1 && !isPremium && (
+              {/* Add New Slot Button (if page has room or just always at the end of last filled page) */}
+              {regions.length < (currentPage * 3) && (
+                <TouchableOpacity style={styles.addSlotCard} onPress={() => setSearchModalVisible(true)}>
+                   <Plus size={24} color={Colors.outline} />
+                   <Text style={styles.addSlotText}>지역 추가하기</Text>
+                </TouchableOpacity>
+              )}
+
+              {currentPage > 1 && !isPremium && regions.length < (currentPage - 1) * 3 && (
                 <View style={styles.lockedContainer}>
                    <Lock size={32} color={Colors.outlineVariant} />
                    <Text style={styles.lockedText}>{t('home.locked_slot_guide')}</Text>
-                   <TouchableOpacity style={styles.premiumBadge}>
-                      <Text style={styles.premiumBadgeText}>{t('home.upgrade')}</Text>
-                   </TouchableOpacity>
                 </View>
               )}
             </View>
         </View>
 
-        {/* Action Pages Indicator (1 2 3) - Stitch Circle Style */}
         <View style={styles.pageIndicator}>
            {[1, 2, 3].map(num => (
-             <TouchableOpacity 
-               key={num} 
-               onPress={() => setCurrentPage(num)}
-               style={[styles.indicatorCircle, currentPage === num && styles.activeIndicator]}
-             >
+             <TouchableOpacity key={num} onPress={() => setCurrentPage(num)} style={[styles.indicatorCircle, currentPage === num && styles.activeIndicator]}>
                 <Text style={[styles.indicatorText, currentPage === num && styles.activeIndicatorText]}>{num}</Text>
              </TouchableOpacity>
            ))}
         </View>
 
-        {/* Quick Task Briefing */}
-        <TouchableOpacity 
-          style={styles.briefingCard}
-          onPress={() => navigation.navigate('Tasks')}
-        >
+        <TouchableOpacity style={styles.briefingCard} onPress={() => navigation.navigate('Tasks')}>
           <View style={styles.briefIconWrap}>
             <CheckCircle2 size={24} color={Colors.primary} strokeWidth={2} />
           </View>
@@ -272,10 +283,8 @@ const HomeScreen = ({ navigation }) => {
             <Text style={Typography.bodySmall}>Next: Global UI Review at 10:00 AM</Text>
           </View>
         </TouchableOpacity>
-
       </ScrollView>
 
-      {/* Glass Floating Navigation - 3 Tab Icon+Dot Version */}
       <View style={styles.bottomNavContainer}>
         <View style={styles.glassNav}>
           <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Weather')}>
@@ -291,10 +300,72 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </View>
 
-      <MenuModal 
-        visible={menuVisible} 
-        onClose={() => setMenuVisible(false)} 
-      />
+      <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} />
+      
+      {/* Search Modal - Inline to maintain identity/focus */}
+      <Modal animationType="slide" transparent={true} visible={searchModalVisible} onRequestClose={() => setSearchModalVisible(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.searchHeader}>
+              <View style={styles.searchInputWrap}>
+                <Search size={20} color={Colors.outline} style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="장소 검색 (예: 김포공항)"
+                  placeholderTextColor={Colors.outline}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoFocus
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <X size={20} color={Colors.outline} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setSearchModalVisible(false)} style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>취소</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.searchResultWrap}>
+               {isSearching ? (
+                 <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 20 }} />
+               ) : (
+                 <>
+                   {searchResults.length > 0 ? (
+                     searchResults.map((item) => (
+                       <TouchableOpacity key={item.id} style={styles.resultItem} onPress={() => handleAddRegion(item)}>
+                         <MapPin size={18} color={item.type === 'domestic' ? Colors.primary : Colors.outline} />
+                         <View style={styles.resultTextCol}>
+                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                             <Text style={styles.resultName}>{item.name}</Text>
+                             <View style={[styles.typeBadge, { backgroundColor: item.type === 'domestic' ? '#E3F2FD' : '#F5F5F5' }]}>
+                               <Text style={[styles.typeBadgeText, { color: item.type === 'domestic' ? '#1976D2' : '#666' }]}>
+                                 {item.type === 'domestic' ? '국내' : 'Global'}
+                               </Text>
+                             </View>
+                           </View>
+                           <Text style={styles.resultSub}>{item.address}</Text>
+                         </View>
+                       </TouchableOpacity>
+                     ))
+                   ) : searchQuery.length >= 2 ? (
+                     <View style={styles.emptySearch}>
+                        <Text style={styles.emptyText}>검색 결과가 없습니다.</Text>
+                     </View>
+                   ) : (
+                      <View style={styles.emptySearch}>
+                        <Search size={48} color="#EEE" />
+                        <Text style={styles.emptyText}>추가할 지역을 검색하세요.</Text>
+                      </View>
+                   )}
+                 </>
+               )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -390,6 +461,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: -10,
+  },
+  backgroundWeatherIcon: {
+    position: 'absolute',
+    right: 0,
+    top: 15, // 아래에서 위로 끌어올림
+    zIndex: 1,
+    opacity: 0.85,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -615,6 +693,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  typeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  typeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  deleteBtn: {
+    padding: 8,
+    marginLeft: 4,
+  },
+  
+  // Modal Styles
+  modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { 
+    height: height * 0.8, 
+    backgroundColor: Colors.background, 
+    borderTopLeftRadius: 32, 
+    borderTopRightRadius: 32, 
+    padding: Spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  searchHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.xl },
+  searchInputWrap: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.surfaceContainerLow, 
+    borderRadius: 20, 
+    paddingHorizontal: 12, 
+    height: 48 
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.text },
+  closeBtn: { paddingVertical: 8 },
+  closeBtnText: { fontSize: 15, fontWeight: '700', color: Colors.primary },
+  searchResultWrap: { flex: 1 },
+  resultItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 16, 
+    borderBottomWidth: 1, 
+    borderBottomColor: Colors.outlineVariant, 
+    gap: 14 
+  },
+  resultTextCol: { flex: 1 },
+  resultName: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  resultSub: { fontSize: 13, color: Colors.outline, marginTop: 2 },
+  emptySearch: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 40 },
+  emptyText: { textAlign: 'center', fontSize: 14, color: Colors.outline, fontWeight: '500' },
+
   bottomNavContainer: {
     position: 'absolute',
     bottom: 30,

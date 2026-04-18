@@ -42,3 +42,44 @@ export const checkIsKorea = async (lat, lon) => {
     return { isKorea: false };
   }
 };
+
+/**
+ * 키워드로 국내 장소 및 주소를 검색합니다. (VWorld Search API)
+ */
+export const searchPlaces = async (query) => {
+  if (!query || query.length < 2) return [];
+
+  try {
+    const response = await axios.get('https://api.vworld.kr/req/search', {
+      params: {
+        service: 'search',
+        request: 'search',
+        version: '2.0',
+        crs: 'epsg:4326',
+        size: '10',
+        page: '1',
+        query: query,
+        type: 'place', // 장소 위주 검색
+        format: 'json',
+        errorformat: 'json',
+        key: VWORLD_API_KEY,
+      },
+    });
+
+    if (response.data?.response?.status === 'OK') {
+      const items = response.data.response.result.items || [];
+      return items.map(item => ({
+        id: item.id || Date.now().toString() + Math.random(),
+        name: item.title,
+        address: item.address.parcel || item.address.road,
+        lat: parseFloat(item.point.y),
+        lon: parseFloat(item.point.x),
+        type: 'domestic'
+      }));
+    }
+    return [];
+  } catch (error) {
+    console.error('VWorld Search API Error:', error);
+    return [];
+  }
+};
