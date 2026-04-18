@@ -35,14 +35,10 @@ export const getTMFromAddress = async (address) => {
        });
     });
 
-    console.log(`[AirKorea] VWorld Response Status: ${response.data?.response?.status} for address: ${address}`);
-    
     if (response.data?.response?.status === 'OK') {
       const point = response.data.response.result.point;
-      console.log(`[AirKorea] TM Coords from Address Success: x=${point.x}, y=${point.y}`);
       return { x: point.x, y: point.y };
     } else if (response.data?.response?.status === 'NOT_FOUND') {
-      // One last try with 'road' if not yet tried
       const roadResponse = await axios.get('http://api.vworld.kr/req/address', {
         params: { service: 'address', request: 'getcoord', version: '2.0', crs: 'epsg:5181', address: address, format: 'json', type: 'road', key: VWORLD_API_KEY }
       });
@@ -51,12 +47,9 @@ export const getTMFromAddress = async (address) => {
         return { x: point.x, y: point.y };
       }
       return null;
-    } else {
-      console.error('[AirKorea] VWorld Error Response:', JSON.stringify(response.data?.response));
-      return null;
     }
+    return null;
   } catch (error) {
-    console.error('[AirKorea] Address conversion error:', error?.message);
     return null;
   }
 };
@@ -130,6 +123,37 @@ export const getRealtimeAirQuality = async (stationName) => {
 };
 
 /**
+ * 4. 미세먼지 예보 정보를 가져옵니다. (국립환경과학원 브리핑)
+ */
+export const getAirQualityForecast = async () => {
+  try {
+    const serviceKey = process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '';
+    const today = new Date().toISOString().split('T')[0];
+    const response = await axios.get(`https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth?serviceKey=${serviceKey}`, {
+      params: {
+        returnType: 'json',
+        numOfRows: '1',
+        pageNo: '1',
+        searchDate: today,
+        informCode: 'PM10'
+      }
+    });
+
+    const items = response.data?.response?.body?.items;
+    if (items && items.length > 0) {
+      return {
+        overall: items[0].informOverall, // 전체 예보 브리핑
+        cause: items[0].informCause      // 발생 원인
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('[AirKorea] Forecast Fetch Error:', error);
+    return null;
+  }
+};
+
+/**
  * 종합 실행 함수: 위경도 또는 주소로부터 가장 정확한 대기질 정보를 가져옵니다.
  */
 export const fetchAccurateAirQuality = async (lat, lon, address) => {
@@ -143,6 +167,14 @@ export const fetchAccurateAirQuality = async (lat, lon, address) => {
   const station = await getNearestStation(coords.x, coords.y);
   if (!station) return null;
 
-  // 3. 대기질 조회
-  return await getRealtimeAirQuality(station.stationName);
+  // 3. 실시간 데이터 및 4. 예보 데이터 병합
+  const [realtime, forecast] = await Promise.all([
+    getRealtimeAirQuality(station.stationName),
+    getAirQualityForecast()
+  ]);
+
+  return {
+    ...realtime,
+    forecast: forecast
+  };
 };

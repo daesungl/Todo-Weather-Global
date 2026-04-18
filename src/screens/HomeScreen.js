@@ -241,7 +241,7 @@ const HomeScreen = ({ navigation }) => {
                      </Text>
                    </View>
                    <View style={styles.regionWeather}>
-                     <Text style={styles.regionTemp}>{regionsWeather[region.id]?.temp || '--'}°</Text>
+                     <Text style={styles.regionTemp}>{regionsWeather[region.id]?.temp || '--'}</Text>
                    </View>
                    <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.deleteBtn}>
                       <Trash2 size={18} color={Colors.outline} />

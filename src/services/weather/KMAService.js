@@ -173,36 +173,30 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes, airQuality] = await Promise.all([
       axios.get(`${baseUrl}/getUltraSrtNcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y }
-      }).catch(e => { console.warn('[KMA] Ncst API Failed:', e.message); return null; }),
+      }).catch(() => null),
       axios.get(`${baseUrl}/getUltraSrtFcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 60, dataType: 'JSON', base_date: ultraTime.baseDate, base_time: ultraTime.baseTime, nx: x, ny: y }
-      }).catch(e => { console.warn('[KMA] UltraFcst API Failed:', e.message); return null; }),
+      }).catch(() => null),
       axios.get(`${baseUrl}/getVilageFcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 1000, dataType: 'JSON', base_date: vilageTime.baseDate, base_time: vilageTime.baseTime, nx: x, ny: y }
-      }).catch(e => { console.warn('[KMA] VilageFcst API Failed:', e.message); return null; }),
+      }).catch(() => null),
       axios.get(`${midUrl}/getMidLandFcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: landCode, tmFc: midTime.baseDate + midTime.baseTime }
-      }).catch(e => { console.warn('[KMA] MidLand API Failed:', e.message); return null; }),
+      }).catch(() => null),
       axios.get(`${midUrl}/getMidTa?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime }
-      }).catch(e => { console.warn('[KMA] MidTa API Failed:', e.message); return null; }),
+      }).catch(() => null),
       axios.get(`${midUrl}/getMidFcst?serviceKey=${serviceKey}`, {
         params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime }
-      }).catch(e => { console.warn('[KMA] MidFcst API Failed:', e.message); return null; }),
-      fetchAccurateAirQuality(lat, lon, addressObj.address || addressObj.region || addressObj.city).catch(e => { console.warn('[KMA] AirKorea API Failed:', e.message); return null; })
+      }).catch(() => null),
+      fetchAccurateAirQuality(lat, lon, addressObj.address || addressObj.region || addressObj.city).catch(() => null)
     ]);
 
     const liveItems = safeGetItemArray(ncstRes);
     const ultraItems = safeGetItemArray(ultraRes);
     const forecastItems = safeGetItemArray(vilageRes);
 
-    console.log(`[KMA] API Response Stats: Ncst=${liveItems.length}, Ultra=${ultraItems.length}, Vilage=${forecastItems.length}`);
-
-    // If we have at least live weather, we should try to render KMA
-    if (liveItems.length === 0 && forecastItems.length === 0) {
-      console.warn('[KMA] Essential weather items are missing. Failing over.');
-      return null;
-    }
+    if (liveItems.length === 0 && forecastItems.length === 0) return null;
     
     const midLandData = safeGetItemArray(midLandRes)?.[0] || {};
     const midTaData = safeGetItemArray(midTaRes)?.[0] || {};
@@ -407,7 +401,9 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       wfSv: wfSv,
       airQuality: airQuality ? getGradeText(airQuality.khaiGrade, 'khai') : '--',
       aqiValue: airQuality ? airQuality.khaiValue : '--',
-      aqiText: airQuality ? `측정소: ${airQuality.stationName} (기준: ${airQuality.dataTime})` : '데이터 없음',
+      aqiText: airQuality ? getActionGuide(airQuality.khaiGrade) : '대기질 정보를 불러올 수 없습니다.',
+      stationName: airQuality?.stationName || '', // 별도 필드로 분리
+      aqiForecast: airQuality?.forecast?.overall || '', 
       aqiColor: airQuality ? getGradeColor(airQuality.khaiGrade) : '#bdbdbd',
       aqiIndex: airQuality ? (parseInt(airQuality.khaiGrade || 1) / 4) : 0,
       pollutants: airQuality ? {
@@ -424,6 +420,18 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     console.error('KMA API Error Details:', error);
     return null;
   }
+};
+
+/**
+ * 대기질 등급별 행동 가이드를 반환합니다.
+ */
+const getActionGuide = (grade) => {
+  const g = parseInt(grade);
+  if (g <= 1) return '쾌적한 공기입니다. 야외 활동에 아주 좋습니다.';
+  if (g <= 2) return '전반적으로 괜찮으나, 민감군은 실외 활동 시 유의하세요.';
+  if (g <= 3) return '공기가 탁합니다. 장시간 야외 활동은 자제하는 것이 좋습니다.';
+  if (g <= 4) return '매우 해로운 수준입니다. 긴급한 용무 외엔 반드시 실내에 머무르세요.';
+  return '데이터를 확인하는 중입니다.';
 };
 
 const getGradeLevel = (val, type) => {

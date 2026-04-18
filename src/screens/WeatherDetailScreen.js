@@ -438,9 +438,20 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                <View style={styles.aqiValueContainer}>
                   {loadingAir ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.aqiValue}>{weatherData.aqiValue} - </Text>}
                   <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{weatherData.airQuality}</Text>
+                  {weatherData.stationName && (
+                    <View style={styles.stationTag}>
+                      <Text style={styles.stationTagName}>{weatherData.stationName}</Text>
+                    </View>
+                  )}
                </View>
-               <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
-            </View>
+                <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
+                {weatherData.aqiForecast ? (
+                  <View style={styles.aqiForecastBox}>
+                    <Text style={styles.aqiForecastLabel}>공식 예보 브리핑</Text>
+                    <Text style={styles.aqiForecastText}>{weatherData.aqiForecast}</Text>
+                  </View>
+                ) : null}
+             </View>
             <View style={styles.aqiBarContainer}><View style={styles.aqiFullBar} /><View style={[styles.aqiProgressMarker, { left: `${(weatherData.aqiIndex || 0.1) * 100}%`, backgroundColor: weatherData.aqiColor || Colors.primary }]} /></View>
             <View style={styles.pollutantGrid}>
               {loadingAir ? [1, 2, 3, 4, 5, 6].map(i => <View key={i} style={styles.pollutantCard}><ActivityIndicator size="small" /></View>) : 
@@ -512,8 +523,8 @@ const styles = StyleSheet.create({
   hourlyItem: { alignItems: 'center', marginRight: 10, paddingVertical: 12, paddingHorizontal: 5, borderRadius: 16, width: 78 },
   hourlyTime: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
   hourlyIcon: { marginVertical: 4 },
-  hourlyTemp: { fontSize: 17, fontWeight: '800', color: Colors.text },
-  hourlyMeta: { gap: 4, width: '100%' },
+  hourlyTemp: { fontSize: 17, fontWeight: '800', color: Colors.text, marginBottom: 2 },
+  hourlyMeta: { gap: 4, width: '100%', marginTop: 8 },
   metaRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
   metaText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, flex: 1, textAlign: 'right' },
   dailyTableHead: { flexDirection: 'row', marginBottom: 8 },
@@ -536,8 +547,13 @@ const styles = StyleSheet.create({
   aqiValueContainer: { flexDirection: 'row', alignItems: 'center' },
   aqiValue: { fontSize: 20, fontWeight: '700' },
   aqiLabel: { fontSize: 20, fontWeight: '700' },
+  stationTag: { marginLeft: 10, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: Colors.surfaceContainerLowest, borderRadius: 8, borderWidth: 1, borderColor: Colors.outlineVariant },
+  stationTagName: { fontSize: 10, fontWeight: '800', color: Colors.textSecondary, textTransform: 'uppercase' },
   aqiDesc: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
   aqiBarContainer: { height: 4, backgroundColor: Colors.surfaceContainer, borderRadius: 2, marginVertical: 10 },
+  aqiForecastBox: { marginTop: 12, padding: 12, backgroundColor: Colors.surfaceContainerLowest, borderRadius: 12, borderWidth: 1, borderColor: Colors.outlineVariant },
+  aqiForecastLabel: { fontSize: 11, fontWeight: '800', color: Colors.primary, marginBottom: 4, textTransform: 'uppercase' },
+  aqiForecastText: { fontSize: 13, lineHeight: 18, color: Colors.text, fontWeight: '500' },
   aqiFullBar: { position: 'absolute', width: '100%', height: 4 },
   aqiProgressMarker: { position: 'absolute', top: -4, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white' },
   pollutantGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
