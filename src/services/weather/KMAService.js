@@ -169,22 +169,28 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
 
     const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes] = await Promise.all([
       axios.get(`${baseUrl}/getUltraSrtNcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y }
+        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y },
+        timeout: 5000
       }).catch(() => null),
       axios.get(`${baseUrl}/getUltraSrtFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 60, dataType: 'JSON', base_date: ultraTime.baseDate, base_time: ultraTime.baseTime, nx: x, ny: y }
+        params: { pageNo: 1, numOfRows: 60, dataType: 'JSON', base_date: ultraTime.baseDate, base_time: ultraTime.baseTime, nx: x, ny: y },
+        timeout: 5000
       }).catch(() => null),
       axios.get(`${baseUrl}/getVilageFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 1000, dataType: 'JSON', base_date: vilageTime.baseDate, base_time: vilageTime.baseTime, nx: x, ny: y }
+        params: { pageNo: 1, numOfRows: 1000, dataType: 'JSON', base_date: vilageTime.baseDate, base_time: vilageTime.baseTime, nx: x, ny: y },
+        timeout: 5000
       }).catch(() => null),
       axios.get(`${midUrl}/getMidLandFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: landCode, tmFc: midTime.baseDate + midTime.baseTime }
+        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: landCode, tmFc: midTime.baseDate + midTime.baseTime },
+        timeout: 5000
       }).catch(() => null),
       axios.get(`${midUrl}/getMidTa?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime }
+        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime },
+        timeout: 5000
       }).catch(() => null),
       axios.get(`${midUrl}/getMidFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime }
+        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime },
+        timeout: 5000
       }).catch(() => null)
     ]);
 
@@ -251,7 +257,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
           wind: `${Math.round(h.wind)}m/s`,
           windDeg: (parseInt(h.windDeg) + 180) % 360,
           hum: `${h.hum}%`,
-          fullTime: `${h.date}${h.time}`
+          fullTime: `${h.date}${h.time}`,
+          isDay: hour >= 6 && hour < 18
         };
       });
 
@@ -408,6 +415,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       aqiColor: '#bdbdbd',
       aqiIndex: 0,
       pollutants: null,
+      isDay: nowKST.getUTCHours() >= 6 && nowKST.getUTCHours() < 18,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {

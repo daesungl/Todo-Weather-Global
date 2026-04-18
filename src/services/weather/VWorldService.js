@@ -21,6 +21,7 @@ export const checkIsKorea = async (lat, lon) => {
         type: 'both',
         key: VWORLD_API_KEY,
       },
+      timeout: 4000
     });
 
     if (response.data?.response?.status === 'OK') {
@@ -66,7 +67,7 @@ export const searchPlaces = async (query) => {
       };
       if (category) params.category = category;
 
-      const response = await axios.get('https://api.vworld.kr/req/search', { params });
+      const response = await axios.get('https://api.vworld.kr/req/search', { params, timeout: 5000 });
       if (response.data?.response?.status === 'OK') {
         return response.data.response.result.items || [];
       }

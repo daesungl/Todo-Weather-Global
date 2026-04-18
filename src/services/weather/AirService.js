@@ -157,7 +157,7 @@ export const fetchAirQuality = async (lat, lon, address = '') => {
     const [realtimeRes, forecastRes] = await Promise.all([
       axios.get('https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty', {
         params: { serviceKey: SERVICE_KEY, returnType: 'json', stationName: station.stationName, dataTerm: 'DAILY', ver: '1.3', numOfRows: 1 },
-        timeout: 8000
+        timeout: 5000
       }).catch(e => {
         console.error('[AirService] Realtime API error:', e?.response?.status, e?.message);
         if (e.response?.status === 429) return { _error: '429' };

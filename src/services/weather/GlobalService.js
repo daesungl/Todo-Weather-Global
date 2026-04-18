@@ -89,7 +89,8 @@ export const fetchGlobalWeather = async (lat, lon) => {
         return {
           time: `${d.getHours()}시`,
           temp: `${Math.round(h.temp_c)}°`,
-          condition: mapConditionToKey(h.condition.text, h.is_day)
+          condition: mapConditionToKey(h.condition.text, h.is_day),
+          isDay: !!h.is_day
         };
       });
 
@@ -112,6 +113,7 @@ export const fetchGlobalWeather = async (lat, lon) => {
       sunset: today.astro.sunset,
       dailyForecast,
       hourlyForecast,
+      isDay: !!current.is_day,
       
       // Air Quality specific
       airQuality: aqiData.label,

@@ -29,7 +29,8 @@ export const fetchSunInfo = async (lat, lon) => {
         longitude: lon,
         latitude: lat,
         dnYn: 'Y'
-      }
+      },
+      timeout: 4000
     });
 
     const item = response.data?.response?.body?.items?.item;

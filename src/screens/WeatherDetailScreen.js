@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager } from 'react-native';
 import { 
-  ChevronLeft, Sun, Cloud, CloudRain, Wind, Droplets, 
+  ChevronLeft, Sun, Moon, Cloud, CloudRain, Wind, Droplets, 
   SunMedium, AlertTriangle, Calendar, Navigation,
   Eye, Thermometer, Gauge, Activity, CloudLightning,
   Info, Umbrella, X, CloudSnow, RefreshCw
@@ -148,34 +148,39 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       
       if (isDomestic) {
         try {
-          // New unified service call
+          console.log(`[${address}] 대기질 데이터 ( AirKorea ) 조회 중`);
           const result = await AirService.fetchAirQuality(lat, lon, address);
           
           if (result && result.error === 'LIMIT_HIT') {
-             airData = { 
-               airQuality: '--', 
-               aqiValue: '--',
-               aqiText: '에어코리아 사용량이 초과되었습니다. 글로벌 데이터로 대체하거나 잠시 후 시도해주세요.',
-               aqiColor: Colors.outline,
-               stationName: result.stationName || 'Limit Reached'
-             };
+             console.warn(`[${address}] 대기질 데이터 ( AirKorea ) 조회 실패 (에러코드: 429 - Limit Hit)`);
+             // 429 Limit Hit: Try Global Fallback immediately
+             const fallback = extra || await fetchExtraMetrics(lat, lon).catch(() => null);
+             if (fallback && fallback.aqiSource === 'WeatherAPI') {
+               console.log(`[${address}] 대기질 데이터 ( weatherAPI ) 조회 완료 (Fallback)`);
+               airData = fallback;
+               airData.aqiText = `에어코리아 사용량 초과로 글로벌 데이터를 대신 표시합니다.`;
+             } else {
+               airData = { 
+                 airQuality: '--', 
+                 aqiValue: '--',
+                 aqiText: '에어코리아 사용량이 초과되었습니다. 잠시 후 서버가 안정되면 다시 시도해주세요.',
+                 aqiColor: Colors.outline,
+                 stationName: result.stationName || 'Limit Reached'
+               };
+             }
           } else if (result) {
+             console.log(`[${address}] 대기질 데이터 ( AirKorea ) 조회 완료`);
              airData = result;
           }
         } catch (aqErr) {
-          console.error('[Detail] Air fetch error:', aqErr);
+          console.error(`[${address}] 대기질 데이터 ( AirKorea ) 조회 실패 (에러코드: ${aqErr.response?.status || aqErr.message})`);
           
           // Fallback to WeatherAPI data if domestic fetch fails drastically
-          if (extra && extra.aqiSource === 'WeatherAPI') {
-            airData = {
-              airQuality: extra.airQuality,
-              aqiValue: extra.aqiValue,
-              aqiText: `${extra.aqiText} (에어코리아 통신 에러로 글로벌 소스를 제공합니다)`,
-              aqiColor: extra.aqiColor,
-              aqiIndex: extra.aqiIndex,
-              pollutants: extra.pollutants,
-              stationName: 'Global Source (Backup)'
-            };
+          const fallback = extra || await fetchExtraMetrics(lat, lon).catch(() => null);
+          if (fallback && fallback.aqiSource === 'WeatherAPI') {
+            console.log(`[${address}] 대기질 데이터 ( weatherAPI ) 조회 완료 (Fallback)`);
+            airData = fallback;
+            airData.aqiText = `${fallback.aqiText} (에어코리아 통신 에러로 글로벌 소스를 제공합니다)`;
           }
         }
       }
@@ -238,8 +243,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
   const goBack = () => navigation.goBack();
 
-  const renderHourlyIcon = (condKey) => {
+  const renderHourlyIcon = (condKey, isDay = true) => {
     const size = 20;
+    const isNight = isDay === false || condKey === 'clear-night';
+
     switch (condKey) {
       case 'rainy':
       case 'rain':
@@ -254,9 +261,31 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         return <Cloud size={size} color="#90a4ae" />;
       case 'partly_cloudy':
       case 'mostly_sunny':
-        return <Sun size={size} color="#FFD700" />;
+      case 'mostly_clear':
+      case 'clear-night':
+        return (
+          <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+            {!isNight ? (
+              <Sun size={size * 0.8} color="#FFD700" strokeWidth={2.5} />
+            ) : (
+              <Moon size={size * 0.75} color="#FFD700" fill="#FFD700" strokeWidth={2.2} />
+            )}
+            <Cloud size={size * 0.5} color="#cfd8dc" style={{ position: 'absolute', bottom: -2, right: -2 }} />
+          </View>
+        );
+      case 'sunny':
+      case 'clear':
+        return !isNight ? (
+          <Sun size={size} color="#FFD700" strokeWidth={2.5} />
+        ) : (
+          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={2.2} />
+        );
       default:
-        return <Sun size={size} color="#FFD700" />;
+        return !isNight ? (
+          <Sun size={size} color="#FFD700" strokeWidth={2.5} />
+        ) : (
+          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={2.2} />
+        );
     }
   };
 
@@ -296,7 +325,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         return {
           ...h,
           time: idx === 0 ? '지금' : h.time,
-          icon: renderHourlyIcon(h.condKey),
+          icon: renderHourlyIcon(h.condKey || h.condition, h.isDay),
           dayLabel: getDayLabel(dayOffset)
         };
       });
@@ -386,6 +415,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
   const renderWeatherIcon = (condKey, size = 80, strokeWidth = 2, customStyle = null) => {
     const style = customStyle || styles.heroIconTop;
+    const isDay = weatherData.isDay !== undefined ? weatherData.isDay : true; // 기본값 낮
+
     switch (condKey) {
       case 'rainy':
       case 'rain':
@@ -401,14 +432,30 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       case 'partly_cloudy':
       case 'mostly_sunny':
       case 'mostly_clear':
+      case 'clear-night':
         return (
           <View style={[style, { width: size, height: size, justifyContent: 'center', alignItems: 'center' }]}>
-            <Sun size={size * 0.8} color="#FFD700" strokeWidth={strokeWidth} />
+            {isDay ? (
+              <Sun size={size * 0.8} color="#FFD700" strokeWidth={strokeWidth} />
+            ) : (
+              <Moon size={size * 0.75} color="#FFD700" fill="#FFD700" strokeWidth={strokeWidth} />
+            )}
             <Cloud size={size * 0.5} color="#cfd8dc" style={{ position: 'absolute', bottom: size * 0.06, right: -size * 0.06 }} />
           </View>
         );
+      case 'sunny':
+      case 'clear':
+        return isDay ? (
+          <Sun size={size} color="#FFD700" strokeWidth={strokeWidth} style={style} />
+        ) : (
+          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={strokeWidth} style={style} />
+        );
       default:
-        return <Sun size={size} color="#FFD700" strokeWidth={strokeWidth} style={style} />;
+        return isDay ? (
+          <Sun size={size} color="#FFD700" strokeWidth={strokeWidth} style={style} />
+        ) : (
+          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={strokeWidth} style={style} />
+        );
     }
   };
 
