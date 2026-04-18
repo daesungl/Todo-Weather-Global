@@ -431,7 +431,7 @@ const getActionGuide = (grade) => {
   if (g <= 2) return '전반적으로 괜찮으나, 민감군은 실외 활동 시 유의하세요.';
   if (g <= 3) return '공기가 탁합니다. 장시간 야외 활동은 자제하는 것이 좋습니다.';
   if (g <= 4) return '매우 해로운 수준입니다. 긴급한 용무 외엔 반드시 실내에 머무르세요.';
-  return '데이터를 확인하는 중입니다.';
+  return '실시간 대기질 정보를 업데이트 중입니다.';
 };
 
 const getGradeLevel = (val, type) => {

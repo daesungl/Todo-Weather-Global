@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager } from 'react-native';
 import { 
   ChevronLeft, Sun, Cloud, CloudRain, Wind, Droplets, 
   SunMedium, AlertTriangle, Calendar, Navigation,
@@ -43,7 +43,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   };
 
   const [weatherData, setWeatherData] = useState({ ...defaultData, ...initialData });
-  const [loadingAir, setLoadingAir] = useState(!(initialData?.pollutants));
+  const hasAccurateAQInit = !!initialData?.pollutants && 
+                           initialData?.aqiValue !== '--' && 
+                           initialData?.aqiText !== '실시간 대기질 정보를 업데이트 중입니다.';
+  const [loadingAir, setLoadingAir] = useState(!hasAccurateAQInit);
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
@@ -108,88 +111,88 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   useEffect(() => {
     const lat = initialData?.lat;
     const lon = initialData?.lon;
-    // pollutants가 이미 있으면 정밀 데이터가 들어온 것이므로 추가 호출 불필요
-    const hasAccurateAQ = !!initialData?.pollutants;
-    const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
 
-    console.log(`[Detail] Initial AQ Data: ${initialData?.aqiText || 'No text'}, HasPollutants: ${!!initialData?.pollutants}`);
-    
-    if (!hasAccurateAQ && lat && lon) {
-      const loadAsyncData = async () => {
-        try {
-          // fetchExtraMetrics for things KMA might not have (UV, Visibility etc if missing)
-          const extra = needsExtra ? await fetchExtraMetrics(lat, lon).catch(() => null) : null;
-          
-          // Minimum loading time for "演出" (visual effect)
-          const minDelay = new Promise(resolve => setTimeout(resolve, 1200));
+    // 애니메이션이 완전히 끝난 후 정밀 데이터 로딩 시작 (깜빡임 방지)
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      // pollutants가 있고 수치가 유효할 때만 정밀 데이터가 있는 것으로 판단
+      const hasAccurateAQ = !!initialData?.pollutants && 
+                           initialData?.aqiValue !== '--' && 
+                           initialData?.aqiText !== '실시간 대기질 정보를 업데이트 중입니다.';
+      const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
 
-          // AirQuality re-fetch for domestic locations or if pollutants missing
-          let airData = null;
-          
-          // Domestic location identification
-          const isDomestic = lat > 32 && lat < 39 && lon > 124 && lon < 132;
-          
-          if (isDomestic && !hasAccurateAQ) {
-            try {
-              const tm = await AirService.getTMCoord(lat, lon);
-              const station = await AirService.getNearestStation(tm.x, tm.y);
-              if (station) {
-                airData = await AirService.fetchAirQuality(station);
-                if (airData) airData.stationName = station;
-              }
-            } catch (aqErr) {
-              console.error('[Detail] Air fetch error:', aqErr);
-              
-              // Fallback to WeatherAPI data if domestic fetch fails
-              if (extra && extra.aqiSource === 'WeatherAPI') {
-                airData = {
-                  airQuality: extra.airQuality,
-                  aqiValue: extra.aqiValue,
-                  aqiText: `${extra.aqiText} (에어코리아 통신 에러로 글로벌 소스를 제공합니다)`,
-                  aqiColor: extra.aqiColor,
-                  aqiIndex: extra.aqiIndex,
-                  pollutants: extra.pollutants,
-                  stationName: 'WeatherAPI (Backup)'
-                };
-              } else if (aqErr.response?.status === 429) {
-                 airData = { 
-                   airQuality: '--', 
-                   aqiText: 'API 호출 한도가 초과되었습니다. 잠시 후 다시 시도해주세요.',
-                   aqiColor: Colors.outline
-                 };
-              }
-            }
-          }
-
-          // Wait for both data and minimum delay
-          await Promise.all([minDelay]);
-
-          if (extra || airData) {
-            setWeatherData(prev => ({
-              ...prev,
-              ...(airData || {}),
-              ...(extra || {})
-            }));
-          }
-        } catch (err) {
-          console.error('[Detail] Async load error:', err);
-        } finally {
-          setLoadingAir(false);
-        }
-      };
-      loadAsyncData();
-    } else {
-      // Data already exists, just make sure we are not loading.
-      setLoadingAir(false);
-      
-      // Still might need UV/Visibility if it's KMA source (as KMA might not provide these in Simple mode)
-      if (needsExtra && lat && lon) {
-         fetchExtraMetrics(lat, lon).then(extra => {
-           if (extra) setWeatherData(prev => ({ ...prev, ...extra }));
-         });
+      if (!hasAccurateAQ && lat && lon) {
+        loadAsyncData(lat, lon, needsExtra);
+      } else {
+        setLoadingAir(false);
       }
+    });
+
+    return () => interaction.cancel();
+  }, [initialData?.lat, initialData?.lon]);
+
+  const loadAsyncData = async (lat, lon, needsExtra) => {
+    try {
+      // fetchExtraMetrics for things KMA might not have (UV, Visibility etc if missing)
+      const extra = needsExtra ? await fetchExtraMetrics(lat, lon).catch(() => null) : null;
+      
+      // Minimum loading time for "演出" (visual effect)
+      const minDelay = new Promise(resolve => setTimeout(resolve, 1200));
+
+      // AirQuality re-fetch for domestic locations or if pollutants missing
+      let airData = null;
+      
+      // Domestic location identification
+      const isDomestic = lat > 32 && lat < 39 && lon > 124 && lon < 132;
+      
+      if (isDomestic) {
+        try {
+          const tm = await AirService.getTMCoord(lat, lon);
+          const station = await AirService.getNearestStation(tm.x, tm.y);
+          if (station) {
+            airData = await AirService.fetchAirQuality(station);
+            if (airData) airData.stationName = station;
+          }
+        } catch (aqErr) {
+          console.error('[Detail] Air fetch error:', aqErr);
+          
+          // Fallback to WeatherAPI data if domestic fetch fails
+          if (extra && extra.aqiSource === 'WeatherAPI') {
+            airData = {
+              airQuality: extra.airQuality,
+              aqiValue: extra.aqiValue,
+              aqiText: `${extra.aqiText} (에어코리아 통신 에러로 글로벌 소스를 제공합니다)`,
+              aqiColor: extra.aqiColor,
+              aqiIndex: extra.aqiIndex,
+              pollutants: extra.pollutants,
+              stationName: 'Global Source (Backup)'
+            };
+          } else if (aqErr.response?.status === 429) {
+             airData = { 
+               airQuality: '--', 
+               aqiText: 'API 호출 한도가 초과되었습니다. 잠시 후 다시 시도해주세요.',
+               aqiColor: Colors.outline
+             };
+          }
+        }
+      }
+
+      // Wait for both data and minimum delay
+      await Promise.all([minDelay]);
+
+      if (extra || airData) {
+        setWeatherData(prev => ({
+          ...prev,
+          ...(airData || {}),
+          ...(extra || {}),
+          stationName: airData?.stationName || (extra?.aqiSource === 'WeatherAPI' ? 'Global Source' : '')
+        }));
+      }
+    } catch (err) {
+      console.error('[Detail] Async load error:', err);
+    } finally {
+      setLoadingAir(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (alertModalVisible) {

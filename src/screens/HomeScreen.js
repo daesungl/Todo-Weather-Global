@@ -122,8 +122,8 @@ const HomeScreen = ({ navigation }) => {
       const weatherMap = {};
       await Promise.all(saved.map(async (region) => {
         try {
-          const data = await getWeather(region.lat, region.lon);
-          weatherMap[region.id] = data;
+          const w = await getWeather(region.lat, region.lon, false, region.id);
+          weatherMap[region.id] = w;
         } catch (e) {
           console.error(`Failed to fetch weather for ${region.name}`, e);
         }
@@ -259,7 +259,7 @@ const HomeScreen = ({ navigation }) => {
                 <TouchableOpacity 
                   key={region.id} 
                   style={styles.regionCard}
-                  onPress={() => navigation.navigate('WeatherDetail', { weatherData: regionsWeather[region.id], isCurrentLocation: false, locationName: region.name })}
+                  onPress={() => navigation.navigate('WeatherDetail', { weatherData: regionsWeather[region.id], isCurrentLocation: false, locationName: region.name, regionId: region.id })}
                 >
                    <View style={{ flex: 1 }}>
                      <View style={styles.regionMain}>

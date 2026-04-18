@@ -10,8 +10,8 @@ import { getCache, saveCache } from '../StorageService';
  * Main Weather Engine
  * Strategy: Cache Check -> VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
  */
-export const getWeather = async (lat, lon, force = false) => {
-  const cacheKey = `${lat.toFixed(4)}_${lon.toFixed(4)}`;
+export const getWeather = async (lat, lon, force = false, regionId = '') => {
+  const cacheKey = `weather_v3_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
 
   try {
     // 0. Preliminary Cache Check (20 min expiry)
