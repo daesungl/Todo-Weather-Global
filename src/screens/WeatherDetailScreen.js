@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing } from 'react-native';
 import { 
   ChevronLeft, Sun, Cloud, CloudRain, Wind, Droplets, 
   SunMedium, AlertTriangle, Calendar, Navigation, 
@@ -11,7 +11,7 @@ import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const WeatherDetailScreen = ({ navigation, route }) => {
   const { t } = useTranslation();
@@ -43,6 +43,29 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
   const [weatherData] = useState({ ...defaultData, ...initialData });
   const [alertModalVisible, setAlertModalVisible] = useState(false);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (alertModalVisible) {
+      Animated.timing(slideAnim, {
+        toValue: 1,
+        duration: 350,
+        easing: Easing.out(Easing.back(0.5)),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [alertModalVisible]);
+
+  const handleCloseAlert = () => {
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 250,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => {
+      setAlertModalVisible(false);
+    });
+  };
 
   const goBack = () => navigation.goBack();
 
@@ -388,51 +411,85 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
         <View style={styles.metricsGrid}>
           <View style={styles.metricCardWide}>
-             <View style={styles.metricHeader}>
-                <Wind size={14} color={Colors.textSecondary} />
-                <Text style={styles.metricLabel}>대기 질</Text>
-             </View>
-             <View style={styles.aqiContent}>
-                <Text style={styles.aqiValue}>{`${weatherData.aqiValue} - ${weatherData.airQuality}`}</Text>
-                <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
-             </View>
-             <View style={styles.aqiGraphBase}>
-                <View style={[styles.aqiPointer, { left: '12%' }]} />
-             </View>
+            <View style={styles.metricHeader}>
+              <Wind size={14} color={Colors.textSecondary} />
+              <Text style={styles.metricLabel}>대기 질</Text>
+            </View>
+            <View style={styles.aqiContent}>
+              <Text style={[styles.aqiValue, { color: weatherData.aqiColor || Colors.text }]}>
+                {`${weatherData.aqiValue || '--'} - ${weatherData.airQuality || '보통'}`}
+              </Text>
+              <Text style={styles.aqiDesc}>{weatherData.aqiText || '데이터를 불러오는 중입니다...'}</Text>
+            </View>
+            <View style={styles.aqiGraphBase}>
+              <View 
+                style={[
+                  styles.aqiPointer, 
+                  { 
+                    left: `${(weatherData.aqiIndex || 0.5) * 100}%`,
+                    backgroundColor: weatherData.aqiColor || Colors.primary 
+                  }
+                ]} 
+              />
+            </View>
           </View>
 
           <View style={styles.metricCard}>
-             <View style={styles.metricHeader}><SunMedium size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>자외선</Text></View>
-             <Text style={styles.metricValue}>{weatherData.uvIndex}</Text>
-             <Text style={styles.metricSub}>정오 무렵 가장 높음</Text>
+            <View style={styles.metricHeader}>
+              <SunMedium size={14} color={Colors.textSecondary} />
+              <Text style={styles.metricLabel}>자외선</Text>
+            </View>
+            <Text style={styles.metricValue}>{weatherData.uvIndex}</Text>
+            <Text style={styles.metricSub}>정오 무렵 가장 높음</Text>
           </View>
 
           <View style={styles.metricCard}>
-             <View style={styles.metricHeader}><Droplets size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>전체 습도</Text></View>
-             <Text style={styles.metricValue}>{weatherData.humidity}</Text>
-             <Text style={styles.metricSub}>{`이슬점: 14°`}</Text>
+            <View style={styles.metricHeader}>
+              <Droplets size={14} color={Colors.textSecondary} />
+              <Text style={styles.metricLabel}>전체 습도</Text>
+            </View>
+            <Text style={styles.metricValue}>{weatherData.humidity}</Text>
+            <Text style={styles.metricSub}>{`이슬점: 14°`}</Text>
           </View>
 
           <View style={styles.metricCard}>
-             <View style={styles.metricHeader}><Thermometer size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>체감 온도</Text></View>
-             <Text style={styles.metricValue}>{weatherData.feelsLike}</Text>
-             <Text style={styles.metricSub}>습도로 인한 열기</Text>
+            <View style={styles.metricHeader}>
+              <Thermometer size={14} color={Colors.textSecondary} />
+              <Text style={styles.metricLabel}>체감 온도</Text>
+            </View>
+            <Text style={styles.metricValue}>{weatherData.feelsLike}</Text>
+            <Text style={styles.metricSub}>습도로 인한 열기</Text>
           </View>
 
           <View style={styles.metricCard}>
-             <View style={styles.metricHeader}><Eye size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>가시거리</Text></View>
-             <Text style={styles.metricValue}>{weatherData.visibility}</Text>
-             <Text style={styles.metricSub}>매우 맑은 상태</Text>
+            <View style={styles.metricHeader}>
+              <Eye size={14} color={Colors.textSecondary} />
+              <Text style={styles.metricLabel}>가시거리</Text>
+            </View>
+            <Text style={styles.metricValue}>{weatherData.visibility}</Text>
+            <Text style={styles.metricSub}>매우 맑은 상태</Text>
           </View>
         </View>
 
         <View style={styles.moduleCard}>
-           <View style={styles.moduleHeader}><SunMedium size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>일출 및 일몰</Text></View>
-           <View style={styles.sunCycleRow}>
-              <View style={styles.sunSide}><Text style={styles.sunLabel}>일출</Text><Text style={styles.sunTime}>{weatherData.sunrise}</Text></View>
-              <View style={styles.sunGraphic}><View style={styles.sunArc} /><View style={styles.sunPoint} /></View>
-              <View style={[styles.sunSide, { alignItems: 'flex-end' }]}><Text style={styles.sunLabel}>일몰</Text><Text style={styles.sunTime}>{weatherData.sunset}</Text></View>
-           </View>
+          <View style={styles.moduleHeader}>
+            <SunMedium size={16} color={Colors.primary} />
+            <Text style={styles.moduleTitle}>일출 및 일몰</Text>
+          </View>
+          <View style={styles.sunCycleRow}>
+            <View style={styles.sunSide}>
+              <Text style={styles.sunLabel}>일출</Text>
+              <Text style={styles.sunTime}>{weatherData.sunrise}</Text>
+            </View>
+            <View style={styles.sunGraphic}>
+              <View style={styles.sunArc} />
+              <View style={styles.sunPoint} />
+            </View>
+            <View style={[styles.sunSide, { alignItems: 'flex-end' }]}>
+              <Text style={styles.sunLabel}>일몰</Text>
+              <Text style={styles.sunTime}>{weatherData.sunset}</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.attribution}>
@@ -443,26 +500,51 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
       {/* Absolute overlay — Global Todo Weather Design System Version */}
       {alertModalVisible && (
-        <View style={styles.alertOverlay}>
+        <Animated.View 
+          style={[
+            styles.alertOverlay,
+            {
+              opacity: slideAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1]
+              })
+            }
+          ]}
+        >
           <TouchableOpacity 
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
-            onPress={() => setAlertModalVisible(false)}
+            onPress={handleCloseAlert}
           />
-          <View style={[styles.alertSheet, { backgroundColor: Colors.surfaceContainerLowest }]}>
-            <LinearGradient
-              colors={['#ba1a1a', '#93000a']}
-              style={styles.alertSheetHeader}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            >
-              <AlertTriangle size={20} color="white" />
-              <View style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={styles.alertSheetTitle}>기상특보 상세정보</Text>
-              </View>
-              <TouchableOpacity onPress={() => setAlertModalVisible(false)} style={styles.alertCloseInner}>
-                <X size={20} color="white" />
-              </TouchableOpacity>
-            </LinearGradient>
+          <Animated.View 
+            style={[
+              styles.alertSheet, 
+              { 
+                backgroundColor: Colors.surfaceContainerLowest,
+                transform: [{
+                  translateY: slideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [height * 0.8, 0]
+                  })
+                }]
+              }
+            ]}
+          >
+            <TouchableOpacity activeOpacity={0.9} onPress={handleCloseAlert}>
+              <LinearGradient
+                colors={['#ba1a1a', '#93000a']}
+                style={styles.alertSheetHeader}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              >
+                <AlertTriangle size={20} color="white" />
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={styles.alertSheetTitle}>기상특보 상세정보</Text>
+                </View>
+                <View style={styles.alertCloseInner}>
+                  <X size={20} color="white" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
             
             <ScrollView
               style={{ flex: 1 }}
@@ -477,13 +559,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             <View style={styles.alertSheetFooter}>
               <TouchableOpacity
                 style={styles.alertSheetConfirmBtn}
-                onPress={() => setAlertModalVisible(false)}
+                onPress={handleCloseAlert}
               >
                 <Text style={styles.modalFooterBtnText}>닫기</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </Animated.View>
+        </Animated.View>
       )}
     </View>
   );
