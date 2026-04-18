@@ -381,7 +381,7 @@ const HomeScreen = ({ navigation }) => {
                              <Text style={styles.resultName}>{item.name}</Text>
                              <View style={[styles.typeBadge, { backgroundColor: item.type === 'domestic' ? '#E3F2FD' : '#F5F5F5' }]}>
                                <Text style={[styles.typeBadgeText, { color: item.type === 'domestic' ? '#1976D2' : '#666' }]}>
-                                 {item.type === 'domestic' ? '국내' : 'Global'}
+                                 {t(item.category)}
                                </Text>
                              </View>
                            </View>

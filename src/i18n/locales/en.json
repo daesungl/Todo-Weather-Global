@@ -60,5 +60,9 @@
     "dust": "Fine Dust",
     "current_location": "Current Location",
     "summary_loading": "Analyzing detailed weather..."
+  },
+  "search": {
+    "place": "Place",
+    "address": "Address"
   }
 }

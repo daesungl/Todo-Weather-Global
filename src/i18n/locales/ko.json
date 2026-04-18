@@ -60,5 +60,9 @@
     "dust": "미세먼지",
     "current_location": "내 위치",
     "summary_loading": "상세 날씨 정보 분석 중..."
+  },
+  "search": {
+    "place": "명칭",
+    "address": "주소"
   }
 }

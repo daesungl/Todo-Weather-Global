@@ -49,37 +49,91 @@ export const checkIsKorea = async (lat, lon) => {
 export const searchPlaces = async (query) => {
   if (!query || query.length < 2) return [];
 
-  try {
-    const response = await axios.get('https://api.vworld.kr/req/search', {
-      params: {
+  const searchVWorld = async (searchType, category = null) => {
+    try {
+      const params = {
         service: 'search',
         request: 'search',
         version: '2.0',
         crs: 'epsg:4326',
-        size: '10',
+        size: '10', 
         page: '1',
         query: query,
-        type: 'place', // 장소 위주 검색
+        type: searchType, 
         format: 'json',
         errorformat: 'json',
         key: VWORLD_API_KEY,
-      },
+      };
+      if (category) params.category = category;
+
+      const response = await axios.get('https://api.vworld.kr/req/search', { params });
+      if (response.data?.response?.status === 'OK') {
+        return response.data.response.result.items || [];
+      }
+      return [];
+    } catch (error) {
+      return [];
+    }
+  };
+
+  // 주소에서 마지막 3단어만 추출 (Todo Weather 스타일)
+  const formatNickName = (fullTitle) => {
+    const words = fullTitle.trim().split(' ');
+    if (words.length > 3) {
+      return words.slice(-3).join(' ');
+    }
+    return fullTitle;
+  };
+
+  try {
+    const [places, parcels, roads] = await Promise.all([
+      searchVWorld('place'),
+      searchVWorld('address', 'parcel'),
+      searchVWorld('address', 'road')
+    ]);
+
+    const formatResult = (items, categoryKey, searchSubType = 'place') => items.map(item => {
+      const roadAddr = item.address?.road || '';
+      const parcelAddr = item.address?.parcel || '';
+      const title = item.title || '';
+      
+      // 닉네임 결정: 
+      // 1. 도로명 검색이면 도로명 주소 우선
+      // 2. 지번 검색이면 지번 주소 우선
+      // 3. 둘 다 없으면 title 사용
+      let displayName = '';
+      if (searchSubType === 'road') displayName = roadAddr || title;
+      else if (searchSubType === 'parcel') displayName = parcelAddr || title;
+      else displayName = title;
+
+      return {
+        id: `${categoryKey}-${searchSubType}-${item.id || Math.random().toString(36).substr(2, 9)}`,
+        name: `[KR] ${formatNickName(displayName)}`,
+        address: parcelAddr || roadAddr || title, // 하단 서브 텍스트는 지번 우선 (KMA 연동용)
+        lat: parseFloat(item.point?.y || 0),
+        lon: parseFloat(item.point?.x || 0),
+        type: 'domestic',
+        category: categoryKey 
+      };
+    }).filter(item => item.lat !== 0 && item.lon !== 0);
+
+    const allResults = [
+      ...formatResult(places, 'search.place', 'place'),
+      ...formatResult(parcels, 'search.address', 'parcel'),
+      ...formatResult(roads, 'search.address', 'road')
+    ];
+
+    // 최종 중복 제거 (ID 기준)
+    const uniqueMap = new Map();
+    allResults.forEach(item => {
+      if (!uniqueMap.has(item.id)) {
+        uniqueMap.set(item.id, item);
+      }
     });
 
-    if (response.data?.response?.status === 'OK') {
-      const items = response.data.response.result.items || [];
-      return items.map(item => ({
-        id: item.id || Date.now().toString() + Math.random(),
-        name: item.title,
-        address: item.address.parcel || item.address.road,
-        lat: parseFloat(item.point.y),
-        lon: parseFloat(item.point.x),
-        type: 'domestic'
-      }));
-    }
-    return [];
+    return Array.from(uniqueMap.values());
   } catch (error) {
-    console.error('VWorld Search API Error:', error);
+    console.error('Unified Domestic Search Error:', error);
     return [];
   }
 };
