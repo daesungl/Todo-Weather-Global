@@ -134,6 +134,7 @@ const findMidRegionCodes = (addressObj) => {
   if (!taCode) { taCode = TempRegionCode.find(d => fullName.includes(d.City))?.Code || '11B10101'; }
   let landCode = SkyRegionCode.find(d => region.includes(d.Region) && city.includes(d.City))?.Code;
   if (!landCode) { landCode = SkyRegionCode.find(d => fullName.includes(d.Region))?.Code || '11B00000'; }
+  console.log(`[KMA] region="${region}" city="${city}" → landCode=${landCode} taCode=${taCode}`);
   return { taCode, landCode };
 };
 
@@ -149,6 +150,7 @@ const safeGetItemArray = (res) => {
 export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
   try {
     const { x, y } = dfs_xy_conv('toXY', lat, lon);
+    console.log(`[KMA] Coordinates conversion test: lat=${lat}, lon=${lon} -> nx=${x}, ny=${y}`);
     const ncstTime = getNcstBaseTime();
     const ultraTime = getUltraBaseTime();
     const vilageTime = getVilageBaseTime();
@@ -252,57 +254,136 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     const dailyForecast = [];
     const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
     const now = new Date();
+
+    const midBaseYear = parseInt(midTime.baseDate.substring(0, 4));
+    const midBaseMonth = parseInt(midTime.baseDate.substring(4, 6)) - 1;
+    const midBaseDay = parseInt(midTime.baseDate.substring(6, 8));
+    const midBaseDateObj = new Date(Date.UTC(midBaseYear, midBaseMonth, midBaseDay));
+
+    const getWorstPty = (cur, newVal) => {
+      if (newVal !== '0' && cur === '0') return newVal;
+      if (newVal === '3' || newVal === '7') return newVal; // 눈 > 비
+      return cur;
+    };
     
+    // 아이콘 매핑 강화: 2(구름조금) 등도 처리
+    const safeMapKMA = (sky, pty) => {
+      if (pty && pty !== '0') {
+        if (pty === '1' || pty === '4' || pty === '5') return 'rainy';
+        if (pty === '2' || pty === '6') return 'snow_rain';
+        if (pty === '3' || pty === '7') return 'snow';
+      }
+      const s = parseInt(sky);
+      if (s <= 1) return 'sunny';
+      if (s <= 3) return 'partly_cloudy';
+      return 'cloudy';
+    };
+
+    const getMidCond = (status) => {
+      if (!status) return 'sunny';
+      if (status.includes('비')) return 'rainy';
+      if (status.includes('눈')) return 'snow';
+      if (status.includes('소나기')) return 'moderate_rain';
+      if (status.includes('구름많음')) return 'partly_cloudy';
+      if (status.includes('흐림')) return 'cloudy';
+      return 'sunny';
+    };
+
+    const getMidIdx = (dayOffset) => {
+      const kstNow = getKSTDate(now);
+      const todayUTC = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
+      const targetUTC = new Date(todayUTC.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+      return Math.round((targetUTC.getTime() - midBaseDateObj.getTime()) / (24 * 60 * 60 * 1000));
+    };
+
     for (let i = 0; i < 10; i++) {
       const targetDate = new Date(now.getTime() + (i * 24 * 60 * 60 * 1000));
       const kstTarget = getKSTDate(targetDate);
       const dStr = getKSTDateString(targetDate);
-      const dayLabel = i === 0 ? 'Today' : (i === 1 ? 'Tomorrow' : weekdays[kstTarget.getUTCDay()]);
-      
-      let curHigh = 0;
-      let curLow = 0;
-      let curCond = 'sunny';
+      const dayLabel = i === 0 ? '오늘' : (i === 1 ? '내일' : weekdays[kstTarget.getUTCDay()]);
 
-      let viFound = false;
-      let viHigh = -100, viLow = 100, viSky = '1', viPty = '0';
-      forecastItems.forEach(item => {
-        if (item.fcstDate === dStr) {
-          viFound = true;
-          const val = parseFloat(item.fcstValue);
-          if (item.category === 'TMP' || item.category === 'TMX' || item.category === 'TMN') {
-            if (val > viHigh) viHigh = val;
-            if (val < viLow) viLow = val;
+      let amPop = '0', pmPop = '0';
+      let amCond = 'sunny', pmCond = 'sunny';
+      let highTemp = highLimit, lowTemp = lowLimit;
+
+      if (i < 3) {
+        // ─── 단기예보 영역 (VilageFcst) ───
+        let dayHigh = -100, dayLow = 100;
+        let ptyAm = '0', ptyPm = '0';
+        let skyAm = '1', skyPm = '1';
+        let amPopMax = 0, pmPopMax = 0;
+        let hasData = false;
+
+        forecastItems.forEach(item => {
+          if (item.fcstDate === dStr) {
+            hasData = true;
+            const val = parseFloat(item.fcstValue);
+            if (item.category === 'TMP' || item.category === 'TMX' || item.category === 'TMN') {
+              if (val > dayHigh) dayHigh = val;
+              if (val < dayLow) dayLow = val;
+            }
+            const h = parseInt(item.fcstTime.slice(0, 2));
+            if (h < 12) {
+              if (item.category === 'PTY') ptyAm = getWorstPty(ptyAm, item.fcstValue);
+              if (item.category === 'SKY') skyAm = Math.max(parseInt(skyAm), parseInt(item.fcstValue)).toString();
+              if (item.category === 'POP') amPopMax = Math.max(amPopMax, parseInt(item.fcstValue));
+            } else {
+              if (item.category === 'PTY') ptyPm = getWorstPty(ptyPm, item.fcstValue);
+              if (item.category === 'SKY') skyPm = Math.max(parseInt(skyPm), parseInt(item.fcstValue)).toString();
+              if (item.category === 'POP') pmPopMax = Math.max(pmPopMax, parseInt(item.fcstValue));
+            }
           }
-          if (item.category === 'SKY') viSky = item.fcstValue;
-          if (item.category === 'PTY') viPty = item.fcstValue;
-        }
-      });
+        });
 
-      // Strategy: Use VilageFcst (Short-term) for Day 0, 1, 2, 3 (High precision)
-      // Use Mid (Mid-term) for Day 4 and onwards, or if Vilage data is incomplete
-      const hasVilageTemps = viHigh !== -100 && viLow !== 100;
-      if (viFound && i < 4 && hasVilageTemps) {
-        curHigh = viHigh;
-        curLow = viLow;
-        curCond = mapKMAtoCondKey(viSky, viPty);
+        if (hasData) {
+          highTemp = dayHigh !== -100 ? dayHigh : highLimit;
+          lowTemp = dayLow !== 100 ? dayLow : highLimit;
+          amPop = amPopMax.toString();
+          pmPop = pmPopMax.toString();
+          amCond = safeMapKMA(skyAm, ptyAm);
+          pmCond = safeMapKMA(skyPm, ptyPm);
+        } else {
+           // Fallback to mid-term if no short-term data
+           const idx = getMidIdx(i);
+           amPop = String(midLandData[`rnSt${idx}Am`] ?? midLandData[`rnSt${idx}`] ?? '0');
+           pmPop = String(midLandData[`rnSt${idx}Pm`] ?? midLandData[`rnSt${idx}`] ?? '0');
+           amCond = getMidCond(midLandData[`wf${idx}Am`] ?? midLandData[`wf${idx}`]);
+           pmCond = getMidCond(midLandData[`wf${idx}Pm`] ?? midLandData[`wf${idx}`]);
+        }
       } else {
-        // Mid-term data fallback
-        const idx = i; 
+        // ─── 중기예보 영역 (MidLandFcst / MidTa) ───
+        const idx = getMidIdx(i);
         const taMax = midTaData[`taMax${idx}`];
         const taMin = midTaData[`taMin${idx}`];
-        
-        curHigh = taMax !== undefined ? taMax : Math.round(highLimit - (i * 0.8));
-        curLow = taMin !== undefined ? taMin : Math.round(lowLimit - (i * 0.8));
-        
-        const status = midLandData[`wf${idx}Pm`] || midLandData[`wf${idx}`] || '';
-        if (status.includes('비')) curCond = 'rainy';
-        else if (status.includes('눈')) curCond = 'snow';
-        else if (status.includes('소나기')) curCond = 'moderate_rain';
-        else if (status.includes('구름많음')) curCond = 'partly_cloudy';
-        else if (status.includes('흐림')) curCond = 'cloudy';
-        else curCond = 'sunny';
+        highTemp = taMax !== undefined ? taMax : Math.round(highLimit - (i * 0.5));
+        lowTemp = taMin !== undefined ? taMin : Math.round(lowLimit - (i * 0.5));
+
+        if (idx >= 3 && idx <= 7) {
+          amPop = String(midLandData[`rnSt${idx}Am`] ?? '0');
+          pmPop = String(midLandData[`rnSt${idx}Pm`] ?? '0');
+          amCond = getMidCond(midLandData[`wf${idx}Am`]);
+          pmCond = getMidCond(midLandData[`wf${idx}Pm`]);
+        } else if (idx >= 8 && idx <= 10) {
+          const pop = String(midLandData[`rnSt${idx}`] ?? '0');
+          const wf = midLandData[`wf${idx}`];
+          amPop = pmPop = pop;
+          amCond = pmCond = getMidCond(wf);
+        } else {
+          amPop = pmPop = '0';
+          amCond = pmCond = 'sunny';
+        }
       }
-      dailyForecast.push({ day: dayLabel, high: `${Math.round(curHigh)}°`, low: `${Math.round(curLow)}°`, condition: curCond });
+
+      dailyForecast.push({
+        day: dayLabel,
+        high: Math.round(highTemp),
+        low: Math.round(lowTemp),
+        amPop: `${amPop}%`,
+        pmPop: `${pmPop}%`,
+        amCond,
+        pmCond,
+        condition: pmCond,
+      });
     }
 
     return {
@@ -311,7 +392,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       highTemp: `${Math.round(highLimit)}°`,
       lowTemp: `${Math.round(lowLimit)}°`,
       humidity: `${liveWeather.humidity || '--'}%`,
-      feelsLike: liveWeather.temp ? `${Math.round(liveWeather.temp)}°` : '--°', // We could refine this with WSD later
+      feelsLike: liveWeather.temp ? `${Math.round(liveWeather.temp)}°` : '--°',
       condKey: mapKMAtoCondKey(liveWeather.sky, liveWeather.pty),
       dailyForecast,
       hourlyForecast,

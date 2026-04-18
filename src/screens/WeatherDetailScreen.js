@@ -250,10 +250,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           day: dayLabel,
           high: parseInt(item.high),
           low: parseInt(item.low),
-          amIcon: isRainy ? <CloudRain size={18} color={Colors.secondary} /> : (isCloudy ? <Cloud size={18} color={Colors.outline} /> : <Sun size={18} color={Colors.primary} />),
-          amPop: isRainy ? '60%' : '10%',
-          pmIcon: isRainy ? <CloudRain size={18} color={Colors.secondary} /> : (isCloudy ? <Cloud size={18} color={Colors.outline} /> : <Sun size={18} color={Colors.primary} />),
-          pmPop: isRainy ? '80%' : '0%'
+          amCond: item.amCond || item.condition,
+          amPop: item.amPop || '0%',
+          pmCond: item.pmCond || item.condition,
+          pmPop: item.pmPop || '0%'
         };
       });
     }
@@ -317,10 +317,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     );
   };
 
-  const renderWeatherIcon = (condKey) => {
-    const size = 80;
-    const strokeWidth = 2;
-    const style = styles.heroIconTop;
+  const renderWeatherIcon = (condKey, size = 80, strokeWidth = 2, customStyle = null) => {
+    const style = customStyle || styles.heroIconTop;
 
     switch (condKey) {
       case 'rainy':
@@ -336,10 +334,11 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         return <Cloud size={size} color="#90a4ae" strokeWidth={strokeWidth} style={style} />;
       case 'partly_cloudy':
       case 'mostly_sunny':
+      case 'mostly_clear':
         return (
           <View style={[style, { width: size, height: size, justifyContent: 'center', alignItems: 'center' }]}>
             <Sun size={size * 0.8} color="#FFD700" strokeWidth={strokeWidth} />
-            <Cloud size={size * 0.5} color="#cfd8dc" style={{ position: 'absolute', bottom: 5, right: -5 }} />
+            <Cloud size={size * 0.5} color="#cfd8dc" style={{ position: 'absolute', bottom: size * 0.06, right: -size * 0.06 }} />
           </View>
         );
       default:
@@ -513,12 +512,12 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.dailyDay}>{item.day}</Text>
               
               <View style={styles.dayHalf}>
-                 {item.amIcon}
+                 {renderWeatherIcon(item.amCond, 24, 2.5, {})}
                  <Text style={styles.popText}>{item.amPop}</Text>
               </View>
 
               <View style={styles.dayHalf}>
-                 {item.pmIcon}
+                 {renderWeatherIcon(item.pmCond, 24, 2.5, {})}
                  <Text style={styles.popText}>{item.pmPop}</Text>
               </View>
 
