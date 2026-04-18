@@ -71,12 +71,18 @@ export const fetchGlobalWeather = async (lat, lon) => {
     const today = data.forecast.forecastday[0];
 
     // Build Daily Forecast
-    const dailyForecast = data.forecast.forecastday.map(d => ({
-      day: new Date(d.date).toLocaleDateString('ko-KR', { weekday: 'short' }),
-      high: `${Math.round(d.day.maxtemp_c)}°`,
-      low: `${Math.round(d.day.mintemp_c)}°`,
-      condition: mapConditionToKey(d.day.condition.text)
-    }));
+    const dailyForecast = data.forecast.forecastday.map(d => {
+      const dateObj = new Date(d.date);
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      return {
+        day: dateObj.toLocaleDateString('ko-KR', { weekday: 'short' }),
+        date: `${mm}.${dd}`,
+        high: `${Math.round(d.day.maxtemp_c)}°`,
+        low: `${Math.round(d.day.mintemp_c)}°`,
+        condition: mapConditionToKey(d.day.condition.text)
+      };
+    });
 
     // Build Hourly Forecast (Next 24 hours)
     const allHours = [...today.hour, ...(data.forecast.forecastday[1]?.hour || [])];

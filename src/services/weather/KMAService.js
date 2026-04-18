@@ -390,8 +390,22 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         }
       }
       
+      const mm = String(kstTarget.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(kstTarget.getUTCDate()).padStart(2, '0');
+      const dateStr = `${mm}.${dd}`;
+
       console.log(`[KMA-Forecast] D+${i} (${dayLabel}): H=${highTemp}, L=${lowTemp}, idx=${i < 3 ? 'ShortTerm' : getMidIdx(i)}`);
-      dailyForecast.push({ day: dayLabel, high: Math.round(highTemp), low: Math.round(lowTemp), amPop: `${amPop}%`, pmPop: `${pmPop}%`, amCond, pmCond, condition: pmCond });
+      dailyForecast.push({ 
+        day: dayLabel, 
+        date: dateStr,
+        high: Math.round(highTemp), 
+        low: Math.round(lowTemp), 
+        amPop: `${amPop}%`, 
+        pmPop: `${pmPop}%`, 
+        amCond, 
+        pmCond, 
+        condition: pmCond 
+      });
     }
 
     console.log(`[KMA] Success! Returning accurate weather data for ${addressObj.address || 'Korea'}`);

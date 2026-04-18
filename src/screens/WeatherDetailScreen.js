@@ -335,7 +335,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
   const dailyForecast = useMemo(() => {
     if (weatherData.dailyForecast && Array.isArray(weatherData.dailyForecast) && weatherData.dailyForecast.length > 0) {
-      return weatherData.dailyForecast.map((item) => {
+      return weatherData.dailyForecast.map((item, idx) => {
         let dayLabel = item.day;
         if (dayLabel === 'Today') dayLabel = '오늘';
         else if (dayLabel === 'Tomorrow') dayLabel = '내일';
@@ -343,8 +343,17 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           const engToKor = { 'Sun': '일요일', 'Mon': '월요일', 'Tue': '화요일', 'Wed': '수요일', 'Thu': '목요일', 'Fri': '금요일', 'Sat': '토요일' };
           dayLabel = engToKor[item.day] || item.day;
         }
+
+        // Calculate Date String (MM.DD)
+        const date = new Date();
+        date.setDate(date.getDate() + idx);
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${mm}.${dd}`;
+
         return {
           day: dayLabel,
+          date: dateStr,
           high: parseInt(item.high),
           low: parseInt(item.low),
           amCond: item.amCond || item.condition,
@@ -369,12 +378,17 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       else if (i === 1) dayLabel = '내일';
       else dayLabel = weekdays[targetDate.getDay()];
 
+      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(targetDate.getDate()).padStart(2, '0');
+      const dateStr = `${mm}.${dd}`;
+
       const baseHigh = parseInt(weatherData.highTemp) || 24;
       const baseLow = parseInt(weatherData.lowTemp) || 16;
       const variation = Math.sin(i * 0.5) * 3;
 
       days.push({
         day: dayLabel,
+        date: dateStr,
         high: Math.round(baseHigh + variation),
         low: Math.round(baseLow + variation - (Math.random() * 2)),
         amCond: i % 3 === 2 ? 'light_rain' : 'mostly_sunny',
@@ -567,7 +581,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <View style={styles.dailyTableHead}><Text style={[styles.headTxt, { width: 50 }]}>날짜</Text><Text style={styles.headTxt}>오전</Text><Text style={styles.headTxt}>오후</Text><Text style={[styles.headTxt, { flex: 1, textAlign: 'center' }]}>온도 추이</Text></View>
           {dailyForecast.map((item, index) => (
             <View key={index} style={[styles.dailyRow, index === dailyForecast.length - 1 && { borderBottomWidth: 0 }]}>
-              <Text style={styles.dailyDay}>{item.day}</Text>
+              <View style={styles.dailyDayColumn}>
+                <Text style={styles.dailyDay}>{item.day}</Text>
+                <Text style={styles.dailyDate}>{item.date}</Text>
+              </View>
               <View style={styles.dayHalf}>{renderWeatherIcon(item.amCond, 24, 2.5, {})}<Text style={styles.popText}>{item.amPop}</Text></View>
               <View style={styles.dayHalf}>{renderWeatherIcon(item.pmCond, 24, 2.5, {})}<Text style={styles.popText}>{item.pmPop}</Text></View>
               <View style={styles.rangeContainer}><Text style={styles.dailyLow}>{`${item.low}°`}</Text><TempRangeBar low={item.low} high={item.high} /><Text style={styles.dailyHigh}>{`${item.high}°`}</Text></View>
@@ -713,9 +730,11 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
   metaText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, flex: 1, textAlign: 'right' },
   dailyTableHead: { flexDirection: 'row', marginBottom: 8 },
-  headTxt: { fontSize: 11, fontWeight: '800', color: Colors.outline, width: 50, textAlign: 'center' },
+  headTxt: { fontSize: 11, fontWeight: '800', color: Colors.outline, width: 60, textAlign: 'center' },
   dailyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant },
-  dailyDay: { width: 50, fontSize: 14, fontWeight: '700', color: Colors.text },
+  dailyDayColumn: { width: 60, alignItems: 'center', justifyContent: 'center' },
+  dailyDay: { fontSize: 14, fontWeight: '700', color: Colors.text, textAlign: 'center', height: 24, lineHeight: 24 },
+  dailyDate: { fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginTop: 0, textAlign: 'center' },
   dayHalf: { width: 45, alignItems: 'center' },
   popText: { fontSize: 10, fontWeight: '800', color: Colors.primary },
   rangeContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
