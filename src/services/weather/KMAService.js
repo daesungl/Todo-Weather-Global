@@ -32,7 +32,8 @@ export const fetchKMAWarning = async (region, city) => {
     const url = 'https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrInfo';
     const params = { serviceKey: KMA_SERVICE_KEY, pageNo: '1', numOfRows: '10', dataType: 'JSON', stnId, fromTmFc: baseDate };
     const response = await axios.get(url, { params });
-    const item = response.data?.response?.body?.items?.item?.[0];
+    const items = safeGetItemArray(response);
+    const item = items[0];
     return item?.t1 ? item.t1.replace(/STN-ID: \d+/g, '').replace(/\\n/g, '\n').trim() : null;
   } catch (error) {
     return null;
@@ -136,6 +137,15 @@ const findMidRegionCodes = (addressObj) => {
   return { taCode, landCode };
 };
 
+// Safe helper to extract item array from complex KMA responses
+const safeGetItemArray = (res) => {
+  const items = res?.data?.response?.body?.items;
+  if (!items) return [];
+  if (Array.isArray(items.item)) return items.item;
+  if (items.item) return [items.item]; // Handle single item object
+  return [];
+};
+
 export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
   try {
     const { x, y } = dfs_xy_conv('toXY', lat, lon);
@@ -163,17 +173,19 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       }).catch(() => null)
     ]);
 
-    const liveItems = ncstRes?.data?.response?.body?.items?.item || [];
-    const ultraItems = ultraRes?.data?.response?.body?.items?.item || [];
-    const forecastItems = vilageRes?.data?.response?.body?.items?.item || [];
-    const midLandData = midLandRes?.data?.response?.body?.items?.item?.[0] || {};
-    const midTaData = midTaRes?.data?.response?.body?.items?.item?.[0] || {};
+    const liveItems = safeGetItemArray(ncstRes);
+    const ultraItems = safeGetItemArray(ultraRes);
+    const forecastItems = safeGetItemArray(vilageRes);
+    
+    const midLandData = safeGetItemArray(midLandRes)?.[0] || {};
+    const midTaData = safeGetItemArray(midTaRes)?.[0] || {};
 
     const liveWeather = {};
     liveItems.forEach(item => {
       if (item.category === 'T1H') liveWeather.temp = item.obsrValue;
       if (item.category === 'REH') liveWeather.humidity = item.obsrValue;
       if (item.category === 'PTY') liveWeather.pty = item.obsrValue;
+      if (item.category === 'WSD') liveWeather.wsd = item.obsrValue; // Wind Speed
     });
 
     ultraItems.forEach(item => {
@@ -289,7 +301,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       temp: `${liveWeather.temp || Math.round(highLimit)}°`,
       highTemp: `${Math.round(highLimit)}°`,
       lowTemp: `${Math.round(lowLimit)}°`,
-      humidity: `${liveWeather.humidity || '50'}%`,
+      humidity: `${liveWeather.humidity || '--'}%`,
+      feelsLike: liveWeather.temp ? `${Math.round(liveWeather.temp)}°` : '--°', // We could refine this with WSD later
       condKey: mapKMAtoCondKey(liveWeather.sky, liveWeather.pty),
       dailyForecast,
       hourlyForecast,

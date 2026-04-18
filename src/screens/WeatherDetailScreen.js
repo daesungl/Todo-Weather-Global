@@ -4,13 +4,14 @@ import {
   ChevronLeft, Sun, Cloud, CloudRain, Wind, Droplets, 
   SunMedium, AlertTriangle, Calendar, Navigation, 
   Eye, Thermometer, Gauge, Activity, CloudLightning,
-  Info, Umbrella, X
+  Info, Umbrella, X, CloudSnow
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import AirService from '../services/weather/AirService';
+import { fetchExtraMetrics } from '../services/weather/GlobalService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -19,25 +20,25 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const { weatherData: initialData } = route.params || {};
   
   const defaultData = {
-    locationName: '강남구',
-    addressName: '서울특별시 강남구 역삼동',
-    temp: '24°',
-    highTemp: '28°',
-    lowTemp: '19°',
+    locationName: '--',
+    addressName: '--',
+    temp: '--°',
+    highTemp: '--°',
+    lowTemp: '--°',
     condKey: 'sunny',
-    conditionText: '대체로 맑음',
-    humidity: '45%',
-    windSpeed: '2.4m/s',
-    windDir: '북서풍',
-    airQuality: '좋음',
-    aqiValue: '12',
-    aqiText: '공기 질이 매우 깨끗합니다. 야외 활동에 적합합니다.',
-    visibility: '15km',
-    feelsLike: '26°',
-    pressure: '1013hPa',
-    uvIndex: '3 (보통)',
-    sunrise: '06:02 AM',
-    sunset: '07:06 PM',
+    conditionText: '--',
+    humidity: '--%',
+    windSpeed: '--',
+    windDir: '--',
+    airQuality: '--',
+    aqiValue: '--',
+    aqiText: '데이터를 불러오는 중입니다...',
+    visibility: '--',
+    feelsLike: '--°',
+    pressure: '--',
+    uvIndex: '--',
+    sunrise: '--',
+    sunset: '--',
     source: 'KOREA METEOROLOGICAL ADMINISTRATION'
   };
 
@@ -47,35 +48,58 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Fetch air quality asynchronously after screen entry
+    // Fetch air quality and extra metrics asynchronously after screen entry
     const lat = initialData?.lat;
     const lon = initialData?.lon;
-    console.log(`[DetailScreen] Air quality load attempt — lat: ${lat}, lon: ${lon}`);
+    const needsAQ = !initialData?.pollutants;
+    const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
 
-    if (!initialData?.pollutants && lat && lon) {
-      const loadAirQuality = async () => {
+    console.log(`[DetailScreen] Async Load: lat=${lat}, lon=${lon}, needsAQ=${needsAQ}, needsExtra=${needsExtra}`);
+
+    if ((needsAQ || needsExtra) && lat && lon) {
+      const loadAsyncData = async () => {
         try {
-          const tm = await AirService.getTMCoord(lat, lon);
+          // Fetch both air quality and extra metrics concurrently
+          const [tm, extra] = await Promise.all([
+            needsAQ ? AirService.getTMCoord(lat, lon).catch(() => null) : Promise.resolve(null),
+            needsExtra ? fetchExtraMetrics(lat, lon).catch(() => null) : Promise.resolve(null)
+          ]);
+
+          let airData = null;
           if (tm) {
-            const station = await AirService.getNearestStation(tm.x, tm.y);
+            const station = await AirService.getNearestStation(tm.x, tm.y).catch(() => null);
             if (station) {
-              const airData = await AirService.fetchAirQuality(station);
-              if (airData) {
-                setWeatherData(prev => ({ 
-                  ...prev, 
-                  ...airData,
-                  pollutants: airData.pollutants 
-                }));
-              }
+              airData = await AirService.fetchAirQuality(station).catch(() => null);
             }
           }
+
+          // Merge loaded data
+          if (airData || extra) {
+            setWeatherData(prev => {
+              const updated = { ...prev };
+              if (airData) {
+                updated.airQuality = airData.airQuality;
+                updated.aqiValue = airData.aqiValue;
+                updated.aqiText = airData.aqiText;
+                updated.aqiColor = airData.aqiColor;
+                updated.aqiIndex = airData.aqiIndex;
+                updated.pollutants = airData.pollutants;
+              }
+              if (extra) {
+                updated.uvIndex = extra.uvIndex;
+                updated.visibility = extra.visibility;
+                updated.feelsLike = extra.feelsLike; // Overwrite basic KMA feelsLike with WeatherAPI if available
+              }
+              return updated;
+            });
+          }
         } catch (err) {
-          console.warn('Post-load Air Quality Fetch Failed:', err);
+          console.warn('Post-load Async Fetches Failed:', err);
         } finally {
           setLoadingAir(false);
         }
       };
-      loadAirQuality();
+      loadAsyncData();
     } else {
       console.log(`[DetailScreen] Skipping AQ fetch — pollutants already present or no coords.`);
       setLoadingAir(false);
@@ -502,7 +526,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.metricLabel}>자외선</Text>
             </View>
             <Text style={styles.metricValue}>{weatherData.uvIndex}</Text>
-            <Text style={styles.metricSub}>정오 무렵 가장 높음</Text>
+            {weatherData.uvIndex !== '--' && <Text style={styles.metricSub}>정오 무렵 가장 높음</Text>}
           </View>
 
           <View style={styles.metricCard}>
@@ -511,7 +535,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.metricLabel}>전체 습도</Text>
             </View>
             <Text style={styles.metricValue}>{weatherData.humidity}</Text>
-            <Text style={styles.metricSub}>{`이슬점: 14°`}</Text>
+            {weatherData.humidity !== '--%' && <Text style={styles.metricSub}>이슬점은 알 수 없음</Text>}
           </View>
 
           <View style={styles.metricCard}>
@@ -520,7 +544,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.metricLabel}>체감 온도</Text>
             </View>
             <Text style={styles.metricValue}>{weatherData.feelsLike}</Text>
-            <Text style={styles.metricSub}>습도로 인한 열기</Text>
+            {weatherData.feelsLike !== '--°' && <Text style={styles.metricSub}>바람의 영향을 받음</Text>}
           </View>
 
           <View style={styles.metricCard}>
@@ -529,7 +553,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.metricLabel}>가시거리</Text>
             </View>
             <Text style={styles.metricValue}>{weatherData.visibility}</Text>
-            <Text style={styles.metricSub}>매우 맑은 상태</Text>
+            {weatherData.visibility !== '--' && <Text style={styles.metricSub}>일반적인 가시거리</Text>}
           </View>
         </View>
 
