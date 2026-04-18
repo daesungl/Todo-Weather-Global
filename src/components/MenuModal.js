@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Animated, Dimensions, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Animated, Dimensions, Pressable, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.82;
@@ -17,7 +18,39 @@ const MenuModal = ({ visible, onClose }) => {
 
   const currentLang = i18n.language;
 
+  const handleMenuItemPress = async (id) => {
+    if (id === 'reset') {
+      Alert.alert(
+        t('menu.reset') || '초기화',
+        t('menu.reset_confirm_msg') || '모든 권역의 날씨 캐시 데이터를 초기화하시겠습니까?',
+        [
+          { text: t('common.cancel') || '취소', style: 'cancel' },
+          { 
+            text: t('common.confirm') || '확인', 
+            onPress: async () => {
+              try {
+                const keys = await AsyncStorage.getAllKeys();
+                const weatherKeys = keys.filter(k => k.startsWith('@weather_cache_'));
+                if (weatherKeys.length > 0) {
+                  await AsyncStorage.multiRemove(weatherKeys);
+                }
+                Alert.alert(t('common.info') || '알림', t('menu.reset_success_msg') || '초기화가 완료되었습니다. 앱을 다시 로드하면 새 데이터를 불러옵니다.');
+                onClose();
+              } catch (e) {
+                console.error('Reset Error:', e);
+              }
+            } 
+          }
+        ]
+      );
+    } else {
+      // Other menu items can be handled here later
+      onClose();
+    }
+  };
+
   useEffect(() => {
+    // ... animation logic ...
     if (visible) {
       setIsShowing(true);
       Animated.parallel([
@@ -101,7 +134,11 @@ const MenuModal = ({ visible, onClose }) => {
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
               <View style={styles.menuList}>
                 {menuItems.map((item, index) => (
-                  <TouchableOpacity key={item.id} style={styles.menuItem}>
+                  <TouchableOpacity 
+                    key={item.id} 
+                    style={styles.menuItem}
+                    onPress={() => handleMenuItemPress(item.id)}
+                  >
                     <View style={styles.iconWrap}>{item.icon}</View>
                     <View style={{ flex: 1 }}>
                       <Text style={[Typography.body, { fontWeight: '700' }]}>{item.label}</Text>

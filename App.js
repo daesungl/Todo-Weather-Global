@@ -88,7 +88,6 @@ export default function App() {
           {
             opacity,
             transform: [{ translateY }],
-            backgroundColor: '#f7f9ff', // 전체 배경색을 설정하여 "완전 흰색" 방지
           },
         ]}
       >
@@ -101,5 +100,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f7f9ff', // 전환 시 검은색 배경이 보이지 않도록 기본 배경색 고정
   },
 });

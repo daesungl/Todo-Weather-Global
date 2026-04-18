@@ -46,6 +46,25 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const [loadingAir, setLoadingAir] = useState(!(initialData?.pollutants));
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0.4)).current;
+
+  // Pulse animation for loading skeleton
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.9,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.35,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
 
   // Helper to calculate sun position on the arc
   const getSunPosition = () => {
@@ -101,11 +120,50 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           // fetchExtraMetrics for things KMA might not have (UV, Visibility etc if missing)
           const extra = needsExtra ? await fetchExtraMetrics(lat, lon).catch(() => null) : null;
           
-          // AirQuality re-fetch for Global source locations if they don't have pollutants
+          // Minimum loading time for "演出" (visual effect)
+          const minDelay = new Promise(resolve => setTimeout(resolve, 1200));
+
+          // AirQuality re-fetch for domestic locations or if pollutants missing
           let airData = null;
-          // Only refetch AQ if it's NOT a domestic (accurate) source
-          // Domestic source KMA already provides everything.
           
+          // Domestic location identification
+          const isDomestic = lat > 32 && lat < 39 && lon > 124 && lon < 132;
+          
+          if (isDomestic && !hasAccurateAQ) {
+            try {
+              const tm = await AirService.getTMCoord(lat, lon);
+              const station = await AirService.getNearestStation(tm.x, tm.y);
+              if (station) {
+                airData = await AirService.fetchAirQuality(station);
+                if (airData) airData.stationName = station;
+              }
+            } catch (aqErr) {
+              console.error('[Detail] Air fetch error:', aqErr);
+              
+              // Fallback to WeatherAPI data if domestic fetch fails
+              if (extra && extra.aqiSource === 'WeatherAPI') {
+                airData = {
+                  airQuality: extra.airQuality,
+                  aqiValue: extra.aqiValue,
+                  aqiText: `${extra.aqiText} (에어코리아 통신 에러로 글로벌 소스를 제공합니다)`,
+                  aqiColor: extra.aqiColor,
+                  aqiIndex: extra.aqiIndex,
+                  pollutants: extra.pollutants,
+                  stationName: 'WeatherAPI (Backup)'
+                };
+              } else if (aqErr.response?.status === 429) {
+                 airData = { 
+                   airQuality: '--', 
+                   aqiText: 'API 호출 한도가 초과되었습니다. 잠시 후 다시 시도해주세요.',
+                   aqiColor: Colors.outline
+                 };
+              }
+            }
+          }
+
+          // Wait for both data and minimum delay
+          await Promise.all([minDelay]);
+
           if (extra || airData) {
             setWeatherData(prev => ({
               ...prev,
@@ -314,6 +372,15 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     }
   };
 
+  const SkeletonBlock = ({ width, height, borderRadius = 8, style = {} }) => (
+    <Animated.View 
+      style={[
+        { width, height, borderRadius, backgroundColor: Colors.surfaceContainerHighest, opacity: pulseAnim },
+        style
+      ]} 
+    />
+  );
+
   // 기본 데이터(기온 등)만 있으면 일단 화면을 보여줍니다 (훨씬 빠릿하게 느껴짐)
   const isLoading = !initialData || (!initialData.temp && !initialData.locationName);
 
@@ -336,10 +403,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         </TouchableOpacity>
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {route.params?.isCurrentLocation ? t('weather.current_location') : weatherData.locationName}
+            {route.params?.isCurrentLocation ? t('weather.current_location') : (route.params?.locationName || weatherData.locationName)}
           </Text>
           <Text style={styles.headerSubtitle} numberOfLines={1}>
-            {route.params?.isCurrentLocation ? weatherData.locationName : ''}
+            {route.params?.isCurrentLocation ? weatherData.locationName : (route.params?.locationName ? weatherData.locationName : '')}
           </Text>
         </View>
         <View style={styles.iconBtnPlaceholder} />
@@ -436,16 +503,26 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             <View style={styles.metricHeader}><Wind size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>대기 질</Text></View>
             <View style={styles.aqiContent}>
                <View style={styles.aqiValueContainer}>
-                  {loadingAir ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.aqiValue}>{weatherData.aqiValue} - </Text>}
-                  <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{weatherData.airQuality}</Text>
-                  {weatherData.stationName && (
+                  {loadingAir ? (
+                    <SkeletonBlock width={100} height={28} borderRadius={14} style={{ marginRight: 8 }} />
+                  ) : (
+                    <>
+                      <Text style={styles.aqiValue}>{weatherData.aqiValue} - </Text>
+                      <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{weatherData.airQuality}</Text>
+                    </>
+                  )}
+                  {!loadingAir && weatherData.stationName && (
                     <View style={styles.stationTag}>
                       <Text style={styles.stationTagName}>{weatherData.stationName}</Text>
                     </View>
                   )}
                </View>
-                <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
-                {weatherData.aqiForecast ? (
+                {loadingAir ? (
+                  <SkeletonBlock width="100%" height={16} borderRadius={8} style={{ marginTop: 8 }} />
+                ) : (
+                  <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
+                )}
+                {!loadingAir && weatherData.aqiForecast ? (
                   <View style={styles.aqiForecastBox}>
                     <Text style={styles.aqiForecastLabel}>공식 예보 브리핑</Text>
                     <Text style={styles.aqiForecastText}>{weatherData.aqiForecast}</Text>
@@ -454,7 +531,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
              </View>
             <View style={styles.aqiBarContainer}><View style={styles.aqiFullBar} /><View style={[styles.aqiProgressMarker, { left: `${(weatherData.aqiIndex || 0.1) * 100}%`, backgroundColor: weatherData.aqiColor || Colors.primary }]} /></View>
             <View style={styles.pollutantGrid}>
-              {loadingAir ? [1, 2, 3, 4, 5, 6].map(i => <View key={i} style={styles.pollutantCard}><ActivityIndicator size="small" /></View>) : 
+              {loadingAir ? [1, 2, 3, 4, 5, 6].map(i => (
+                <View key={i} style={styles.pollutantCard}>
+                  <SkeletonBlock width={60} height={12} style={{ marginBottom: 8 }} />
+                  <SkeletonBlock width={40} height={20} style={{ marginBottom: 4 }} />
+                  <SkeletonBlock width="100%" height={16} borderRadius={4} />
+                </View>
+              )) : 
                 weatherData.pollutants && Object.entries(weatherData.pollutants).map(([key, data]) => (
                   <View key={key} style={styles.pollutantCard}>
                     <Text style={styles.pollutantName}>{key.toUpperCase()}</Text>

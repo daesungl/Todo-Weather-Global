@@ -7,7 +7,10 @@
     "humidity": "Humidity",
     "loading": "Loading...",
     "high": "High",
-    "low": "Low"
+    "low": "Low",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "info": "Info"
   },
   "home": {
     "interest_regions": "Interest Regions",
@@ -33,7 +36,9 @@
     "privacy": "Privacy Policy",
     "help": "Support & Help",
     "language": "Language",
-    "version": "Todo Weather v2.0.0 PREMIUM"
+    "version": "Todo Weather v2.0.0 PREMIUM",
+    "reset_confirm_msg": "Would you like to reset all data?\nThis action cannot be undone.",
+    "reset_success_msg": "All data has been reset."
   },
   "weather": {
     "sunny": "Sunny",

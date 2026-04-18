@@ -131,13 +131,33 @@ export const fetchGlobalWeather = async (lat, lon) => {
 export const fetchExtraMetrics = async (lat, lon) => {
   // Utility for KMA regions to grab missing extra elements natively asynchronously
   try {
-    const response = await axios.get(`https://api.weatherapi.com/v1/current.json`, {
-      params: { key: WEATHER_API_KEY, q: `${lat},${lon}`, aqi: 'no' }
+    const response = await axios.get(`https://api.weatherapi.com/v1/current.json/`, {
+      params: { key: WEATHER_API_KEY, q: `${lat},${lon}`, aqi: 'yes' }
     });
+    
+    const current = response.data.current;
+    
+    // Process Air Quality if available
+    let airQuality = null;
+    if (current.air_quality) {
+       const aqiData = mapAQI(current.air_quality['us-epa-index'] || 1);
+       const pollutants = processPollutants(current.air_quality);
+       airQuality = {
+         airQuality: aqiData.label,
+         aqiValue: Math.round(current.air_quality.pm10 || 10).toString(),
+         aqiText: aqiData.text,
+         aqiColor: aqiData.color,
+         aqiIndex: (current.air_quality['us-epa-index'] || 1) / 6,
+         pollutants,
+         aqiSource: 'WeatherAPI' // Explicit flag for fallback identification
+       };
+    }
+
     return {
-      visibility: `${response.data.current.vis_km}km`,
-      uvIndex: mapUVLabel(response.data.current.uv),
-      feelsLike: `${Math.round(response.data.current.feelslike_c)}°`,
+      visibility: `${current.vis_km}km`,
+      uvIndex: mapUVLabel(current.uv),
+      feelsLike: `${Math.round(current.feelslike_c)}°`,
+      ...(airQuality || {})
     };
   } catch (err) {
     return null;

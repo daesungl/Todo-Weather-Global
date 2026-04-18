@@ -7,7 +7,10 @@
     "humidity": "습도",
     "loading": "불러오는 중...",
     "high": "최고",
-    "low": "최저"
+    "low": "최저",
+    "confirm": "확인",
+    "cancel": "취소",
+    "info": "알림"
   },
   "home": {
     "interest_regions": "날씨 관심 지역",
@@ -33,7 +36,9 @@
     "privacy": "개인정보 처리방침",
     "help": "고객 지원 및 도움말",
     "language": "언어 설정",
-    "version": "투두 웨더 v2.0.0 프리미엄"
+    "version": "투두 웨더 v2.0.0 프리미엄",
+    "reset_confirm_msg": "모든 데이터를 초기화하시겠습니까?\n이 작업은 취소할 수 없습니다.",
+    "reset_success_msg": "모든 데이터가 초기화되었습니다."
   },
   "weather": {
     "sunny": "맑음",

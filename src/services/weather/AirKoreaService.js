@@ -122,10 +122,21 @@ export const getRealtimeAirQuality = async (stationName) => {
   }
 };
 
+// 캐시 변수 추가
+let cachedForecast = null;
+let lastForecastFetch = 0;
+const CACHE_DURATION = 30 * 60 * 1000; // 30분 캐시
+
 /**
  * 4. 미세먼지 예보 정보를 가져옵니다. (국립환경과학원 브리핑)
  */
 export const getAirQualityForecast = async () => {
+  const now = Date.now();
+  if (cachedForecast && (now - lastForecastFetch < CACHE_DURATION)) {
+    console.log('[AirKorea] Using cached forecast data');
+    return cachedForecast;
+  }
+
   try {
     const serviceKey = process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '';
     const today = new Date().toISOString().split('T')[0];
@@ -141,13 +152,19 @@ export const getAirQualityForecast = async () => {
 
     const items = response.data?.response?.body?.items;
     if (items && items.length > 0) {
-      return {
-        overall: items[0].informOverall, // 전체 예보 브리핑
-        cause: items[0].informCause      // 발생 원인
+      cachedForecast = {
+        overall: items[0].informOverall,
+        cause: items[0].informCause
       };
+      lastForecastFetch = now;
+      return cachedForecast;
     }
     return null;
   } catch (error) {
+    if (error.response?.status === 429) {
+      console.warn('[AirKorea] Forecast API Rate Limit Hit (429)');
+      return cachedForecast; // 한계 도달 시 이전 캐시라도 반환
+    }
     console.error('[AirKorea] Forecast Fetch Error:', error);
     return null;
   }

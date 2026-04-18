@@ -4,12 +4,23 @@ import { fetchSunInfo } from './SunService';
 import { fetchGlobalWeather } from './GlobalService';
 import AirService from './AirService';
 
+import { getCache, saveCache } from '../StorageService';
+
 /**
  * Main Weather Engine
- * Strategy: VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
+ * Strategy: Cache Check -> VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
  */
-export const getWeather = async (lat, lon) => {
+export const getWeather = async (lat, lon, force = false) => {
+  const cacheKey = `${lat.toFixed(4)}_${lon.toFixed(4)}`;
+
   try {
+    // 0. Preliminary Cache Check (20 min expiry)
+    // If force is true, we skip caching and hit the API
+    if (!force) {
+      const cachedData = await getCache(cacheKey);
+      if (cachedData) return cachedData;
+    }
+
     // 1. Check if location is in Korea using VWorld
     const locationInfo = await checkIsKorea(lat, lon);
     const { isKorea, address, region, city } = locationInfo;
@@ -33,15 +44,17 @@ export const getWeather = async (lat, lon) => {
 
       // If KMA data successfully returned, use it with its included AirKorea data
       if (kma && kma.temp !== '--°') {
-        return { 
+        const result = { 
           ...kma, 
           ...sun, 
           alert: alert, 
           locationName: address,
           lat,
           lon,
-          isAccurateSource: true // Flag to indicate precision data
+          isAccurateSource: true 
         };
+        await saveCache(cacheKey, result);
+        return result;
       }
       console.warn('[WeatherService] KMA data is invalid/missing. Falling back to Global Source (WeatherAPI).');
     }
@@ -50,13 +63,15 @@ export const getWeather = async (lat, lon) => {
     console.log(`[WeatherService] Running Global Mode for: ${address || 'Global Location'}`);
     weatherData = await fetchGlobalWeather(lat, lon);
     
-    return { 
+    const result = { 
       ...weatherData, 
       locationName: address || 'Global Location', 
       lat, 
       lon,
       isAccurateSource: false // Use Global Fallback
     };
+    await saveCache(cacheKey, result);
+    return result;
 
   } catch (error) {
     // Ultimate fallback to hardcoded dummy if everything fails

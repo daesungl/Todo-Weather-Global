@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated } from 'react-native';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +20,25 @@ const HomeScreen = ({ navigation }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [currentWeather, setCurrentWeather] = useState(null);
   const [loading, setLoading] = useState(true);
+  const pulseAnim = useRef(new Animated.Value(0.3)).current;
+
+  // Pulse animation for skeleton loading
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.9,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.35,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
   
   // Real Regions Data
   const [regions, setRegions] = useState([]);
@@ -191,7 +210,17 @@ const HomeScreen = ({ navigation }) => {
         >
           <LinearGradient colors={['#00B4DB', '#0083B0']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.weatherCard}>
             {loading ? (
-              <ActivityIndicator size="large" color="white" style={{ padding: 40 }} />
+                <View style={styles.skeletonContent}>
+                    <Animated.View style={[styles.skeletonFloatingIcon, { opacity: pulseAnim }]} />
+                    <Animated.View style={[styles.skeletonLocation, { opacity: pulseAnim }]} />
+                    <View style={styles.skeletonMainRow}>
+                        <Animated.View style={[styles.skeletonTemp, { opacity: pulseAnim }]} />
+                        <View style={styles.skeletonMetaColumn}>
+                            <Animated.View style={[styles.skeletonTextLine, { opacity: pulseAnim, marginBottom: 8 }]} />
+                            <Animated.View style={[styles.skeletonTextLine, { opacity: pulseAnim, width: 60 }]} />
+                        </View>
+                    </View>
+                </View>
             ) : (
               <View style={styles.cardContent}>
                   <View style={styles.backgroundWeatherIcon}>
@@ -534,7 +563,7 @@ const styles = StyleSheet.create({
   skeletonLocation: {
     width: 80,
     height: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
     borderRadius: 6,
     marginBottom: 12,
   },
@@ -546,7 +575,7 @@ const styles = StyleSheet.create({
   skeletonTemp: {
     width: 100,
     height: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
     borderRadius: 12,
   },
   skeletonMetaColumn: {
@@ -556,7 +585,7 @@ const styles = StyleSheet.create({
   skeletonTextLine: {
     width: 100,
     height: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
     borderRadius: 4,
   },
   skeletonFloatingIcon: {
@@ -566,7 +595,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   widgetBadge: {
     backgroundColor: Colors.surfaceContainerLow,
