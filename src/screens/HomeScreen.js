@@ -481,19 +481,7 @@ const HomeScreen = ({ navigation }) => {
         </TouchableOpacity>
       </ScrollView>
 
-      <View style={styles.bottomNavContainer}>
-        <View style={styles.glassNav}>
-          <TouchableOpacity style={[styles.navItem, styles.activeNavItem]}>
-            <Sun size={28} color={Colors.primary} strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Tasks')}>
-            <CheckCircle2 size={28} color={Colors.outline} strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Flow')}>
-            <Compass size={28} color={Colors.outline} strokeWidth={2} />
-          </TouchableOpacity>
-        </View>
-      </View>
+
 
       <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} />
       

@@ -503,21 +503,6 @@ const TasksScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNavContainer}>
-        <View style={styles.glassNav}>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
-            <Sun size={28} color={Colors.outline} strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <View style={styles.activeDot} />
-            <CheckCircle2 size={28} color={Colors.primary} strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Flow')}>
-            <Compass size={28} color={Colors.outline} strokeWidth={2} />
-          </TouchableOpacity>
-        </View>
-      </View>
     </View>
   );
 };

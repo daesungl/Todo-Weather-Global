@@ -96,21 +96,6 @@ const FlowScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* Glass Floating Navigation */}
-      <View style={styles.bottomNavContainer}>
-        <View style={styles.glassNav}>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Weather')}>
-            <Sun size={24} color={Colors.outline} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Tasks')}>
-            <CheckCircle2 size={24} color={Colors.outline} strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Flow')}>
-            <View style={styles.activeDot} />
-            <Compass size={24} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
-      </View>
     </View>
   );
 };
