@@ -542,7 +542,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <LinearGradient colors={['#E6F7FF', '#f7f9ff']} style={styles.heroSection}>
+        <LinearGradient colors={['#E6F7FF', '#effafd', '#f7f9ff']} style={styles.heroSection}>
           <View style={styles.heroMain}>
             {renderWeatherIcon(weatherData.condKey)}
             <Text style={styles.heroTemp}>{weatherData.temp}</Text>
@@ -745,7 +745,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#E6F7FF' },
+  container: { flex: 1, backgroundColor: '#f7f9ff' },
   stickyHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, backgroundColor: '#E6F7FF', zIndex: 100 },
   iconBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   iconBtnPlaceholder: { width: 44 },
