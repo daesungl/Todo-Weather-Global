@@ -1,5 +1,5 @@
 export const Colors = {
-  // App-Todo-Weather "Azure Horizon / Atmospheric Curator" Accurate Palette
+  // App-Todo-Weather "Azure Horizon / Atmospheric Curator" Logic Update
   primary: '#00668a',
   primaryContainer: '#00bfff',
   onPrimary: '#ffffff',
@@ -16,10 +16,10 @@ export const Colors = {
   text: '#181c20', // on_surface
   textSecondary: '#3d4850', // on_surface_variant
   outline: '#6d7981',
-  outlineVariant: 'rgba(188, 200, 209, 0.15)', // outline_variant at 15%
+  outlineVariant: '#bcc8d1',
   error: '#ba1a1a',
-  glass: 'rgba(255, 255, 255, 0.75)', // Glassmorphism base
-  shadow: 'rgba(0, 74, 101, 0.08)', // Tinted shadow as per specs
+  glass: 'rgba(255, 255, 255, 0.75)',
+  shadow: 'rgba(0, 74, 101, 0.08)',
 };
 
 export const Spacing = {
@@ -36,27 +36,25 @@ export const Typography = {
   // Plus Jakarta Sans for Display/Headline, Inter for Body
   display: {
     fontSize: 64,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.text,
     letterSpacing: -2,
-    lineHeight: 72,
   },
   h1: {
     fontSize: 34,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.text,
     letterSpacing: -1,
-    lineHeight: 42,
   },
   h2: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.text,
     letterSpacing: -0.5,
   },
   h3: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: Colors.text,
   },
   body: {

@@ -64,7 +64,10 @@
     "haze": "Haze",
     "dust": "Fine Dust",
     "current_location": "Current Location",
-    "summary_loading": "Analyzing detailed weather..."
+    "summary_loading": "Analyzing detailed weather...",
+    "humidity": "Humidity",
+    "pop": "Precip.",
+    "wind": "Wind"
   },
   "search": {
     "place": "Name",
