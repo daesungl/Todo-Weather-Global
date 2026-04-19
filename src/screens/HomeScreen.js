@@ -304,7 +304,7 @@ const HomeScreen = ({ navigation }) => {
               {regions.length < (currentPage * 5) && (
                 <TouchableOpacity style={styles.addSlotCard} onPress={() => setSearchModalVisible(true)}>
                    <Plus size={24} color={Colors.outline} />
-                   <Text style={styles.addSlotText}>지역 추가하기</Text>
+                   <Text style={styles.addSlotText}>{t('home.add_region')}</Text>
                 </TouchableOpacity>
               )}
  
@@ -330,8 +330,8 @@ const HomeScreen = ({ navigation }) => {
             <CheckCircle2 size={24} color={Colors.primary} strokeWidth={2} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={Typography.body}>You have 3 tasks today</Text>
-            <Text style={Typography.bodySmall}>Next: Global UI Review at 10:00 AM</Text>
+            <Text style={Typography.body}>{t('home.tasks_count', { count: 3 })}</Text>
+            <Text style={Typography.bodySmall}>{t('home.tasks_upcoming', { task: 'Global UI Review', time: '10:00 AM' })}</Text>
           </View>
         </TouchableOpacity>
       </ScrollView>
@@ -362,7 +362,7 @@ const HomeScreen = ({ navigation }) => {
                 <Search size={20} color={Colors.outline} style={styles.searchIcon} />
                 <TextInput
                   style={styles.searchInput}
-                  placeholder="장소 검색 (예: 김포공항)"
+                  placeholder={t('search.placeholder')}
                   placeholderTextColor={Colors.outline}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -375,7 +375,7 @@ const HomeScreen = ({ navigation }) => {
                 )}
               </View>
               <TouchableOpacity onPress={() => setSearchModalVisible(false)} style={styles.closeBtn}>
-                <Text style={styles.closeBtnText}>취소</Text>
+                <Text style={styles.closeBtnText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
             </View>
             
@@ -403,12 +403,12 @@ const HomeScreen = ({ navigation }) => {
                      ))
                    ) : searchQuery.length >= 2 ? (
                      <View style={styles.emptySearch}>
-                        <Text style={styles.emptyText}>검색 결과가 없습니다.</Text>
+                        <Text style={styles.emptyText}>{t('search.no_results')}</Text>
                      </View>
                    ) : (
                       <View style={styles.emptySearch}>
                         <Search size={48} color="#EEE" />
-                        <Text style={styles.emptyText}>추가할 지역을 검색하세요.</Text>
+                        <Text style={styles.emptyText}>{t('search.guide')}</Text>
                       </View>
                    )}
                  </>

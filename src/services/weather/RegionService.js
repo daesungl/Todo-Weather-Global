@@ -9,7 +9,10 @@ const STORAGE_KEY = '@save_wBookmark';
 export const getBookmarkedRegions = async () => {
   try {
     const jsonValue = await AsyncStorage.getItem(STORAGE_KEY);
-    return jsonValue != null ? JSON.parse(jsonValue) : [];
+    if (jsonValue == null) return [];
+    const regions = JSON.parse(jsonValue);
+    // 기존 저장 데이터의 국가코드 접두어 제거 ([KR], [US] 등)
+    return regions.map(r => ({ ...r, name: r.name.replace(/^\[[A-Z]{2}\]\s*/, '') }));
   } catch (e) {
     console.error('Failed to load bookmarks', e);
     return [];

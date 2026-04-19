@@ -223,40 +223,11 @@ export const searchLocations = async (query) => {
       }
     });
 
-    const getCountryCode = (countryName) => {
-      const map = {
-        'South Korea': 'KR',
-        'United States': 'US',
-        'United States of America': 'US',
-        'United Kingdom': 'GB',
-        'Japan': 'JP',
-        'China': 'CN',
-        'France': 'FR',
-        'Germany': 'DE',
-        'Italy': 'IT',
-        'Canada': 'CA',
-        'Australia': 'AU',
-        'Russia': 'RU',
-        'Spain': 'ES',
-        'Brazil': 'BR',
-        'Mexico': 'MX',
-        'India': 'IN',
-        'Vietnam': 'VN',
-        'Thailand': 'TH'
-      };
-      const code = map[countryName];
-      if (code) return code;
-      
-      // Fallback for codes like RU, IT etc which might already be 2 letters or handle gracefully
-      return countryName.slice(0, 2).toUpperCase();
-    };
-
     const data = response.data || [];
     return data.map(item => {
-      const code = getCountryCode(item.country);
       return {
         id: (item.id || Date.now() + Math.random()).toString(),
-        name: `[${code}] ${item.name}`,
+        name: item.name,
         address: `${item.region ? item.region + ', ' : ''}${item.country}`,
         lat: item.lat,
         lon: item.lon,

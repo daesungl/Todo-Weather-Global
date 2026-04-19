@@ -19,7 +19,10 @@
     "region_limit_guide": "Manage up to 5 regions.",
     "widget_display": "📌 WIDGET",
     "locked_slot_guide": "Premium slot upgrade required",
-    "upgrade": "UPGRADE"
+    "upgrade": "UPGRADE",
+    "add_region": "Add Region",
+    "tasks_count": "You have {{count}} tasks today",
+    "tasks_upcoming": "Next: {{task}} at {{time}}"
   },
   "management": {
     "title": "Manage Regions",
@@ -64,7 +67,10 @@
     "summary_loading": "Analyzing detailed weather..."
   },
   "search": {
-    "place": "Place",
-    "address": "Address"
+    "place": "Name",
+    "address": "Address",
+    "placeholder": "Search places (e.g. London)",
+    "guide": "Search for a region to add.",
+    "no_results": "No results found."
   }
 }
