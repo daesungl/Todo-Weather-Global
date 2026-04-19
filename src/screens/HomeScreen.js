@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder } from 'react-native';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +18,56 @@ const HomeScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const currentPageRef = useRef(1);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  const goToPage = (nextPage, direction) => {
+    Animated.timing(slideAnim, {
+      toValue: direction * width,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      slideAnim.setValue(-direction * width);
+      currentPageRef.current = nextPage;
+      setCurrentPage(nextPage);
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const swipePanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 30,
+      onPanResponderMove: (_, gestureState) => {
+        slideAnim.setValue(gestureState.dx * 0.4);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const page = currentPageRef.current;
+        if (gestureState.dx < -50) {
+          // 왼쪽 스와이프 → 다음 페이지 (5 → 1 순환)
+          const next = page === 5 ? 1 : page + 1;
+          goToPage(next, -1);
+        } else if (gestureState.dx > 50) {
+          // 오른쪽 스와이프 → 이전 페이지 (1 → 5 순환)
+          const next = page === 1 ? 5 : page - 1;
+          goToPage(next, 1);
+        } else {
+          Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+      // iOS에서 ScrollView 등 부모가 responder를 강제로 가져가는 경우 방지
+      onPanResponderTerminationRequest: () => false,
+      // 혹시 terminate 되더라도 원래 위치로 복귀
+      onPanResponderTerminate: () => {
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
   const [currentWeather, setCurrentWeather] = useState(null);
   const [loading, setLoading] = useState(true);
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
@@ -298,8 +348,8 @@ const HomeScreen = ({ navigation }) => {
            <Text style={styles.sectionTitle}>{t('home.interest_regions')}</Text>
         </View>
 
-        <View style={styles.paginationArea}>
-            <View style={styles.regionsList}>
+        <View style={styles.paginationArea} {...swipePanResponder.panHandlers}>
+            <Animated.View style={[styles.regionsList, { transform: [{ translateX: slideAnim }] }]}>
               {regions.filter(r => r.pageIndex === currentPage - 1).map(region => {
                 const weather = regionsWeather[region.id];
                 return (
@@ -388,14 +438,14 @@ const HomeScreen = ({ navigation }) => {
                    <Text style={styles.addSlotText}>{t('home.add_region')}</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </Animated.View>
         </View>
 
         <View style={styles.pageIndicator}>
            {[1, 2, 3, 4, 5].map(num => (
-             <TouchableOpacity 
-               key={num} 
-               onPress={() => setCurrentPage(num)} 
+             <TouchableOpacity
+               key={num}
+               onPress={() => goToPage(num)}
                style={[styles.indicatorCircle, currentPage === num && styles.activeIndicator]}
              >
                 <Text style={[styles.indicatorText, currentPage === num && styles.activeIndicatorText]}>{num}</Text>
@@ -623,6 +673,7 @@ const styles = StyleSheet.create({
   },
   paginationArea: {
     minHeight: 100,
+    overflow: 'hidden',
   },
   regionsList: {
     gap: 10,
