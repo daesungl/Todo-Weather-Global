@@ -4,6 +4,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, 
   Alert, Modal, TextInput, ActivityIndicator, Animated, Platform, FlatList 
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -28,7 +29,7 @@ const TasksScreen = ({ navigation }) => {
   // State
   const [tasks, setTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState('week'); // 'week' | 'month'
+  const [viewMode, setViewMode] = useState('month'); // 기본값 'month'로 변경
   const [isAdding, setIsAdding] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
   const [taskWeather, setTaskWeather] = useState({});
@@ -56,7 +57,29 @@ const TasksScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadData();
+    loadPreferences();
   }, []);
+
+  const loadPreferences = async () => {
+    try {
+      const savedMode = await AsyncStorage.getItem('@task_view_mode');
+      if (savedMode) {
+        setViewMode(savedMode);
+      }
+    } catch (e) {
+      console.log('[Tasks] View mode loaded:', savedMode);
+    }
+  };
+
+  const toggleViewMode = async () => {
+    const nextMode = viewMode === 'week' ? 'month' : 'week';
+    setViewMode(nextMode);
+    try {
+      await AsyncStorage.setItem('@task_view_mode', nextMode);
+    } catch (e) {
+      console.error('[Tasks] Save mode failed:', e);
+    }
+  };
 
   const loadData = async () => {
     const data = await getTasks();
@@ -226,7 +249,7 @@ const TasksScreen = ({ navigation }) => {
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.viewToggleBtn} 
-            onPress={() => setViewMode(viewMode === 'week' ? 'month' : 'week')}
+            onPress={toggleViewMode}
           >
              <Text style={styles.viewToggleText}>{viewMode === 'week' ? 'Month View' : 'Week View'}</Text>
           </TouchableOpacity>
