@@ -10,10 +10,12 @@
     "low": "최저",
     "confirm": "확인",
     "cancel": "취소",
+    "delete": "삭제",
     "info": "알림"
   },
   "home": {
     "interest_regions": "날씨 관심 지역",
+    "delete_region_confirm": "관심 지역에서 삭제하시겠습니까?",
     "region_limit_guide": "최대 5개까지 관리할 수 있습니다.",
     "widget_display": "📌 위젯 표시",
     "locked_slot_guide": "프리미엄 슬롯 업그레이드가 필요합니다",

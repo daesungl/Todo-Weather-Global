@@ -134,11 +134,23 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const handleDeleteRegion = async (id) => {
-    const updated = await removeRegion(id);
-    setRegions(updated);
-    // No need to reload everything, just let the next render handle it or call loadRegions asynchronously
-    loadRegions();
+  const handleDeleteRegion = (id) => {
+    Alert.alert(
+      t('common.confirm', '확인'),
+      t('home.delete_region_confirm', '관심 지역에서 삭제하시겠습니까?'),
+      [
+        { text: t('common.cancel', '취소'), style: 'cancel' },
+        { 
+          text: t('common.delete', '삭제'), 
+          style: 'destructive',
+          onPress: async () => {
+            const updated = await removeRegion(id);
+            setRegions(updated);
+            loadRegions();
+          }
+        }
+      ]
+    );
   };
 
   const handleAddRegion = async (place) => {
