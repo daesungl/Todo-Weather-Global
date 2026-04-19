@@ -21,17 +21,19 @@ const HomeScreen = ({ navigation }) => {
   const currentPageRef = useRef(1);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const loadingPageRef = useRef(null);
+  const regionsRef = useRef([]);
 
   const goToPage = (nextPage, direction) => {
+    const dir = direction ?? (nextPage > currentPageRef.current ? -1 : 1);
     Animated.timing(slideAnim, {
-      toValue: direction * width,
+      toValue: dir * width,
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
-      slideAnim.setValue(-direction * width);
+      slideAnim.setValue(-dir * width);
       currentPageRef.current = nextPage;
       setCurrentPage(nextPage);
-      loadPageWeather(nextPage - 1, regions);
+      loadPageWeather(nextPage - 1, regionsRef.current);
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 180,
@@ -205,6 +207,7 @@ const HomeScreen = ({ navigation }) => {
         await saveBookmarkedRegions(processedData);
       }
 
+      regionsRef.current = processedData;
       setRegions(processedData);
       loadPageWeather(currentPageRef.current - 1, processedData);
     } catch (err) {
@@ -223,6 +226,7 @@ const HomeScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
              const updated = await removeRegion(id);
+             regionsRef.current = updated;
              setRegions(updated);
           }
         }
@@ -241,6 +245,7 @@ const HomeScreen = ({ navigation }) => {
     }
 
     const updated = await addRegion(item.name, item.address, item.lat, item.lon, pageIndex);
+    regionsRef.current = updated;
     setRegions(updated);
     const newest = updated[updated.length - 1];
     fetchRegionWeather(newest);
