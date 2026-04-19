@@ -320,13 +320,18 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
   const hourlyForecast = useMemo(() => {
     if (weatherData.hourlyForecast && weatherData.hourlyForecast.length > 0) {
-      // 현재 KST 시간을 기준으로 nowKey 생성 (캐시된 데이터도 재필터링)
-      const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
-      const y = nowKST.getUTCFullYear();
-      const mo = String(nowKST.getUTCMonth() + 1).padStart(2, '0');
-      const d = String(nowKST.getUTCDate()).padStart(2, '0');
-      const h = String(nowKST.getUTCHours()).padStart(2, '0');
-      const nowKey = `${y}${mo}${d}${h}00`; // e.g. "202604182100"
+      // Use nowKey provided by service (especially for Global source which adds it in destination's local time)
+      // Otherwise fallback to system time (KST) for KMA or old cache
+      let nowKey = weatherData.nowKey;
+      
+      if (!nowKey) {
+        const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+        const y = nowKST.getUTCFullYear();
+        const mo = String(nowKST.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(nowKST.getUTCDate()).padStart(2, '0');
+        const h = String(nowKST.getUTCHours()).padStart(2, '0');
+        nowKey = `${y}${mo}${d}${h}00`; // e.g. "202604182100"
+      }
 
       let dayOffset = 0;
       const getDayLabel = (offset) => {

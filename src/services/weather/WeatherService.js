@@ -11,7 +11,7 @@ import { getCache, saveCache } from '../StorageService';
  * Strategy: Cache Check -> VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
  */
 export const getWeather = async (lat, lon, force = false, regionId = '', providedAddress = '') => {
-  const cacheKey = `weather_v5_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
+  const cacheKey = `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
 
   try {
     // 0. Preliminary Cache Check

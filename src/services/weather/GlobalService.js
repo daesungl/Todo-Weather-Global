@@ -89,12 +89,18 @@ export const fetchGlobalWeather = async (lat, lon) => {
       const dateObj = new Date(d.date);
       const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
       const dd = String(dateObj.getDate()).padStart(2, '0');
+      const dailyPop = `${Math.max(d.day.daily_chance_of_rain, d.day.daily_chance_of_snow)}%`;
+      const condKey = mapConditionToKey(d.day.condition.text);
+
       return {
         day: dateObj.toLocaleDateString('ko-KR', { weekday: 'short' }),
         date: `${mm}.${dd}`,
         high: `${Math.round(d.day.maxtemp_c)}°`,
         low: `${Math.round(d.day.mintemp_c)}°`,
-        condition: mapConditionToKey(d.day.condition.text)
+        condition: condKey,
+        condKey: condKey,
+        amPop: dailyPop,
+        pmPop: dailyPop,
       };
     });
 
@@ -105,12 +111,22 @@ export const fetchGlobalWeather = async (lat, lon) => {
       .filter(h => h.time_epoch >= currentEpoch)
       .slice(0, 24)
       .map(h => {
-        const d = new Date(h.time_epoch * 1000);
+        // Extract local hour from "2023-01-01 10:00" -> 10
+        const localHour = parseInt(h.time.split(' ')[1].split(':')[0]);
+        const condKey = mapConditionToKey(h.condition.text, h.is_day);
+        
         return {
-          time: `${d.getHours()}시`,
+          time: `${localHour}시`,
           temp: `${Math.round(h.temp_c)}°`,
-          condition: mapConditionToKey(h.condition.text, h.is_day),
-          isDay: !!h.is_day
+          condition: condKey,
+          condKey: condKey,
+          isDay: !!h.is_day,
+          pop: `${Math.max(h.chance_of_rain, h.chance_of_snow)}%`,
+          pcp: h.precip_mm > 0 ? (h.precip_mm >= 1 ? `${Math.round(h.precip_mm)}mm` : `~1mm`) : '0mm',
+          wind: `${(h.wind_kph / 3.6).toFixed(1)}m/s`,
+          windDeg: (h.wind_degree + 180) % 360, // FROM → TO 방향 변환 (KMA와 동일)
+          hum: `${h.humidity}%`,
+          fullTime: h.time.replace(/[- :]/g, '').slice(0, 10) + '00' // Use local time for fullTime key
         };
       });
 
@@ -118,12 +134,17 @@ export const fetchGlobalWeather = async (lat, lon) => {
     const aqiData = mapAQI(current.air_quality['us-epa-index'] || 1);
     const pollutants = processPollutants(current.air_quality);
 
+    // Get current local time key for filtering
+    const localNowKey = data.location.localtime.replace(/[- :]/g, '').slice(0, 10) + '00';
+
     return {
       source: 'WeatherAPI.com',
       temp: `${Math.round(current.temp_c)}°`,
       highTemp: `${Math.round(today.day.maxtemp_c)}°`,
       lowTemp: `${Math.round(today.day.mintemp_c)}°`,
       humidity: `${current.humidity}%`,
+      windSpeed: `${(current.wind_kph / 3.6).toFixed(1)}m/s`,
+      windDeg: current.wind_degree,
       condKey: mapConditionToKey(current.condition.text, current.is_day),
       conditionText: current.condition.text,
       feelsLike: `${Math.round(current.feelslike_c)}°`,
@@ -135,6 +156,7 @@ export const fetchGlobalWeather = async (lat, lon) => {
       hourlyForecast,
       isDay: !!current.is_day,
       alert: alertData,
+      nowKey: localNowKey, // Provide local now key
       
       // Air Quality specific
       airQuality: aqiData.label,
