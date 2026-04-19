@@ -39,6 +39,8 @@ const TasksScreen = ({ navigation }) => {
   const [tempMonth, setTempMonth] = useState(new Date().getMonth());
   const lastTickYearIndex = useRef(-1);
   const lastTickMonthIndex = useRef(-1);
+  const yearListRef = useRef(null);
+  const monthListRef = useRef(null);
 
   // New Task State
   const [newTitle, setNewTitle] = useState('');
@@ -353,6 +355,7 @@ const TasksScreen = ({ navigation }) => {
                    {/* Year Wheel */}
                    <View style={styles.wheelCol}>
                       <FlatList
+                        ref={yearListRef}
                         data={YEARS}
                         keyExtractor={item => item.toString()}
                         showsVerticalScrollIndicator={false}
@@ -383,6 +386,7 @@ const TasksScreen = ({ navigation }) => {
                    {/* Month Wheel */}
                    <View style={styles.wheelCol}>
                       <FlatList
+                        ref={monthListRef}
                         data={MONTHS}
                         keyExtractor={item => item.toString()}
                         showsVerticalScrollIndicator={false}
@@ -413,7 +417,15 @@ const TasksScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.pickerFooter}>
-                 <TouchableOpacity style={styles.todayBtn} onPress={() => { setSelectedDate(new Date()); setIsPickerVisible(false); }}>
+                 <TouchableOpacity style={styles.todayBtn} onPress={() => {
+                    const today = new Date();
+                    const y = today.getFullYear();
+                    const m = today.getMonth();
+                    setTempYear(y);
+                    setTempMonth(m);
+                    yearListRef.current?.scrollToIndex({ index: y - 1900, animated: true });
+                    monthListRef.current?.scrollToIndex({ index: m, animated: true });
+                 }}>
                     <Text style={styles.todayBtnText}>Go to Today</Text>
                  </TouchableOpacity>
                  <TouchableOpacity style={styles.confirmBtn} onPress={applyPicker}>

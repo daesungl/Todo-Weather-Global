@@ -20,6 +20,7 @@ const HomeScreen = ({ navigation }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const currentPageRef = useRef(1);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const loadingPageRef = useRef(null);
 
   const goToPage = (nextPage, direction) => {
     Animated.timing(slideAnim, {
@@ -30,6 +31,7 @@ const HomeScreen = ({ navigation }) => {
       slideAnim.setValue(-direction * width);
       currentPageRef.current = nextPage;
       setCurrentPage(nextPage);
+      loadPageWeather(nextPage - 1, regions);
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 180,
@@ -176,10 +178,20 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // 현재 페이지의 지역만 위에서 아래로 순차 로딩
+  const loadPageWeather = async (pageIndex, regionList) => {
+    loadingPageRef.current = pageIndex;
+    const pageRegions = regionList.filter(r => r.pageIndex === pageIndex);
+    for (const region of pageRegions) {
+      if (loadingPageRef.current !== pageIndex) break; // 페이지 변경 시 중단
+      await fetchRegionWeather(region);
+    }
+  };
+
   const loadRegions = async () => {
     try {
       const saved = await getBookmarkedRegions();
-      
+
       let migrated = false;
       const processedData = saved.map((r, idx) => {
         if (r.pageIndex === undefined) {
@@ -188,13 +200,13 @@ const HomeScreen = ({ navigation }) => {
         }
         return r;
       });
-      
+
       if (migrated) {
         await saveBookmarkedRegions(processedData);
       }
-      
+
       setRegions(processedData);
-      processedData.forEach(region => fetchRegionWeather(region));
+      loadPageWeather(currentPageRef.current - 1, processedData);
     } catch (err) {
       console.error('loadRegions Error:', err);
     }
