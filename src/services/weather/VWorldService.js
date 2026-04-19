@@ -110,7 +110,7 @@ export const searchPlaces = async (query) => {
       return {
         id: `${categoryKey}-${searchSubType}-${item.id || Math.random().toString(36).substr(2, 9)}`,
         name: `[KR] ${formatNickName(displayName)}`,
-        address: parcelAddr || roadAddr || title, // 하단 서브 텍스트는 지번 우선 (KMA 연동용)
+        address: parcelAddr || roadAddr || title, // KMA 연동을 위해 시/도 정보가 포함된 주소 전체 저장
         lat: parseFloat(item.point?.y || 0),
         lon: parseFloat(item.point?.x || 0),
         type: 'domestic',

@@ -29,17 +29,42 @@ export const fetchKMAWarning = async (region, city) => {
   try {
     let stnId = 108; // 전국 기본
     const locationStr = `${region} ${city}`;
+
+    // 더 정교한 지점 매칭
     const matched = WeatherWarnStationCode.find(d => locationStr.includes(d.Region));
     if (matched) stnId = matched.Code;
 
-    const baseDate = getKSTDateString();
+    const fromDate = getKSTDateString(new Date());
+
     const url = 'https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrInfo';
-    const params = { serviceKey: KMA_SERVICE_KEY, pageNo: '1', numOfRows: '10', dataType: 'JSON', stnId, fromTmFc: baseDate };
-    const response = await axios.get(url, { params });
-    const items = safeGetItemArray(response);
-    const item = items[0];
-    return item?.t1 ? item.t1.replace(/STN-ID: \d+/g, '').replace(/\\n/g, '\n').trim() : null;
+    const params = { serviceKey: KMA_SERVICE_KEY, pageNo: '1', numOfRows: '10', dataType: 'JSON', stnId, fromTmFc: fromDate };
+
+    const response = await axios.get(url, { params, timeout: 5000 }); // 5초 타임아웃
+    const rawItems = response?.data?.response?.body?.items?.item;
+
+    const itemsArray = Array.isArray(rawItems) ? rawItems : (rawItems ? [rawItems] : []);
+    if (itemsArray.length === 0) return null;
+    // 특보 현황이 포함된 항목 우선, 없으면 첫 번째 항목
+    const item = itemsArray.find(i => i.t1?.includes('특보 현황')) ?? itemsArray[0];
+
+    if (!item?.t1) return null;
+
+    // 데이터 정제: STN-ID 제거, 중복 줄바꿈 처리 등
+    let cleanedText = item.t1
+      //   .replace(/STN-ID: \d+/g, '')
+      .replace(/\\n/g, '\n')
+      //  .replace(/\n\n+/g, '\n')
+      .trim();
+
+    console.log('[KMAService] Warning Date:', item.tmFc); //charles test log
+
+    return {
+      text: cleanedText,
+      region: matched ? matched.Region : region,
+      tmFc: item.tmFc
+    };
   } catch (error) {
+    console.warn('[KMAService] Alert Fetch Failed:', error.message);
     return null;
   }
 };
@@ -136,7 +161,7 @@ const findMidRegionCodes = (addressObj) => {
   if (!taCode) { taCode = TempRegionCode.find(d => fullName.includes(d.City))?.Code || '11B10101'; }
   let landCode = SkyRegionCode.find(d => region.includes(d.Region) && city.includes(d.City))?.Code;
   if (!landCode) { landCode = SkyRegionCode.find(d => fullName.includes(d.Region))?.Code || '11B00000'; }
-  
+
   // 전망 구역 코드 (stnId)
   let stnId = SummaryRegionCode.find(d => region.includes(d.Region))?.Code || '108';
 
@@ -199,7 +224,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     const forecastItems = safeGetItemArray(vilageRes);
 
     if (liveItems.length === 0 && forecastItems.length === 0) return null;
-    
+
     const midLandData = safeGetItemArray(midLandRes)?.[0] || {};
     const midTaData = safeGetItemArray(midTaRes)?.[0] || {};
     const midFcstData = safeGetItemArray(midFcstRes)?.[0] || {};
@@ -219,6 +244,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     });
 
     const hourlyMap = {};
+    // 1. Base: Village Forecast (Updated every 3 hours)
     forecastItems.forEach(item => {
       const key = `${item.fcstDate}${item.fcstTime}`;
       if (!hourlyMap[key]) hourlyMap[key] = { date: item.fcstDate, time: item.fcstTime };
@@ -232,10 +258,23 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       if (item.category === 'PCP') hourlyMap[key].pcp = item.fcstValue;
     });
 
+    // 2. Override: Ultra-Short-Term Forecast (Updated every hour, highly accurate for next 6h)
+    ultraItems.forEach(item => {
+      const key = `${item.fcstDate}${item.fcstTime}`;
+      if (!hourlyMap[key]) return; // Forecast items are primary timeline
+      if (item.category === 'T1H') hourlyMap[key].temp = item.fcstValue; // Use temp from ultra
+      if (item.category === 'RN1') hourlyMap[key].pcp = item.fcstValue; // Use 1h precipitation from ultra
+      if (item.category === 'SKY') hourlyMap[key].sky = item.fcstValue;
+      if (item.category === 'PTY') hourlyMap[key].pty = item.fcstValue;
+      if (item.category === 'WSD') hourlyMap[key].wind = item.fcstValue;
+      if (item.category === 'REH') hourlyMap[key].hum = item.fcstValue;
+      if (item.category === 'VEC') hourlyMap[key].windDeg = item.fcstValue;
+    });
+
     const nowRaw = new Date();
     const nowKST = getKSTDate(nowRaw);
     const nowTimeKey = `${getKSTDateString(nowRaw)}${pad(nowKST.getUTCHours())}00`;
-    
+
     const hourlyForecast = Object.values(hourlyMap)
       .filter(h => `${h.date}${h.time}` >= nowTimeKey)
       .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
@@ -288,7 +327,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       if (newVal === '3' || newVal === '7') return newVal;
       return cur;
     };
-    
+
     const safeMapKMA = (sky, pty) => {
       if (pty && pty !== '0') {
         if (pty === '1' || pty === '4' || pty === '5') return 'rainy';
@@ -389,22 +428,22 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
           amCond = pmCond = getMidCond(wf);
         }
       }
-      
+
       const mm = String(kstTarget.getUTCMonth() + 1).padStart(2, '0');
       const dd = String(kstTarget.getUTCDate()).padStart(2, '0');
       const dateStr = `${mm}.${dd}`;
 
       console.log(`[KMA-Forecast] D+${i} (${dayLabel}): H=${highTemp}, L=${lowTemp}, idx=${i < 3 ? 'ShortTerm' : getMidIdx(i)}`);
-      dailyForecast.push({ 
-        day: dayLabel, 
+      dailyForecast.push({
+        day: dayLabel,
         date: dateStr,
-        high: Math.round(highTemp), 
-        low: Math.round(lowTemp), 
-        amPop: `${amPop}%`, 
-        pmPop: `${pmPop}%`, 
-        amCond, 
-        pmCond, 
-        condition: pmCond 
+        high: Math.round(highTemp),
+        low: Math.round(lowTemp),
+        amPop: `${amPop}%`,
+        pmPop: `${pmPop}%`,
+        amCond,
+        pmCond,
+        condition: pmCond
       });
     }
 
@@ -425,7 +464,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       aqiValue: '--',
       aqiText: '대기질 정보를 업데이트 중입니다.',
       stationName: '',
-      aqiForecast: '', 
+      aqiForecast: '',
       aqiColor: '#bdbdbd',
       aqiIndex: 0,
       pollutants: null,

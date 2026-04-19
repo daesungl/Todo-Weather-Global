@@ -194,7 +194,7 @@ export const fetchAirQuality = async (lat, lon, address = '') => {
       aqiText: khaiGradeNum ? baseInfo.text : '측정 데이터가 없거나 준비 중입니다.',
       aqiColor: baseInfo?.color || '#bdbdbd',
       aqiIndex: baseInfo?.index || 0,
-      stationName: station.stationName,
+      stationName: station?.stationName || '측정소 정보 없음',
       aqiForecast: forecast ? forecast.informOverall : null,
       pollutants: {
         pm10: { value: safeVal(data.pm10Value), unit: 'μg/m³', ...getPollutantInfo(data.pm10Value, 'pm10') },

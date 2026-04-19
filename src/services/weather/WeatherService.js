@@ -11,7 +11,7 @@ import { getCache, saveCache } from '../StorageService';
  * Strategy: Cache Check -> VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
  */
 export const getWeather = async (lat, lon, force = false, regionId = '', providedAddress = '') => {
-  const cacheKey = `weather_v4_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
+  const cacheKey = `weather_v5_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
 
   try {
     // 0. Preliminary Cache Check
@@ -27,18 +27,25 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
       const koreaLonRange = lon >= 124 && lon <= 132;
       const coordBasedIsKorea = koreaLatRange && koreaLonRange;
 
-      if (providedAddress && coordBasedIsKorea) {
+      // 한국 광역시/도 리스트 (검증용)
+      const validProvinces = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
+      const isFullAddress = providedAddress && validProvinces.some(p => providedAddress.startsWith(p));
+
+      // 1. 주소가 상위 행정구역 정보를 포함한 정석적인 주소인 경우에만 지름길 사용
+      if (isFullAddress && coordBasedIsKorea) {
         locationInfo = { 
           isKorea: true, 
           address: providedAddress,
           region: providedAddress.split(' ')[0],
           city: providedAddress.split(' ')[1] || ''
         };
-      } else if (providedAddress && !coordBasedIsKorea) {
-        locationInfo = { isKorea: false, address: providedAddress, region: '', city: '' };
       } else {
-        // VWorld call inside try-catch with timeout
+        // 주소 정보가 불완전하거나 없는 경우 반드시 API를 통해 정확한 행정구역(Region/City)을 가져옴
         locationInfo = await checkIsKorea(lat, lon);
+        // 디스플레이용 주소는 유저가 저장한 명칭을 유지하되, 내부 데이터는 API 결과를 우선함
+        if (providedAddress) {
+          locationInfo.address = providedAddress;
+        }
       }
     } catch (locErr) {
       console.warn('[WeatherService] Location Check (VWorld) failed, assuming Global.', locErr);

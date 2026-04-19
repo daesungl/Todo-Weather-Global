@@ -339,7 +339,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </View>
 
-      <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} />
+      <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} />
       
       {/* Search Modal - Inline to maintain identity/focus */}
       <Modal animationType="slide" transparent={true} visible={searchModalVisible} onRequestClose={() => setSearchModalVisible(false)}>

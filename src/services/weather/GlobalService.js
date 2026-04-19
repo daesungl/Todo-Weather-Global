@@ -62,13 +62,27 @@ export const fetchGlobalWeather = async (lat, lon) => {
         q: `${lat},${lon}`,
         days: 10,
         aqi: 'yes',
-        alerts: 'no'
+        alerts: 'yes'
       }
     });
 
     const data = response.data;
     const current = data.current;
     const today = data.forecast.forecastday[0];
+
+    // Global Alerts parsing
+    let alertData = null;
+    if (data.alerts && data.alerts.alert && data.alerts.alert.length > 0) {
+      const firstAlert = data.alerts.alert[0];
+      const alertText = data.alerts.alert
+        .map(a => `[${a.event}] ${a.desc}`)
+        .join('\n\n');
+      alertData = {
+        text: alertText,
+        region: data.location.name,
+        tmFc: firstAlert.effective || current.last_updated
+      };
+    }
 
     // Build Daily Forecast
     const dailyForecast = data.forecast.forecastday.map(d => {
@@ -120,6 +134,7 @@ export const fetchGlobalWeather = async (lat, lon) => {
       dailyForecast,
       hourlyForecast,
       isDay: !!current.is_day,
+      alert: alertData,
       
       // Air Quality specific
       airQuality: aqiData.label,

@@ -15,6 +15,32 @@ import { fetchExtraMetrics } from '../services/weather/GlobalService';
 
 const { width, height } = Dimensions.get('window');
 
+// 특보 발표 시각 포맷터 (YYYY.MM.DD hh:mm AM/PM)
+const formatAlertTime = (tmFc) => {
+  if (!tmFc) return null;
+  const s = String(tmFc);
+  let date;
+  
+  if (s.length === 12) { // KMA: YYYYMMDDHHMM
+    date = new Date(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:00`);
+  } else { // Global: ISO or String
+    date = new Date(s);
+  }
+
+  if (isNaN(date.getTime())) return s;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  let hh = date.getHours();
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  hh = hh % 12 || 12;
+  const hhStr = String(hh).padStart(2, '0');
+
+  return `${yyyy}.${mm}.${dd} ${hhStr}:${min} ${ampm}`;
+};
+
 const WeatherDetailScreen = ({ navigation, route }) => {
   const { t } = useTranslation();
   const { weatherData: initialData = {} } = route?.params || {};
@@ -527,14 +553,18 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </View>
         </LinearGradient>
 
-        {initialData.alert && (
-          <TouchableOpacity activeOpacity={0.7} onPress={() => setAlertModalVisible(true)} style={[styles.alertModule, { zIndex: 999 }]}>
-            <LinearGradient colors={['#ba1a1a', '#93000a']} style={[styles.alertGradient, { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <AlertTriangle size={18} color="white" />
-              <Text style={[styles.alertText, { flex: 1, fontWeight: '700', textAlign: 'center' }]} numberOfLines={1}>
-                {t('weather.alert_summary', '현재 지역에 실시간 기상특보가 있습니다.')}
+        {weatherData.alert && (
+          <TouchableOpacity activeOpacity={0.8} onPress={() => setAlertModalVisible(true)} style={[styles.alertModule, { zIndex: 999 }]}>
+            <LinearGradient colors={['#ba1a1a', '#93000a']} style={[styles.alertGradient, { paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+              <Animated.View style={{ opacity: pulseAnim }}>
+                <AlertTriangle size={20} color="white" />
+              </Animated.View>
+              <Text style={[styles.alertText, { flex: 1, fontWeight: '800', textAlign: 'center', fontSize: 13 }]} numberOfLines={1}>
+                {`${t('weather.alert_present', '기상특보 발효 중')} ${typeof weatherData.alert === 'object' && weatherData.alert.region ? `(${weatherData.alert.region})` : ''}`}
               </Text>
-              <ChevronLeft size={16} color="white" style={{ transform: [{ rotate: '180deg' }] }} />
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' }}>
+                <Info size={12} color="white" />
+              </View>
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -675,9 +705,14 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <Animated.View style={[styles.alertSheet, { backgroundColor: Colors.surfaceContainerLowest, transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [height * 0.8, 0] }) }] }]}>
             <TouchableOpacity activeOpacity={0.9} onPress={handleCloseAlert}>
               <LinearGradient colors={['#ba1a1a', '#93000a']} style={styles.alertSheetHeader} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                <AlertTriangle size={20} color="white" />
+                <View style={styles.alertCloseInner}>
+                  <AlertTriangle size={24} color="white" />
+                </View>
                 <View style={{ flex: 1, alignItems: 'center' }}>
-                  <Text style={styles.alertSheetTitle}>기상특보 상세정보</Text>
+                  <Text style={[styles.alertSheetTitle, { textAlign: 'center' }]}>{t('weather.alert_detail_title', '기상특보 상세정보')}</Text>
+                  {typeof weatherData.alert === 'object' && weatherData.alert.region && (
+                    <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>({weatherData.alert.region})</Text>
+                  )}
                 </View>
                 <View style={styles.alertCloseInner}>
                   <X size={20} color="white" />
@@ -685,11 +720,21 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               </LinearGradient>
             </TouchableOpacity>
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl, paddingBottom: 40 }}>
-              <Text style={styles.alertSheetBody}>{initialData.alert}</Text>
+              <Text style={styles.alertSheetBody}>
+                {typeof weatherData.alert === 'object' ? weatherData.alert.text : weatherData.alert}
+              </Text>
+              
+              {weatherData.alert?.tmFc && (
+                <View style={{ marginTop: Spacing.xl, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: Spacing.lg }}>
+                  <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>
+                    {`발표 시각 : ${formatAlertTime(weatherData.alert.tmFc)}`}
+                  </Text>
+                </View>
+              )}
             </ScrollView>
             <View style={styles.alertSheetFooter}>
               <TouchableOpacity style={styles.alertSheetConfirmBtn} onPress={handleCloseAlert}>
-                <Text style={styles.modalFooterBtnText}>닫기</Text>
+                <Text style={styles.modalFooterBtnText}>{t('common.close', '닫기')}</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>

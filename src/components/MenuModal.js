@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.82;
 
-const MenuModal = ({ visible, onClose }) => {
+const MenuModal = ({ visible, onClose, onReset }) => {
   const { t, i18n } = useTranslation();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -34,8 +34,8 @@ const MenuModal = ({ visible, onClose }) => {
                 if (weatherKeys.length > 0) {
                   await AsyncStorage.multiRemove(weatherKeys);
                 }
-                Alert.alert(t('common.info') || '알림', t('menu.reset_success_msg') || '초기화가 완료되었습니다. 앱을 다시 로드하면 새 데이터를 불러옵니다.');
                 onClose();
+                onReset?.();
               } catch (e) {
                 console.error('Reset Error:', e);
               }
