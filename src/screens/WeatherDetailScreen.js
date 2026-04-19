@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager } from 'react-native';
-import { 
-  ChevronLeft, Sun, Moon, Cloud, CloudRain, Wind, Droplets, 
+import {
+  ChevronLeft, Sun, Moon, Cloud, CloudRain, Wind, Droplets,
   SunMedium, AlertTriangle, Calendar, Navigation,
   Eye, Thermometer, Gauge, Activity, CloudLightning,
   Info, Umbrella, X, CloudSnow, RefreshCw
@@ -20,7 +20,7 @@ const formatAlertTime = (tmFc) => {
   if (!tmFc) return null;
   const s = String(tmFc);
   let date;
-  
+
   if (s.length === 12) { // KMA: YYYYMMDDHHMM
     date = new Date(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:00`);
   } else { // Global: ISO or String
@@ -44,7 +44,7 @@ const formatAlertTime = (tmFc) => {
 const WeatherDetailScreen = ({ navigation, route }) => {
   const { t } = useTranslation();
   const { weatherData: initialData = {} } = route?.params || {};
-  
+
   const defaultData = {
     locationName: '--',
     addressName: '--',
@@ -69,9 +69,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   };
 
   const [weatherData, setWeatherData] = useState({ ...defaultData, ...initialData });
-  const hasAccurateAQInit = !!initialData?.pollutants && 
-                           initialData?.aqiValue !== '--' && 
-                           initialData?.aqiText !== '실시간 대기질 정보를 업데이트 중입니다.';
+  const hasAccurateAQInit = !!initialData?.pollutants &&
+    initialData?.aqiValue !== '--' &&
+    initialData?.aqiText !== '실시간 대기질 정보를 업데이트 중입니다.';
   const [loadingAir, setLoadingAir] = useState(!hasAccurateAQInit);
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -111,21 +111,21 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
     const sunriseMins = timeToMinutes(weatherData.sunrise);
     const sunsetMins = timeToMinutes(weatherData.sunset);
-    
+
     // Get current time
     const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
 
     if (sunriseMins === null || sunsetMins === null) return null;
-    
+
     let progress = (nowMins - sunriseMins) / (sunsetMins - sunriseMins);
     progress = Math.max(0, Math.min(1, progress));
-    
+
     const angle = Math.PI - (progress * Math.PI);
-    const radius = 60; 
-    const x = radius * Math.cos(angle); 
+    const radius = 60;
+    const x = radius * Math.cos(angle);
     const y = radius * Math.sin(angle);
-    
+
     return {
       left: 60 + x - 6,
       bottom: y - 6
@@ -141,9 +141,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     const interaction = InteractionManager.runAfterInteractions(() => {
       // aqiValue가 실제로 유효한 값(숫자 또는 문자)인지 확인 - undefined와 '--' 모두 누락으로 처리
       const aqiOk = initialData?.aqiValue !== undefined &&
-                    initialData?.aqiValue !== '--' &&
-                    initialData?.aqiValue !== null &&
-                    String(initialData?.aqiValue).trim() !== '';
+        initialData?.aqiValue !== '--' &&
+        initialData?.aqiValue !== null &&
+        String(initialData?.aqiValue).trim() !== '';
       const hasAccurateAQ = aqiOk && (!!initialData?.pollutants || !!initialData?.stationName);
       const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
 
@@ -163,7 +163,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     try {
       // fetchExtraMetrics for things KMA might not have (UV, Visibility etc if missing)
       const extra = needsExtra ? await fetchExtraMetrics(lat, lon).catch(() => null) : null;
-      
+
       // Minimum loading time for "演出" (visual effect)
       const minDelay = new Promise(resolve => setTimeout(resolve, 1200));
 
@@ -171,36 +171,36 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       let airData = null;
       const isDomestic = lat > 32 && lat < 39 && lon > 124 && lon < 132;
       const address = initialData.locationName || '';
-      
+
       if (isDomestic) {
         try {
           console.log(`[${address}] 대기질 데이터 ( AirKorea ) 조회 중`);
           const result = await AirService.fetchAirQuality(lat, lon, address);
-          
+
           if (result && result.error === 'LIMIT_HIT') {
-             console.warn(`[${address}] 대기질 데이터 ( AirKorea ) 조회 실패 (에러코드: 429 - Limit Hit)`);
-             // 429 Limit Hit: Try Global Fallback immediately
-             const fallback = extra || await fetchExtraMetrics(lat, lon).catch(() => null);
-             if (fallback && fallback.aqiSource === 'WeatherAPI') {
-               console.log(`[${address}] 대기질 데이터 ( weatherAPI ) 조회 완료 (Fallback)`);
-               airData = fallback;
-               airData.aqiText = `에어코리아 사용량 초과로 글로벌 데이터를 대신 표시합니다.`;
-             } else {
-               airData = { 
-                 airQuality: '--', 
-                 aqiValue: '--',
-                 aqiText: '에어코리아 사용량이 초과되었습니다. 잠시 후 서버가 안정되면 다시 시도해주세요.',
-                 aqiColor: Colors.outline,
-                 stationName: result.stationName || 'Limit Reached'
-               };
-             }
+            console.warn(`[${address}] 대기질 데이터 ( AirKorea ) 조회 실패 (에러코드: 429 - Limit Hit)`);
+            // 429 Limit Hit: Try Global Fallback immediately
+            const fallback = extra || await fetchExtraMetrics(lat, lon).catch(() => null);
+            if (fallback && fallback.aqiSource === 'WeatherAPI') {
+              console.log(`[${address}] 대기질 데이터 ( weatherAPI ) 조회 완료 (Fallback)`);
+              airData = fallback;
+              airData.aqiText = `에어코리아 사용량 초과로 글로벌 데이터를 대신 표시합니다.`;
+            } else {
+              airData = {
+                airQuality: '--',
+                aqiValue: '--',
+                aqiText: '에어코리아 사용량이 초과되었습니다. 잠시 후 서버가 안정되면 다시 시도해주세요.',
+                aqiColor: Colors.outline,
+                stationName: result.stationName || 'Limit Reached'
+              };
+            }
           } else if (result) {
-             console.log(`[${address}] 대기질 데이터 ( AirKorea ) 조회 완료`);
-             airData = result;
+            console.log(`[${address}] 대기질 데이터 ( AirKorea ) 조회 완료`);
+            airData = result;
           }
         } catch (aqErr) {
           console.error(`[${address}] 대기질 데이터 ( AirKorea ) 조회 실패 (에러코드: ${aqErr.response?.status || aqErr.message})`);
-          
+
           // Fallback to WeatherAPI data if domestic fetch fails drastically
           const fallback = extra || await fetchExtraMetrics(lat, lon).catch(() => null);
           if (fallback && fallback.aqiSource === 'WeatherAPI') {
@@ -222,10 +222,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             ...(airData || {}),
             ...(extra || {}),
           };
-          
+
           // Force stationName update
           updated.stationName = airData?.stationName || (extra?.aqiSource === 'WeatherAPI' ? 'Global Source' : '');
-          
+
           return updated;
         });
       }
@@ -389,7 +389,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         };
       });
     }
-    
+
     // Fallback Mock Data Generation
     const days = [];
     const weekdays = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
@@ -398,7 +398,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     for (let i = 0; i < 10; i++) {
       const targetDate = new Date(now);
       targetDate.setDate(now.getDate() + i);
-      
+
       let dayLabel = '';
       if (i === 0) dayLabel = '오늘';
       else if (i === 1) dayLabel = '내일';
@@ -500,11 +500,11 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   };
 
   const SkeletonBlock = ({ width, height, borderRadius = 8, style = {} }) => (
-    <Animated.View 
+    <Animated.View
       style={[
         { width, height, borderRadius, backgroundColor: Colors.surfaceContainerHighest, opacity: pulseAnim },
         style
-      ]} 
+      ]}
     />
   );
 
@@ -538,8 +538,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         <View style={styles.iconBtnPlaceholder} />
       </View>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
+      <ScrollView
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         <LinearGradient colors={['#E6F7FF', '#f7f9ff']} style={styles.heroSection}>
@@ -668,7 +668,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                   <SkeletonBlock width={40} height={20} style={{ marginBottom: 4 }} />
                   <SkeletonBlock width="100%" height={16} borderRadius={4} />
                 </View>
-              )) : 
+              )) :
                 weatherData.pollutants && Object.entries(weatherData.pollutants).map(([key, data]) => (
                   <View key={key} style={styles.pollutantCard}>
                     <Text style={styles.pollutantName}>{
@@ -723,10 +723,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               <Text style={styles.alertSheetBody}>
                 {typeof weatherData.alert === 'object' ? weatherData.alert.text : weatherData.alert}
               </Text>
-              
+
               {weatherData.alert?.tmFc && (
                 <View style={{ marginTop: Spacing.xl, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: Spacing.lg }}>
-                  <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>
+                  <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'right' }}>
                     {`발표 시각 : ${formatAlertTime(weatherData.alert.tmFc)}`}
                   </Text>
                 </View>
