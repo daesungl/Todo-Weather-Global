@@ -254,8 +254,8 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.paginationArea}>
             <View style={styles.regionsList}>
-              {/* Pagination logic: Page 1 (index 0,1,2), Page 2 (3,4,5), etc. */}
-              {regions.slice((currentPage - 1) * 3, currentPage * 3).map(region => (
+              {/* Pagination logic: Page 1 (index 0-4), Page 2 (5-9), etc. */}
+              {regions.slice((currentPage - 1) * 5, currentPage * 5).map(region => (
                 <TouchableOpacity 
                   key={region.id} 
                   style={styles.regionCard}
@@ -289,14 +289,14 @@ const HomeScreen = ({ navigation }) => {
               ))}
               
               {/* Add New Slot Button (if page has room or just always at the end of last filled page) */}
-              {regions.length < (currentPage * 3) && (
+              {regions.length < (currentPage * 5) && (
                 <TouchableOpacity style={styles.addSlotCard} onPress={() => setSearchModalVisible(true)}>
                    <Plus size={24} color={Colors.outline} />
                    <Text style={styles.addSlotText}>지역 추가하기</Text>
                 </TouchableOpacity>
               )}
-
-              {currentPage > 1 && !isPremium && regions.length < (currentPage - 1) * 3 && (
+ 
+              {currentPage > 1 && !isPremium && regions.length < (currentPage - 1) * 5 && (
                 <View style={styles.lockedContainer}>
                    <Lock size={32} color={Colors.outlineVariant} />
                    <Text style={styles.lockedText}>{t('home.locked_slot_guide')}</Text>
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   paginationArea: {
-    minHeight: 100, // Reduced significantly after removing slots
+    minHeight: 450, // Expanded to accommodate up to 5 items comfortably
     marginBottom: Spacing.lg,
   },
   regionsList: {
