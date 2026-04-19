@@ -752,14 +752,14 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f9ff' },
+  container: { flex: 1, backgroundColor: '#E6F7FF' },
   stickyHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, backgroundColor: '#E6F7FF', zIndex: 100 },
   iconBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   iconBtnPlaceholder: { width: 44 },
   headerTitleWrap: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
   headerSubtitle: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-  scrollContent: { paddingBottom: Spacing.xxl },
+  scrollContent: { paddingBottom: Spacing.xxl, backgroundColor: '#f7f9ff' },
   heroSection: { paddingTop: Spacing.xl, paddingBottom: Spacing.xxl, alignItems: 'center' },
   heroMain: { alignItems: 'center' },
   heroIconTop: { marginBottom: Spacing.sm },
