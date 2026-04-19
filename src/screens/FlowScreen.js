@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Plus, Sun, Cloud, MapPin, Circle, Compass } from 'lucide-react-native';
+import { ChevronLeft, Plus, Sun, Cloud, MapPin, CheckCircle2, Compass } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 
 const { width } = Dimensions.get('window');
@@ -103,7 +103,7 @@ const FlowScreen = ({ navigation }) => {
             <Sun size={24} color={Colors.outline} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Tasks')}>
-            <Circle size={24} color={Colors.outline} />
+            <CheckCircle2 size={24} color={Colors.outline} strokeWidth={2} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Flow')}>
             <View style={styles.activeDot} />
