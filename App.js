@@ -71,7 +71,7 @@ export default function App() {
             <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
 
             {/* 상세 화면: 탭바 위에 오른쪽에서 슬라이드 인 */}
-            <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} />
+            <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
           </Stack.Navigator>
         </NavigationContainer>

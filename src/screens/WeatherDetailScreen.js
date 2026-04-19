@@ -307,7 +307,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           tension: 40
         }).start();
       }
-    }
+    },
+    onShouldBlockNativeResponder: () => false,
   }), [navigation]);
 
   const renderHourlyIcon = (condKey, isDay = true) => {
@@ -330,7 +331,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       case 'partly_cloudy':
       case 'mostly_sunny':
       case 'mostly_clear':
-      case 'clear-night':
+      case 'clear_night':
         return (
           <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
             {!isNight ? (
@@ -520,7 +521,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       case 'partly_cloudy':
       case 'mostly_sunny':
       case 'mostly_clear':
-      case 'clear-night':
+      case 'clear_night':
         return (
           <View style={[style, { width: size, height: size, justifyContent: 'center', alignItems: 'center' }]}>
             {isDay ? (

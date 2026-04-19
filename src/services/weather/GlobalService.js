@@ -11,7 +11,7 @@ const mapConditionToKey = (conditionText, isDay = 1) => {
   if (text.includes('thunder') || text.includes('storm')) return 'thunderstorm';
   if (text.includes('cloud') || text.includes('overcast')) return 'cloudy';
   if (text.includes('mist') || text.includes('fog')) return 'cloudy'; // Fallback
-  return isDay ? 'sunny' : 'clear-night';
+  return isDay ? 'sunny' : 'clear_night';
 };
 
 const mapUVLabel = (uv) => {
