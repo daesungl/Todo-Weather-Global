@@ -231,7 +231,7 @@ const TasksScreen = ({ navigation }) => {
              <Text style={styles.viewToggleText}>{viewMode === 'week' ? 'Month View' : 'Week View'}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.taskCountText}>{tasks.filter(t => !t.isCompleted).length} tasks scheduled this month</Text>
+        <Text style={styles.taskCountText}>{(tasks || []).filter(t => !t.isCompleted).length} tasks scheduled this month</Text>
 
         <View style={styles.calendarArea}>
           <View style={styles.weekdayLabels}>
@@ -244,7 +244,7 @@ const TasksScreen = ({ navigation }) => {
             <View style={styles.weekStrip}>
               {weekDays.map((day, idx) => {
                 const active = isSameDay(day, selectedDate);
-                const hasTask = tasks.some(t => t.date === dateStr(day));
+                const hasTask = (tasks || []).some(t => t.date === dateStr(day));
                 return (
                   <TouchableOpacity key={idx} style={[styles.dayCell, active && styles.activeCell]} onPress={() => setSelectedDate(day)}>
                     <Text style={[styles.dayNum, active && styles.activeText]}>{day.getDate()}</Text>
@@ -257,7 +257,7 @@ const TasksScreen = ({ navigation }) => {
             <View style={styles.monthGrid}>
               {monthDays.map((item, idx) => {
                 const active = isSameDay(item.date, selectedDate);
-                const hasTask = tasks.some(t => t.date === dateStr(item.date));
+                const hasTask = (tasks || []).some(t => t.date === dateStr(item.date));
                 return (
                   <TouchableOpacity 
                     key={idx} 
@@ -286,14 +286,14 @@ const TasksScreen = ({ navigation }) => {
            <Text style={styles.sectionSubtitle}>Scheduled Tasks</Text>
         </View>
 
-        {filteredTasks.length === 0 ? (
+        {(filteredTasks || []).length === 0 ? (
           <View style={styles.emptyState}>
             <CalendarDays size={48} color={Colors.outlineVariant} strokeWidth={1} style={{ marginBottom: Spacing.md }} />
             <Text style={styles.emptyText}>{t('tasks.empty', 'No tasks scheduled.')}</Text>
           </View>
         ) : (
           <View style={styles.taskList}>
-            {filteredTasks.map((task) => {
+            {(filteredTasks || []).map((task) => {
               const weather = taskWeather[task.id];
               return (
                 <View key={task.id} style={[styles.taskCard, task.isCompleted && styles.completedTask]}>

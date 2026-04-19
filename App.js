@@ -34,45 +34,49 @@ export default function App() {
     const current = navState.screen;
     const prev = navState.from;
 
-    opacity.setValue(0);
-    translateX.setValue(0);
-    translateY.setValue(0);
-
     if (DETAIL_SCREENS.includes(current)) {
-      // 상세 진입: 아래→위
-      translateY.setValue(120);
-      Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      ]).start();
+      // 상세 진입: 깜빡임 없이 아래→위 슬라이드만 강조
+      opacity.setValue(1); 
+      translateX.setValue(0);
+      translateY.setValue(150);
+      Animated.timing(translateY, { 
+        toValue: 0, 
+        duration: 400, 
+        easing: Easing.out(Easing.cubic), 
+        useNativeDriver: true 
+      }).start();
     } else if (DETAIL_SCREENS.includes(prev)) {
-      // 상세 복귀: 위→아래 (fade만 사용, 슬라이드 없음)
-      translateY.setValue(-30);
-      Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      ]).start();
+      // 상세 복귀: 깜빡임 없이 제자리에서 슬라이딩
+      opacity.setValue(1);
+      translateX.setValue(0);
+      translateY.setValue(-20);
+      Animated.timing(translateY, { 
+        toValue: 0, 
+        duration: 300, 
+        easing: Easing.out(Easing.cubic), 
+        useNativeDriver: true 
+      }).start();
     } else {
-      // 탭 전환: 1(Weather)→2(Tasks)→3(Flow) 오른쪽 이동이면 새 화면이 오른쪽에서 진입
-      // prev가 탭 화면이 아닐 경우 lastTabRef를 폴백으로 사용
+      // 탭 전환: 페이드 없이 좌우 슬라이딩만 깔끔하게
+      opacity.setValue(1);
+      translateY.setValue(0);
+
       const fromTabKey = TAB_ORDER[prev] !== undefined ? prev : lastTabRef.current;
       const fromIndex = TAB_ORDER[fromTabKey] ?? 0;
       const toIndex = TAB_ORDER[current] ?? 0;
       
       if (fromIndex === toIndex) {
-        // 같은 탭이면 그냥 페이드만
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-        return;
+        return; // 같은 화면이면 움직임 없음
       }
 
-      // fromIndex < toIndex : 오른쪽 탭 → 새 화면이 오른쪽(+)에서 진입
-      // fromIndex > toIndex : 왼쪽 탭 → 새 화면이 왼쪽(-)에서 진입
       const direction = toIndex > fromIndex ? 1 : -1;
       translateX.setValue(direction * width * 0.4);
-      Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.timing(translateX, { toValue: 0, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      ]).start();
+      Animated.timing(translateX, { 
+        toValue: 0, 
+        duration: 320, 
+        easing: Easing.out(Easing.cubic), 
+        useNativeDriver: true 
+      }).start();
     }
   }, [navState.screen]);
 

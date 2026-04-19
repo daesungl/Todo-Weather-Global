@@ -7,7 +7,7 @@ const VWORLD_API_KEY = process.env.EXPO_PUBLIC_VWORLD_API_KEY || '';
 
 // 5분 메모리 캐시: 같은 측정소 중복 호출 방지 (429 에러 절감)
 const _cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5분
+const CACHE_TTL = 60 * 60 * 1000; // 대기질 캐시 주기 60분으로 상향 (에어코리아 부하 방지)
 
 /**
  * 1. Convert Position to TM Coordinate (epsg:5181)

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager, PanResponder } from 'react-native';
 import {
   ChevronLeft, Sun, Moon, Cloud, CloudRain, Wind, Droplets,
   SunMedium, AlertTriangle, Calendar, Navigation,
@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import AirService from '../services/weather/AirService';
 import { fetchExtraMetrics } from '../services/weather/GlobalService';
+import { saveCache } from '../services/StorageService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -215,19 +216,23 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       await Promise.all([minDelay]);
 
       if (extra || airData) {
+        let finalData = null;
         setWeatherData(prev => {
-          // Explicit cleanup for station name to prevent state bleeding from Previous Screen/Location
           const updated = {
             ...prev,
             ...(airData || {}),
             ...(extra || {}),
           };
-
-          // Force stationName update
           updated.stationName = airData?.stationName || (extra?.aqiSource === 'WeatherAPI' ? 'Global Source' : '');
-
+          finalData = updated;
           return updated;
         });
+
+        // Sync new accurate data back to cache
+        const cacheKey = `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${initialData?.regionId || ''}`;
+        if (finalData) {
+          await saveCache(cacheKey, finalData);
+        }
       }
     } catch (err) {
       console.error('[Detail] Async load error:', err);
@@ -268,6 +273,42 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   };
 
   const goBack = () => navigation.goBack();
+  
+  // Real-time swipe tracking for premium UX
+  const swipeX = useRef(new Animated.Value(0)).current;
+
+  // Swipe to go back gesture logic with visual tracking
+  const panResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) => {
+      const { dx, dy, x0 } = gestureState;
+      // Accept gesture only if starting from the left edge
+      return x0 < width * 0.15 && dx > 10 && Math.abs(dx) > Math.abs(dy);
+    },
+    onPanResponderMove: (_, gestureState) => {
+      // Prevent swiping to the left
+      if (gestureState.dx > 0) {
+        swipeX.setValue(gestureState.dx);
+      }
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      // If swiped more than 30% of width, complete the navigation
+      if (gestureState.dx > width * 0.3) {
+        Animated.timing(swipeX, {
+          toValue: width,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(() => goBack());
+      } else {
+        // Otherwise spring back to center
+        Animated.spring(swipeX, {
+          toValue: 0,
+          useNativeDriver: true,
+          friction: 8,
+          tension: 40
+        }).start();
+      }
+    }
+  }), [navigation]);
 
   const renderHourlyIcon = (condKey, isDay = true) => {
     const size = 20;
@@ -529,7 +570,21 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <Animated.View 
+      style={[
+        styles.container, 
+        { 
+          transform: [{ translateX: swipeX }],
+          // Add a subtle shadow on the left edge when swiping
+          shadowColor: '#000',
+          shadowOffset: { width: -10, height: 0 },
+          shadowOpacity: 0.15,
+          shadowRadius: 20,
+          backgroundColor: '#E6F7FF', // Ensure background is solid during swipe
+        }
+      ]} 
+      {...panResponder.panHandlers}
+    >
       <View style={[styles.stickyHeader, { paddingTop: Constants.statusBarHeight }]}>
         <TouchableOpacity onPress={goBack} style={styles.iconBtn}>
           <ChevronLeft size={24} color={Colors.text} />
@@ -747,7 +802,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </Animated.View>
         </Animated.View>
       )}
-    </View>
+    </Animated.View>
   );
 };
 

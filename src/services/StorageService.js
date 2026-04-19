@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CACHE_PREFIX = '@weather_cache_';
-const DEFAULT_EXPIRY = 20 * 60 * 1000; // 기본 20분 캐시
+const DEFAULT_EXPIRY = 60 * 60 * 1000; // 기상청/에어코리아 데이터 갱신 주기(1시간)에 맞춘 최적 캐시 주기
 
 /**
  * 데이터를 캐시에 저장합니다.

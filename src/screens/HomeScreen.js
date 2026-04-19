@@ -367,7 +367,7 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.paginationArea} {...swipePanResponder.panHandlers}>
             <Animated.View style={[styles.regionsList, { transform: [{ translateX: slideAnim }] }]}>
-              {regions.filter(r => r.pageIndex === currentPage - 1).map(region => {
+              {(regions || []).filter(r => r.pageIndex === currentPage - 1).map(region => {
                 const weather = regionsWeather[region.id];
                 return (
                   <TouchableOpacity 
@@ -447,7 +447,7 @@ const HomeScreen = ({ navigation }) => {
                 );
               })}
               
-              {regions.filter(r => r.pageIndex === currentPage - 1).length < 3 && (
+              {(regions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 && (
                 <TouchableOpacity style={styles.addSlotCard} onPress={() => setSearchModalVisible(true)}>
                    <View style={styles.addIconCircle}>
                       <Plus size={24} color={Colors.primary} strokeWidth={3} />
