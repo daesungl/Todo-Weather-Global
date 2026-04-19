@@ -34,7 +34,7 @@ export const saveBookmarkedRegions = async (regions) => {
 /**
  * 새로운 관심 지역을 추가합니다.
  */
-export const addRegion = async (name, address, lat, lon) => {
+export const addRegion = async (name, address, lat, lon, pageIndex = 0) => {
   const regions = await getBookmarkedRegions();
   const newRegion = {
     id: Date.now().toString(),
@@ -42,6 +42,7 @@ export const addRegion = async (name, address, lat, lon) => {
     address,
     lat,
     lon,
+    pageIndex,
   };
   const updated = [...regions, newRegion];
   await saveBookmarkedRegions(updated);

@@ -8,7 +8,7 @@ import { Sun, CheckCircle2, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, 
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import { getWeather } from '../services/weather/WeatherService';
-import { getBookmarkedRegions, removeRegion, addRegion } from '../services/weather/RegionService';
+import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
 
@@ -117,21 +117,34 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  const fetchRegionWeather = async (region) => {
+    try {
+      const w = await getWeather(region.lat, region.lon, false, region.id, region.address);
+      setRegionsWeather(prev => ({ ...prev, [region.id]: w }));
+    } catch (e) {
+      console.error(`Failed to fetch weather for ${region.name}`, e);
+    }
+  };
+
   const loadRegions = async () => {
     try {
       const saved = await getBookmarkedRegions();
-      setRegions(saved);
       
-      const weatherMap = {};
-      for (const region of saved) {
-        try {
-          const w = await getWeather(region.lat, region.lon, false, region.id, region.address);
-          weatherMap[region.id] = w;
-        } catch (e) {
-          console.error(`Failed to fetch weather for ${region.name}`, e);
+      let migrated = false;
+      const processedData = saved.map((r, idx) => {
+        if (r.pageIndex === undefined) {
+          migrated = true;
+          return { ...r, pageIndex: Math.floor(idx / 3) };
         }
+        return r;
+      });
+      
+      if (migrated) {
+        await saveBookmarkedRegions(processedData);
       }
-      setRegionsWeather(prev => ({ ...prev, ...weatherMap }));
+      
+      setRegions(processedData);
+      processedData.forEach(region => fetchRegionWeather(region));
     } catch (err) {
       console.error('loadRegions Error:', err);
     }
@@ -147,22 +160,31 @@ const HomeScreen = ({ navigation }) => {
           text: t('common.delete', '삭제'), 
           style: 'destructive',
           onPress: async () => {
-            const updated = await removeRegion(id);
-            setRegions(updated);
-            loadRegions();
+             const updated = await removeRegion(id);
+             setRegions(updated);
           }
         }
       ]
     );
   };
 
-  const handleAddRegion = async (place) => {
-    const updated = await addRegion(place.name, place.address, place.lat, place.lon);
+  const handleAddRegion = async (item) => {
+    // Check if the current page has space (limit 3)
+    const pageIndex = currentPage - 1;
+    const pageRegionsCount = regions.filter(r => r.pageIndex === pageIndex).length;
+    
+    if (pageRegionsCount >= 3) {
+      Alert.alert(t('common.info', '알림'), t('home.region_limit_guide', '한 페이지당 최대 3개의 지역만 추가할 수 있습니다.'));
+      return;
+    }
+
+    const updated = await addRegion(item.name, item.address, item.lat, item.lon, pageIndex);
     setRegions(updated);
+    const newest = updated[updated.length - 1];
+    fetchRegionWeather(newest);
     setSearchModalVisible(false);
     setSearchQuery('');
     setSearchResults([]);
-    loadRegions();
   };
 
   const renderWeatherIcon = (key, size = 64, color = Colors.primary) => {
@@ -278,7 +300,7 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.paginationArea}>
             <View style={styles.regionsList}>
-              {regions.slice((currentPage - 1) * 5, currentPage * 5).map(region => {
+              {regions.filter(r => r.pageIndex === currentPage - 1).map(region => {
                 const weather = regionsWeather[region.id];
                 return (
                   <TouchableOpacity 
@@ -358,7 +380,7 @@ const HomeScreen = ({ navigation }) => {
                 );
               })}
               
-              {regions.length < (currentPage * 5) && (
+              {regions.filter(r => r.pageIndex === currentPage - 1).length < 3 && (
                 <TouchableOpacity style={styles.addSlotCard} onPress={() => setSearchModalVisible(true)}>
                    <View style={styles.addIconCircle}>
                       <Plus size={24} color={Colors.primary} strokeWidth={3} />
@@ -370,7 +392,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.pageIndicator}>
-           {[1, 2, 3].map(num => (
+           {[1, 2, 3, 4, 5].map(num => (
              <TouchableOpacity 
                key={num} 
                onPress={() => setCurrentPage(num)} 
