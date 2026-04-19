@@ -272,6 +272,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const renderHourlyIcon = (condKey, isDay = true) => {
     const size = 20;
     const isNight = isDay === false || condKey === 'clear-night';
+    const moonColor = "#A1C9FF"; // 푸르스름한 달빛 색상
 
     switch (condKey) {
       case 'rainy':
@@ -294,9 +295,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             {!isNight ? (
               <Sun size={size * 0.8} color="#FFD700" strokeWidth={2.5} />
             ) : (
-              <Moon size={size * 0.75} color="#FFD700" fill="#FFD700" strokeWidth={2.2} />
+              <Moon size={size * 0.75} color={moonColor} fill={moonColor} strokeWidth={2.2} />
             )}
-            <Cloud size={size * 0.5} color="#cfd8dc" style={{ position: 'absolute', bottom: -2, right: -2 }} />
+            <Cloud size={size * 0.9} color="#CFD8DC" strokeWidth={1.8} style={{ position: 'absolute', bottom: -6, right: -8 }} />
           </View>
         );
       case 'sunny':
@@ -304,13 +305,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         return !isNight ? (
           <Sun size={size} color="#FFD700" strokeWidth={2.5} />
         ) : (
-          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={2.2} />
+          <Moon size={size} color={moonColor} fill={moonColor} strokeWidth={2.2} />
         );
       default:
         return !isNight ? (
           <Sun size={size} color="#FFD700" strokeWidth={2.5} />
         ) : (
-          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={2.2} />
+          <Moon size={size} color={moonColor} fill={moonColor} strokeWidth={2.2} />
         );
     }
   };
@@ -453,9 +454,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     );
   };
 
-  const renderWeatherIcon = (condKey, size = 80, strokeWidth = 2, customStyle = null) => {
+  const renderWeatherIcon = (condKey, size = 80, strokeWidth = 2, customStyle = null, forceDay = false) => {
     const style = customStyle || styles.heroIconTop;
-    const isDay = weatherData.isDay !== undefined ? weatherData.isDay : true; // 기본값 낮
+    const isDay = forceDay ? true : (weatherData.isDay !== undefined ? weatherData.isDay : true);
+    const moonColor = "#A1C9FF"; // 푸르스름한 달빛 색상
 
     switch (condKey) {
       case 'rainy':
@@ -478,9 +480,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             {isDay ? (
               <Sun size={size * 0.8} color="#FFD700" strokeWidth={strokeWidth} />
             ) : (
-              <Moon size={size * 0.75} color="#FFD700" fill="#FFD700" strokeWidth={strokeWidth} />
+              <Moon size={size * 0.75} color={moonColor} fill={moonColor} strokeWidth={strokeWidth} />
             )}
-            <Cloud size={size * 0.5} color="#cfd8dc" style={{ position: 'absolute', bottom: size * 0.06, right: -size * 0.06 }} />
+            <Cloud size={size * 0.9} color="#CFD8DC" strokeWidth={strokeWidth} style={{ position: 'absolute', bottom: -size * 0.25, right: -size * 0.35 }} />
           </View>
         );
       case 'sunny':
@@ -488,13 +490,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         return isDay ? (
           <Sun size={size} color="#FFD700" strokeWidth={strokeWidth} style={style} />
         ) : (
-          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={strokeWidth} style={style} />
+          <Moon size={size} color={moonColor} fill={moonColor} strokeWidth={strokeWidth} style={style} />
         );
       default:
         return isDay ? (
           <Sun size={size} color="#FFD700" strokeWidth={strokeWidth} style={style} />
         ) : (
-          <Moon size={size} color="#FFD700" fill="#FFD700" strokeWidth={strokeWidth} style={style} />
+          <Moon size={size} color={moonColor} fill={moonColor} strokeWidth={strokeWidth} style={style} />
         );
     }
   };
@@ -615,8 +617,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                 <Text style={styles.dailyDay}>{item.day}</Text>
                 <Text style={styles.dailyDate}>{item.date}</Text>
               </View>
-              <View style={styles.dayHalf}>{renderWeatherIcon(item.amCond, 24, 2.5, {})}<Text style={styles.popText}>{item.amPop}</Text></View>
-              <View style={styles.dayHalf}>{renderWeatherIcon(item.pmCond, 24, 2.5, {})}<Text style={styles.popText}>{item.pmPop}</Text></View>
+              <View style={styles.dayHalf}>{renderWeatherIcon(item.amCond, 24, 2.5, {}, true)}<Text style={styles.popText}>{item.amPop}</Text></View>
+              <View style={styles.dayHalf}>{renderWeatherIcon(item.pmCond, 24, 2.5, {}, true)}<Text style={styles.popText}>{item.pmPop}</Text></View>
               <View style={styles.rangeContainer}><Text style={styles.dailyLow}>{`${item.low}°`}</Text><TempRangeBar low={item.low} high={item.high} /><Text style={styles.dailyHigh}>{`${item.high}°`}</Text></View>
             </View>
           ))}
