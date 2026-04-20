@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as Haptics from 'expo-haptics';
-import { 
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, 
-  Alert, Modal, TextInput, ActivityIndicator, Animated, Platform, FlatList 
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions,
+  Alert, Modal, TextInput, ActivityIndicator, Animated, Platform, FlatList,
+  Keyboard
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -42,6 +43,8 @@ const TasksScreen = ({ navigation }) => {
   const lastTickMonthIndex = useRef(-1);
   const yearListRef = useRef(null);
   const monthListRef = useRef(null);
+  const titleInputRef = useRef(null);
+  const modalScrollRef = useRef(null);
 
   // New Task State
   const [newTitle, setNewTitle] = useState('');
@@ -460,47 +463,70 @@ const TasksScreen = ({ navigation }) => {
       </Modal>
 
       {/* Add Task Modal */}
-      <Modal visible={isAdding} animationType="slide" transparent={true} onRequestClose={() => setIsAdding(false)}>
-        <View style={styles.modalBg}>
-          <View style={styles.modalContent}>
-             <View style={styles.modalHeader}>
-               <Text style={styles.modalTitle}>{t('tasks.add_new', 'Add Task')}</Text>
-               <TouchableOpacity onPress={() => setIsAdding(false)}><X size={24} color={Colors.text} /></TouchableOpacity>
-             </View>
-             <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
-                <Text style={styles.inputLabel}>{t('tasks.title', 'Title')}</Text>
-                <TextInput style={styles.textInput} placeholder={t('tasks.placeholder', 'What needs to be done?')} value={newTitle} onChangeText={setNewTitle} autoFocus />
-                <View style={styles.inputGrid}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>{t('tasks.time', 'Time')}</Text>
-                    <TextInput style={styles.textInput} value={newTime} onChangeText={setNewTime} placeholder="09:00" />
+      <Modal
+        visible={isAdding}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsAdding(false)}
+        onShow={() => {
+          modalScrollRef.current?.scrollTo({ y: 0, animated: false });
+          setTimeout(() => titleInputRef.current?.focus(), 150);
+        }}
+      >
+          <View style={styles.modalBg}>
+            <View style={styles.modalContent}>
+               <View style={styles.modalHeader}>
+                 <Text style={styles.modalTitle}>{t('tasks.add_new', 'Add Task')}</Text>
+                 <TouchableOpacity onPress={() => { Keyboard.dismiss(); setIsAdding(false); }}><X size={24} color={Colors.text} /></TouchableOpacity>
+               </View>
+               <ScrollView
+                 ref={modalScrollRef}
+                 style={styles.modalForm}
+                 showsVerticalScrollIndicator={false}
+                 keyboardShouldPersistTaps="handled"
+                 contentContainerStyle={{ paddingBottom: 360 }}
+               >
+                  <Text style={styles.inputLabel}>{t('tasks.title', 'Title')}</Text>
+                  <TextInput
+                    ref={titleInputRef}
+                    style={styles.textInput}
+                    placeholder={t('tasks.placeholder', 'What needs to be done?')}
+                    value={newTitle}
+                    onChangeText={setNewTitle}
+                    returnKeyType="done"
+                    onSubmitEditing={() => Keyboard.dismiss()}
+                  />
+                  <View style={styles.inputGrid}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>{t('tasks.time', 'Time')}</Text>
+                      <TextInput style={styles.textInput} value={newTime} onChangeText={setNewTime} placeholder="09:00" />
+                    </View>
+                    <View style={{ width: Spacing.md }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>{t('tasks.date', 'Date')}</Text>
+                      <View style={[styles.textInput, styles.disabledInput]}><Text style={{ color: Colors.textSecondary }}>{dateStr(selectedDate)}</Text></View>
+                    </View>
                   </View>
-                  <View style={{ width: Spacing.md }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>{t('tasks.date', 'Date')}</Text>
-                    <View style={[styles.textInput, styles.disabledInput]}><Text style={{ color: Colors.textSecondary }}>{dateStr(selectedDate)}</Text></View>
+                  <Text style={styles.inputLabel}>{t('tasks.location', 'Location')}</Text>
+                  <View style={styles.searchBox}>
+                    <TextInput style={styles.searchField} placeholder={t('tasks.loc_placeholder', 'Optional: Cafe, Park...')} value={newLocName} onChangeText={setNewLocName} />
+                    <TouchableOpacity onPress={() => setSearchMode('location')}><Search size={20} color={Colors.primary} /></TouchableOpacity>
                   </View>
-                </View>
-                <Text style={styles.inputLabel}>{t('tasks.location', 'Location')}</Text>
-                <View style={styles.searchBox}>
-                  <TextInput style={styles.searchField} placeholder={t('tasks.loc_placeholder', 'Optional: Cafe, Park...')} value={newLocName} onChangeText={setNewLocName} />
-                  <TouchableOpacity onPress={() => setSearchMode('location')}><Search size={20} color={Colors.primary} /></TouchableOpacity>
-                </View>
-                <Text style={styles.inputLabel}>{t('tasks.weather_loc', 'Weather Region')}</Text>
-                <TouchableOpacity style={styles.searchBox} onPress={() => setSearchMode('weather')}>
-                   <Text style={[styles.searchField, !newWeatherRegion && { color: Colors.outline }]}>{newWeatherRegion ? newWeatherRegion.name : t('tasks.weather_placeholder', 'Optional: For accurate weather')}</Text>
-                   <MapPin size={20} color={newWeatherRegion ? Colors.primary : Colors.outline} />
-                </TouchableOpacity>
-                {newWeatherRegion && (
-                  <TouchableOpacity style={styles.clearRegionBtn} onPress={() => setNewWeatherRegion(null)}>
-                    <Text style={styles.clearRegionText}>Clear Region</Text>
+                  <Text style={styles.inputLabel}>{t('tasks.weather_loc', 'Weather Region')}</Text>
+                  <TouchableOpacity style={styles.searchBox} onPress={() => setSearchMode('weather')}>
+                     <Text style={[styles.searchField, !newWeatherRegion && { color: Colors.outline }]}>{newWeatherRegion ? newWeatherRegion.name : t('tasks.weather_placeholder', 'Optional: For accurate weather')}</Text>
+                     <MapPin size={20} color={newWeatherRegion ? Colors.primary : Colors.outline} />
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.saveBtn} onPress={handleAddTask}>
-                   <Text style={styles.saveBtnText}>{t('common.save', 'Save Task')}</Text>
-                </TouchableOpacity>
-             </ScrollView>
-          </View>
+                  {newWeatherRegion && (
+                    <TouchableOpacity style={styles.clearRegionBtn} onPress={() => setNewWeatherRegion(null)}>
+                      <Text style={styles.clearRegionText}>Clear Region</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleAddTask}>
+                     <Text style={styles.saveBtnText}>{t('common.save', 'Save Task')}</Text>
+                  </TouchableOpacity>
+               </ScrollView>
+            </View>
 
           {searchMode && (
             <View style={styles.innerSearchOverlay}>
@@ -509,7 +535,7 @@ const TasksScreen = ({ navigation }) => {
                  <TextInput style={styles.innerSearchPath} placeholder={t('search.placeholder')} autoFocus value={searchQuery} onChangeText={handleSearch} />
                  <TouchableOpacity onPress={() => setSearchMode(null)}><X size={24} color={Colors.text} /></TouchableOpacity>
                </View>
-               <ScrollView style={{ flex: 1 }}>
+               <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
                   {isSearching ? <ActivityIndicator style={{ marginTop: 20 }} /> : null}
                   {searchResults.map((item, idx) => (
                     <TouchableOpacity key={idx} style={styles.searchItem} onPress={() => selectSearchResult(item)}>
@@ -521,9 +547,9 @@ const TasksScreen = ({ navigation }) => {
                     </TouchableOpacity>
                   ))}
                </ScrollView>
-            </View>
-          )}
-        </View>
+             </View>
+           )}
+         </View>
       </Modal>
 
     </View>
@@ -589,7 +615,7 @@ const styles = StyleSheet.create({
   confirmBtnText: { fontSize: 15, fontWeight: '700', color: 'white' },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: height * 0.85, padding: Spacing.xl },
+  modalContent: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: height * 0.88, padding: Spacing.xl },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },
   modalTitle: { fontSize: 22, fontWeight: '800', color: Colors.text },
   modalForm: { flex: 1 },
