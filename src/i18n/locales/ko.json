@@ -11,7 +11,11 @@
     "confirm": "확인",
     "cancel": "취소",
     "delete": "삭제",
-    "info": "알림"
+    "info": "알림",
+    "close": "닫기",
+    "done": "완료",
+    "save": "저장",
+    "tip": "팁"
   },
   "home": {
     "interest_regions": "날씨 관심 지역",
@@ -75,5 +79,21 @@
     "placeholder": "장소 검색 (예: 인천공항)",
     "guide": "추가할 지역을 검색하세요.",
     "no_results": "검색 결과가 없습니다."
+  },
+  "tasks": {
+    "placeholder": "제목",
+    "all_day": "종일",
+    "start": "시작",
+    "end": "종료",
+    "loc_placeholder": "위치 정보",
+    "weather_loc": "날씨 기준 지역",
+    "memo_placeholder": "메모",
+    "edit_task": "일정 편집",
+    "add_new": "일정 추가",
+    "select_color": "라벨 선택",
+    "enter_title": "제목을 입력해주세요",
+    "empty": "예정된 일정이 없습니다.",
+    "holiday_settings": "공휴일 설정",
+    "holiday_guide": "달력에 표시할 국가를 선택하세요"
   }
 }

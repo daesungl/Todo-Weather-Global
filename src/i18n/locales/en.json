@@ -11,7 +11,11 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "delete": "Delete",
-    "info": "Info"
+    "info": "Info",
+    "close": "Close",
+    "done": "Done",
+    "save": "Save",
+    "tip": "Tip"
   },
   "home": {
     "interest_regions": "Interest Regions",
@@ -75,5 +79,21 @@
     "placeholder": "Search places (e.g. London)",
     "guide": "Search for a region to add.",
     "no_results": "No results found."
+  },
+  "tasks": {
+    "placeholder": "Title",
+    "all_day": "All Day",
+    "start": "Start",
+    "end": "End",
+    "loc_placeholder": "Location",
+    "weather_loc": "Weather Region",
+    "memo_placeholder": "Memo",
+    "edit_task": "Edit Task",
+    "add_new": "Add Task",
+    "select_color": "Select Label",
+    "enter_title": "Please enter a title",
+    "empty": "No tasks scheduled.",
+    "holiday_settings": "Holiday Settings",
+    "holiday_guide": "Select countries to show public holidays"
   }
 }
