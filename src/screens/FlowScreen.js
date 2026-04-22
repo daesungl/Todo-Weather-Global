@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, Plus, Sun, Cloud, MapPin, CheckCircle2, Compass } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
+import MenuModal from '../components/MenuModal';
+import MainHeader from '../components/MainHeader';
 
 const { width } = Dimensions.get('window');
 
 const FlowScreen = ({ navigation }) => {
   const { t } = useTranslation();
+  const [menuVisible, setMenuVisible] = useState(false);
 
   const flowSteps = [
     {
@@ -33,13 +36,7 @@ const FlowScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
-      <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => navigation.navigate('Weather')} style={styles.backButton}>
-          <ChevronLeft size={28} color={Colors.text} />
-        </TouchableOpacity>
-        <Text style={Typography.label}>Organic Flow</Text>
-        <View style={{ width: 28 }} />
-      </View>
+      <MainHeader onMenuPress={() => setMenuVisible(true)} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.titleSection}>
@@ -96,6 +93,11 @@ const FlowScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
+      <MenuModal 
+        visible={menuVisible} 
+        onClose={() => setMenuVisible(false)} 
+        onReset={() => {}} 
+      />
     </View>
   );
 };

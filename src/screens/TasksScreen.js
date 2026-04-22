@@ -19,6 +19,8 @@ import { getTasks, addTask, toggleTaskCompletion, deleteTask, updateTask } from 
 import { getWeather } from '../services/weather/WeatherService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
+import MenuModal from '../components/MenuModal';
+import MainHeader from '../components/MainHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
@@ -64,6 +66,176 @@ const getDateFromIndex = (index) => {
   return date;
 };
 
+const dateStr = (date) => date.toISOString().split('T')[0];
+const isSameDay = (d1, d2) => dateStr(d1) === dateStr(d2);
+
+const getMonthDays = (baseDate) => {
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+
+  const days = [];
+  const startPadding = firstDay.getDay(); // 0 (Sun) ~ 6 (Sat)
+  const prevMonthLastDay = new Date(year, month, 0).getDate();
+  for (let i = startPadding - 1; i >= 0; i--) {
+    days.push({ date: new Date(year, month - 1, prevMonthLastDay - i), current: false });
+  }
+  for (let i = 1; i <= lastDay.getDate(); i++) {
+    days.push({ date: new Date(year, month, i), current: true });
+  }
+  
+  // Fill until the end of the last week that has current month days
+  const totalDays = Math.ceil(days.length / 7) * 7;
+  const nextPadding = totalDays - days.length;
+  for (let i = 1; i <= nextPadding; i++) {
+    days.push({ date: new Date(year, month + 1, i), current: false });
+  }
+  return days;
+};
+
+const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDayPress }) => {
+  const baseDate = React.useMemo(() => getDateFromIndex(index), [index]);
+  const days = React.useMemo(() => getMonthDays(baseDate), [baseDate]);
+  
+  const { monthTasks, taskSlots } = React.useMemo(() => {
+    const mTasks = (tasks || []).filter(t => {
+      if (t.isCompleted) return false;
+      const monthStart = dateStr(days[0].date);
+      const monthEnd = dateStr(days[days.length - 1].date);
+      return t.date <= monthEnd && (t.endDate || t.date) >= monthStart;
+    }).sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      const durA = new Date(a.endDate || a.date) - new Date(a.date);
+      const durB = new Date(b.endDate || b.date) - new Date(b.date);
+      return durB - durA;
+    });
+
+    const slots = {};
+    const occ = Array.from({ length: days.length }, () => []);
+
+    mTasks.forEach(task => {
+      const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
+      const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
+      const effectiveStart = startIdx === -1 ? 0 : startIdx;
+      const effectiveEnd = endIdx === -1 ? days.length - 1 : endIdx;
+
+      let slot = 0;
+      while (slot < 4) {
+        let available = true;
+        for (let i = effectiveStart; i <= effectiveEnd; i++) {
+          if (occ[i].includes(slot)) {
+            available = false;
+            break;
+          }
+        }
+        if (available) break;
+        slot++;
+      }
+      
+      if (slot < 4) {
+        slots[task.id] = slot;
+        for (let i = effectiveStart; i <= effectiveEnd; i++) {
+          occ[i].push(slot);
+        }
+      }
+    });
+    
+    return { monthTasks: mTasks, taskSlots: slots };
+  }, [tasks, days]);
+
+  const todayStr = React.useMemo(() => dateStr(new Date()), []);
+
+  return (
+    <View style={[styles.monthGrid, { width: width - Spacing.lg * 2 }]}>
+      {days.map((day, i) => {
+        const ds = dateStr(day.date);
+        const isSelected = ds === selectedDateStr;
+        const isToday = ds === todayStr;
+        const dayTasks = monthTasks.filter(t => ds >= t.date && ds <= (t.endDate || t.date));
+
+        return (
+          <TouchableOpacity
+            key={i}
+            style={[
+              styles.dayCellMonth,
+              isSelected && { backgroundColor: '#F1F5F9' }
+            ]}
+            onPress={() => onDayPress(day.date, isSelected)}
+          >
+            <View style={styles.dayCellTop}>
+              <View style={[
+                styles.dayNumContainer,
+                isToday && styles.todayCircle
+              ]}>
+                <Text style={[
+                  styles.dayNum,
+                  !day.current && { color: Colors.outlineVariant },
+                  isToday && styles.todayText,
+                  (!isToday && (isPublicHoliday(ds, holidaysMap) || day.date.getDay() === 0)) && { color: Colors.error },
+                  (!isToday && day.date.getDay() === 6) && { color: Colors.secondary }
+                ]}>{day.date.getDate()}</Text>
+              </View>
+            </View>
+            <View style={styles.calendarSlotContainer}>
+              {dayTasks.length <= 4 ? (
+                [0, 1, 2, 3].map(slotIdx => {
+                  const taskInSlot = dayTasks.find(t => taskSlots[t.id] === slotIdx);
+                  if (!taskInSlot) return <View key={slotIdx} style={styles.emptySlotRow} />;
+                  const isStart = ds === taskInSlot.date;
+                  const isEnd = ds === (taskInSlot.endDate || taskInSlot.date);
+                  const col = taskInSlot.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === taskInSlot.id) % TASK_COLORS.length];
+                  return (
+                    <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + (taskInSlot.isCompleted ? '40' : 'CC') }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
+                      {(isStart || (i % 7 === 0)) && <Text style={styles.calendarBarText} numberOfLines={1}>{taskInSlot.title}</Text>}
+                    </View>
+                  );
+                })
+              ) : (
+                <>
+                  {[0, 1, 2].map(slotIdx => {
+                    const taskInSlot = dayTasks.find(t => taskSlots[t.id] === slotIdx);
+                    if (!taskInSlot) return <View key={slotIdx} style={styles.emptySlotRow} />;
+                    const isStart = ds === taskInSlot.date;
+                    const isEnd = ds === (taskInSlot.endDate || taskInSlot.date);
+                    const col = taskInSlot.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === taskInSlot.id) % TASK_COLORS.length];
+                    return (
+                      <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + (taskInSlot.isCompleted ? '40' : 'CC') }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
+                        {(isStart || (i % 7 === 0)) && <Text style={styles.calendarBarText} numberOfLines={1}>{taskInSlot.title}</Text>}
+                      </View>
+                    );
+                  })}
+                  <View style={styles.moreTasksRow}>
+                    <Text style={styles.moreTasksText}>+{dayTasks.length - 3}</Text>
+                  </View>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}, (prev, next) => {
+  if (prev.tasks !== next.tasks) return false;
+  if (prev.holidaysMap !== next.holidaysMap) return false;
+  if (prev.index !== next.index) return false;
+  if (prev.selectedDateStr !== next.selectedDateStr) {
+    const baseDate = getDateFromIndex(prev.index);
+    const mYear = baseDate.getFullYear();
+    const mMonth = baseDate.getMonth();
+    
+    const pDate = new Date(prev.selectedDateStr);
+    const nDate = new Date(next.selectedDateStr);
+    
+    const diffPrev = (pDate.getFullYear() - mYear) * 12 + (pDate.getMonth() - mMonth);
+    const diffNext = (nDate.getFullYear() - mYear) * 12 + (nDate.getMonth() - mMonth);
+    
+    if (Math.abs(diffPrev) <= 1 || Math.abs(diffNext) <= 1) return false;
+  }
+  return true;
+});
+
 const TasksScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
   const isKorean = i18n.language === 'ko';
@@ -72,6 +244,7 @@ const TasksScreen = ({ navigation }) => {
   const [tasks, setTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('month'); // 기본값 'month'로 변경
+  const [menuVisible, setMenuVisible] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
   const [isTaskListVisible, setIsTaskListVisible] = useState(false);
@@ -214,13 +387,10 @@ const TasksScreen = ({ navigation }) => {
   };
 
   // Calendar Logic
-  const dateStr = (date) => date.toISOString().split('T')[0];
-  const isSameDay = (d1, d2) => dateStr(d1) === dateStr(d2);
-
   const weekDays = useMemo(() => {
     const start = new Date(selectedDate);
     const day = selectedDate.getDay();
-    const diff = selectedDate.getDate() - day + (day === 0 ? -6 : 1);
+    const diff = selectedDate.getDate() - day; // Start from Sunday
     start.setDate(diff);
 
     const days = [];
@@ -231,29 +401,6 @@ const TasksScreen = ({ navigation }) => {
     }
     return days;
   }, [selectedDate]);
-
-  const getMonthDays = (baseDate) => {
-    const year = baseDate.getFullYear();
-    const month = baseDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-
-    const days = [];
-    const startPadding = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-    const prevMonthLastDay = new Date(year, month, 0).getDate();
-    for (let i = startPadding - 1; i >= 0; i--) {
-      days.push({ date: new Date(year, month - 1, prevMonthLastDay - i), current: false });
-    }
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-      days.push({ date: new Date(year, month, i), current: true });
-    }
-    const totalDays = 42;
-    const nextPadding = totalDays - days.length;
-    for (let i = 1; i <= nextPadding; i++) {
-      days.push({ date: new Date(year, month + 1, i), current: false });
-    }
-    return days;
-  };
 
   const monthGridData = useMemo(() => {
     // We only need a few months for performance if we use FlatList properly, 
@@ -296,22 +443,7 @@ const TasksScreen = ({ navigation }) => {
     setIsPickerVisible(false);
   };
 
-  const handleDayPress = (date) => {
-    setSelectedDate(date);
-    setTaskDate(date);
-    
-    // 할 일이 있는 날짜인지 확인
-    const ds = dateStr(date);
-    const dayTasks = (tasks || []).filter(t => {
-      const start = t.date;
-      const end = t.endDate || t.date;
-      return ds >= start && ds <= end;
-    });
 
-    if (dayTasks.length > 0) {
-      setIsTaskListVisible(true);
-    }
-  };
 
   const closeAllPickers = () => {
     setShowDatePicker(false);
@@ -429,6 +561,27 @@ const TasksScreen = ({ navigation }) => {
     ]);
   };
 
+  const handleDayPress = React.useCallback((date, isSelected) => {
+    if (isSelected) {
+      setIsTaskListVisible(true);
+    } else {
+      setSelectedDate(date);
+      setTaskDate(date);
+    }
+  }, []);
+
+  const renderCalendarItem = React.useCallback(({ item: index }) => {
+    return (
+      <MonthGrid
+        index={index}
+        tasks={tasks}
+        selectedDateStr={dateStr(selectedDate)}
+        holidaysMap={holidaysMap}
+        onDayPress={handleDayPress}
+      />
+    );
+  }, [tasks, selectedDate, holidaysMap, handleDayPress]);
+
   const handleSearch = async (val) => {
     setSearchQuery(val);
     if (val.length < 2) {
@@ -465,9 +618,10 @@ const TasksScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
+      <MainHeader onMenuPress={() => setMenuVisible(true)} />
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: Constants.statusBarHeight + Spacing.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: Spacing.md }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header Content */}
@@ -500,7 +654,7 @@ const TasksScreen = ({ navigation }) => {
 
         <View style={styles.calendarArea}>
           <View style={styles.weekdayLabels}>
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
               <Text key={d} style={styles.weekdayText}>{d}</Text>
             ))}
           </View>
@@ -534,16 +688,15 @@ const TasksScreen = ({ navigation }) => {
               keyExtractor={item => item.toString()}
               initialScrollIndex={getMonthIndex(selectedDate)}
               getItemLayout={(_, index) => ({
-                length: width - Spacing.lg * 4,
-                offset: (width - Spacing.lg * 4) * index,
+                length: width - Spacing.lg * 2,
+                offset: (width - Spacing.lg * 2) * index,
                 index,
               })}
               onMomentumScrollBegin={() => { isScrollingRef.current = true; }}
               onMomentumScrollEnd={(e) => {
-                const index = Math.round(e.nativeEvent.contentOffset.x / (width - Spacing.lg * 4));
+                const index = Math.round(e.nativeEvent.contentOffset.x / (width - Spacing.lg * 2));
                 const newBaseDate = getDateFromIndex(index);
                 
-                // If the month changed, update selectedDate to the 1st of that month or keep the same day
                 if (newBaseDate.getMonth() !== selectedDate.getMonth() || newBaseDate.getFullYear() !== selectedDate.getFullYear()) {
                   const targetDay = Math.min(selectedDate.getDate(), new Date(newBaseDate.getFullYear(), newBaseDate.getMonth() + 1, 0).getDate());
                   const finalDate = new Date(newBaseDate.getFullYear(), newBaseDate.getMonth(), targetDay);
@@ -552,99 +705,7 @@ const TasksScreen = ({ navigation }) => {
                 }
                 isScrollingRef.current = false;
               }}
-              renderItem={({ item: index }) => {
-                const baseDate = getDateFromIndex(index);
-                const days = getMonthDays(baseDate);
-                
-                // Calculate slots for this month view (42 days)
-                // Filter out completed tasks so they don't consume slot space
-                const monthTasks = (tasks || []).filter(t => {
-                  if (t.isCompleted) return false;
-                  const monthStart = dateStr(days[0].date);
-                  const monthEnd = dateStr(days[days.length - 1].date);
-                  return t.date <= monthEnd && (t.endDate || t.date) >= monthStart;
-                }).sort((a, b) => {
-                  if (a.date !== b.date) return a.date.localeCompare(b.date);
-                  const durA = new Date(a.endDate || a.date) - new Date(a.date);
-                  const durB = new Date(b.endDate || b.date) - new Date(b.date);
-                  return durB - durA; // Longer tasks first
-                });
-
-                const taskSlots = {};
-                const occupied = Array.from({ length: 42 }, () => []); // occupied[dayIndex] = [slot0, slot1, ...]
-
-                monthTasks.forEach(task => {
-                  const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
-                  const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
-                  
-                  const effectiveStart = startIdx === -1 ? 0 : startIdx;
-                  const effectiveEnd = endIdx === -1 ? 41 : endIdx;
-
-                  let slot = 0;
-                  while (slot < 5) {
-                    let available = true;
-                    for (let i = effectiveStart; i <= effectiveEnd; i++) {
-                      if (occupied[i].includes(slot)) {
-                        available = false;
-                        break;
-                      }
-                    }
-                    if (available) break;
-                    slot++;
-                  }
-                  
-                  if (slot < 5) {
-                    taskSlots[task.id] = slot;
-                    for (let i = effectiveStart; i <= effectiveEnd; i++) {
-                      occupied[i].push(slot);
-                    }
-                  }
-                });
-
-                return (
-                  <View style={[styles.monthGrid, { width: width - Spacing.lg * 4 }]}>
-                    {days.map((day, i) => {
-                      const isSelected = isSameDay(day.date, selectedDate);
-                      const isToday = isSameDay(day.date, new Date());
-                      const ds = dateStr(day.date);
-                      const dayTasks = (tasks || []).filter(t => !t.isCompleted && ds >= t.date && ds <= (t.endDate || t.date));
-
-                      return (
-                        <TouchableOpacity
-                          key={i}
-                          style={[styles.dayCellMonth, isSelected && styles.activeCell, !day.current && { opacity: 0.3 }]}
-                          onPress={() => handleDayPress(day.date)}
-                        >
-                          <View style={styles.dayCellTop}>
-                            <Text style={[
-                              styles.dayNum, 
-                              isSelected && styles.activeText, 
-                              isToday && !isSelected && { color: Colors.primary },
-                              (isPublicHoliday(ds, holidaysMap) || day.date.getDay() === 0) && { color: Colors.error }
-                            ]}>
-                              {day.date.getDate()}
-                            </Text>
-                          </View>
-                          <View style={styles.calendarSlotContainer}>
-                            {[0, 1, 2, 3, 4].map(slotIdx => {
-                              const taskInSlot = dayTasks.find(t => taskSlots[t.id] === slotIdx);
-                              if (!taskInSlot) return <View key={slotIdx} style={styles.emptySlotRow} />;
-                              const isStart = ds === taskInSlot.date;
-                              const isEnd = ds === (taskInSlot.endDate || taskInSlot.date);
-                              const col = taskInSlot.color || TASK_COLORS[tasks.findIndex(gt => gt.id === taskInSlot.id) % TASK_COLORS.length];
-                              return (
-                                <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + (taskInSlot.isCompleted ? '40' : 'CC') }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
-                                  {(isStart || (i % 7 === 0)) && <Text style={styles.calendarBarText} numberOfLines={1}>{taskInSlot.title}</Text>}
-                                </View>
-                              );
-                            })}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                );
-              }}
+              renderItem={renderCalendarItem}
             />
           )}
         </View>
@@ -731,18 +792,18 @@ const TasksScreen = ({ navigation }) => {
                   })}
                 </View>
               )}
-              
-              <TouchableOpacity 
-                style={styles.sheetAddBtn} 
-                onPress={() => {
-                  setIsTaskListVisible(false);
-                  openAddModal();
-                }}
-              >
-                <Plus size={20} color="white" strokeWidth={3} />
-                <Text style={styles.sheetAddBtnText}>Add New Task</Text>
-              </TouchableOpacity>
             </ScrollView>
+
+            <TouchableOpacity 
+              style={styles.sheetAddBtn} 
+              onPress={() => {
+                setIsTaskListVisible(false);
+                openAddModal();
+              }}
+            >
+              <Plus size={20} color="white" strokeWidth={3} />
+              <Text style={styles.sheetAddBtnText}>Add New Task</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1118,102 +1179,114 @@ const TasksScreen = ({ navigation }) => {
       <Modal
         visible={showHolidaySettings}
         animationType="slide"
+        transparent={true}
         onRequestClose={() => { setShowHolidaySettings(false); setCountrySearch(''); }}
       >
-        <View style={styles.innerSearchOverlay}>
-          <View style={styles.searchHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: Colors.text }}>{t('tasks.holiday_settings', 'Holiday Settings')}</Text>
-              <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{t('tasks.holiday_guide', 'Select countries to show public holidays')}</Text>
-            </View>
-          </View>
-
-          <View style={[styles.searchBox, { marginTop: 16, marginHorizontal: 0 }]}>
-            <Search size={18} color={Colors.outline} style={{ marginRight: 8 }} />
-            <TextInput 
-              style={styles.searchField} 
-              placeholder="Search country (e.g. Korea, United States)" 
-              value={countrySearch}
-              onChangeText={setCountrySearch}
-            />
-            {countrySearch.length > 0 && (
-              <TouchableOpacity onPress={() => setCountrySearch('')}>
-                <X size={16} color={Colors.outline} />
+        <View style={styles.modalBg}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>{t('tasks.holiday_settings', 'Holiday Settings')}</Text>
+                <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{t('tasks.holiday_guide', 'Select countries to show public holidays')}</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setShowHolidaySettings(false); setCountrySearch(''); }}>
+                <X size={24} color={Colors.text} />
               </TouchableOpacity>
-            )}
-          </View>
+            </View>
 
-          <View style={{ flex: 1, marginTop: 12 }}>
-            {countrySearch.length > 0 ? (
-              <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
-                <Text style={styles.sectionSmallTitle}>Search Results</Text>
-                {processedCountries
-                  .filter(c => 
-                    c.ename.toLowerCase().includes(countrySearch.toLowerCase()) || 
-                    c.code.toLowerCase().includes(countrySearch.toLowerCase()) ||
-                    (c.kname && c.kname.includes(countrySearch))
-                  )
-                  .slice(0, 15)
-                  .map((c, idx) => (
-                    <TouchableOpacity 
-                      key={idx} 
-                      style={styles.countryResultItem}
-                      onPress={() => {
-                        if (!holidayCountries.includes(c.code)) {
-                          const next = [...holidayCountries, c.code];
-                          setHolidayCountries(next);
-                          saveCountries(next);
-                        }
-                        setCountrySearch('');
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.countryResultName}>{c.displayPrimary}</Text>
-                        {c.displaySecondary ? <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{c.displaySecondary}</Text> : null}
-                      </View>
-                      <Text style={styles.countryResultCode}>{c.code}</Text>
-                      {holidayCountries.includes(c.code) && <CheckCircle2 size={18} color={Colors.primary} />}
-                    </TouchableOpacity>
-                  ))}
-              </ScrollView>
-            ) : (
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                <Text style={styles.sectionSmallTitle}>Selected Countries</Text>
-                {holidayCountries.map((code, idx) => {
-                  const country = processedCountries.find(c => c.code === code);
-                  return (
-                    <View key={idx} style={styles.selectedCountryItem}>
-                      <View>
-                        <Text style={styles.selectedCountryName}>{country?.displayPrimary || code}</Text>
-                        <Text style={styles.selectedCountryCode}>{country?.displaySecondary || country?.name || code} ({code})</Text>
-                      </View>
+            <View style={[styles.searchBox, { marginTop: 16, marginHorizontal: 0 }]}>
+              <Search size={18} color={Colors.outline} style={{ marginRight: 8 }} />
+              <TextInput 
+                style={styles.searchField} 
+                placeholder="Search country (e.g. Korea, United States)" 
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+              />
+              {countrySearch.length > 0 && (
+                <TouchableOpacity onPress={() => setCountrySearch('')}>
+                  <X size={16} color={Colors.outline} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={{ flex: 1, marginTop: 12 }}>
+              {countrySearch.length > 0 ? (
+                <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
+                  <Text style={styles.sectionSmallTitle}>Search Results</Text>
+                  {processedCountries
+                    .filter(c => 
+                      c.ename.toLowerCase().includes(countrySearch.toLowerCase()) || 
+                      c.code.toLowerCase().includes(countrySearch.toLowerCase()) ||
+                      (c.kname && c.kname.includes(countrySearch))
+                    )
+                    .slice(0, 15)
+                    .map((c, idx) => (
                       <TouchableOpacity 
-                        style={styles.countryRemoveBtn}
+                        key={idx} 
+                        style={styles.countryResultItem}
                         onPress={() => {
-                          const next = holidayCountries.filter(c => c !== code);
-                          setHolidayCountries(next);
-                          saveCountries(next);
+                          if (!holidayCountries.includes(c.code)) {
+                            const next = [...holidayCountries, c.code];
+                            setHolidayCountries(next);
+                            saveCountries(next);
+                          }
+                          setCountrySearch('');
                         }}
                       >
-                        <Trash2 size={18} color={Colors.error} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.countryResultName}>{c.displayPrimary}</Text>
+                          {c.displaySecondary ? <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{c.displaySecondary}</Text> : null}
+                        </View>
+                        <Text style={styles.countryResultCode}>{c.code}</Text>
+                        {holidayCountries.includes(c.code) && <CheckCircle2 size={18} color={Colors.primary} />}
                       </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            )}
-          </View>
-          <View style={styles.holidayFooter}>
-            <TouchableOpacity 
-              style={styles.holidayCloseBtn} 
-              onPress={() => { setShowHolidaySettings(false); setCountrySearch(''); }}
-            >
-              <Text style={styles.holidayCloseBtnText}>{t('common.close', 'Close')}</Text>
-            </TouchableOpacity>
+                    ))}
+                </ScrollView>
+              ) : (
+                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                  <Text style={styles.sectionSmallTitle}>Selected Countries</Text>
+                  {holidayCountries.map((code, idx) => {
+                    const country = processedCountries.find(c => c.code === code);
+                    return (
+                      <View key={idx} style={styles.selectedCountryItem}>
+                        <View>
+                          <Text style={styles.selectedCountryName}>{country?.displayPrimary || code}</Text>
+                          <Text style={styles.selectedCountryCode}>{country?.displaySecondary || country?.name || code} ({code})</Text>
+                        </View>
+                        <TouchableOpacity 
+                          style={styles.countryRemoveBtn}
+                          onPress={() => {
+                            const next = holidayCountries.filter(c => c !== code);
+                            setHolidayCountries(next);
+                            saveCountries(next);
+                          }}
+                        >
+                          <Trash2 size={18} color={Colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+
+            <View style={[styles.modalFooter, { paddingHorizontal: 0 }]}>
+              <TouchableOpacity 
+                style={[styles.modalSaveBtn, { flex: 1 }]} 
+                onPress={() => { setShowHolidaySettings(false); setCountrySearch(''); }}
+              >
+                <Text style={styles.saveBtnText}>{t('common.close', 'Close')}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
+      <MenuModal 
+        visible={menuVisible} 
+        onClose={() => setMenuVisible(false)} 
+        onReset={() => loadData()} 
+      />
     </View>
   );
 };
@@ -1221,29 +1294,34 @@ const TasksScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { backgroundColor: 'white', borderBottomLeftRadius: 32, borderBottomRightRadius: 32, paddingBottom: Spacing.xl, elevation: 4, zIndex: 10 },
-  monthHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.lg, marginBottom: 8 },
+  monthHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   monthSelectBtn: { flexDirection: 'row', alignItems: 'center' },
   monthText: { fontSize: 24, fontWeight: '800', color: '#1B254B' },
   viewToggleBtn: { padding: 8, backgroundColor: '#F4F7FE', borderRadius: 12 },
   viewToggleText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
-  taskCountText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', paddingHorizontal: Spacing.lg, marginBottom: Spacing.md },
-  calendarArea: { paddingHorizontal: Spacing.lg },
-  weekdayLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  weekdayText: { width: (width - Spacing.lg * 4) / 7, textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
+  taskCountText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', marginBottom: Spacing.md },
+  calendarArea: { paddingHorizontal: 0 },
+  weekdayLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 0 },
+  weekdayText: { width: (width - Spacing.lg * 2) / 7, textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
   weekStrip: { flexDirection: 'row', justifyContent: 'space-between' },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   dayCell: { width: (width - Spacing.lg * 2 - 20) / 7, height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
-  dayCellMonth: { width: (width - Spacing.lg * 4) / 7, height: 95, borderRadius: 8, marginBottom: 4, overflow: 'hidden' },
-  dayCellTop: { paddingVertical: 1, alignItems: 'center', height: 20, zIndex: 10 },
+  dayCellMonth: { width: (width - Spacing.lg * 2) / 7, height: 95, borderRadius: 8, marginBottom: 4, overflow: 'hidden' },
+  dayCellTop: { paddingVertical: 4, alignItems: 'center', height: 32, zIndex: 10 },
+  dayNumContainer: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  todayCircle: { backgroundColor: Colors.text },
+  todayText: { color: 'white' },
   dayNum: { fontSize: 13, fontWeight: '700', color: Colors.text },
 
   calendarSlotContainer: { flex: 1, paddingHorizontal: 1, gap: 1 },
-  emptySlotRow: { height: 14 },
-  calendarTaskBar: { height: 14, justifyContent: 'center', paddingHorizontal: 4 },
+  emptySlotRow: { height: 13 },
+  calendarTaskBar: { height: 13, justifyContent: 'center', paddingHorizontal: 4 },
   barStart: { borderTopLeftRadius: 4, borderBottomLeftRadius: 4, marginLeft: 2 },
   barEnd: { borderTopRightRadius: 4, borderBottomRightRadius: 4, marginRight: 2 },
   barMiddle: { marginHorizontal: 0 },
   calendarBarText: { fontSize: 9, fontWeight: '700', color: 'white' },
+  moreTasksRow: { height: 13, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
+  moreTasksText: { fontSize: 9, fontWeight: '800', color: Colors.textSecondary },
 
   scrollContent: { padding: Spacing.lg, paddingBottom: 180 },
   sectionHeader: { marginBottom: Spacing.xl },
@@ -1314,10 +1392,12 @@ const styles = StyleSheet.create({
   modalFooter: { 
     flexDirection: 'row', 
     paddingTop: 16, 
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9'
+    borderTopColor: '#F1F5F9',
+    backgroundColor: 'white',
+    paddingHorizontal: Spacing.xl,
   },
   modalCancelBtn: { 
     flex: 1, 
@@ -1403,30 +1483,30 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    height: height * 0.6,
-    paddingHorizontal: Spacing.lg,
+    height: height * 0.7,
     paddingTop: Spacing.sm,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
-  sheetHeader: { alignItems: 'center', marginBottom: Spacing.md },
+  sheetHeader: { alignItems: 'center', marginBottom: Spacing.md, paddingHorizontal: Spacing.lg },
   sheetKnob: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, marginBottom: 12 },
-  sheetTitleArea: { width: '100%', marginBottom: 0 },
+  sheetTitleArea: { width: '100%', marginBottom: 0, paddingHorizontal: Spacing.lg },
   sheetDateTitle: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase' },
   sheetSubtitle: { fontSize: 20, fontWeight: '800', color: Colors.text, marginTop: 0 },
-  sheetCloseBtn: { position: 'absolute', right: -4, top: 18, padding: 6, backgroundColor: '#F4F7FE', borderRadius: 12 },
-  sheetList: { flex: 1, marginTop: Spacing.sm },
+  sheetCloseBtn: { position: 'absolute', right: 20, top: 18, padding: 6, backgroundColor: '#F4F7FE', borderRadius: 12 },
+  sheetList: { flex: 1, marginTop: Spacing.sm, paddingHorizontal: Spacing.lg },
   sheetAddBtn: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center', 
     backgroundColor: '#111827', 
-    paddingVertical: 12, 
-    borderRadius: 16, 
-    marginTop: Spacing.lg,
+    paddingVertical: 16, 
+    borderRadius: 20, 
+    marginHorizontal: Spacing.lg,
+    marginBottom: Platform.OS === 'ios' ? 40 : 24,
+    marginTop: 12,
     gap: 8,
   },
   sheetAddBtnText: { color: 'white', fontSize: 15, fontWeight: '800' },
-  holidaySettingsBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginLeft: Spacing.lg, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: Colors.primary + '10', borderRadius: 10, marginBottom: 8 },
+  holidaySettingsBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, backgroundColor: Colors.primary + '10', borderRadius: 10, marginBottom: 8 },
   holidaySettingsText: { fontSize: 11, fontWeight: '700', color: Colors.primary, marginLeft: 6 },
   holidayHint: { fontSize: 12, color: Colors.textSecondary, marginBottom: 8 },
   holidaySection: { marginBottom: 12, gap: 8 },

@@ -18,15 +18,28 @@ export const getHolidaysForYear = (year, countries) => {
       const holidays = hd.getHolidays(year);
       
       holidays.forEach(h => {
-        // Date format: YYYY-MM-DD
-        const dateStr = h.date.split(' ')[0];
-        if (!allHolidays[dateStr]) {
-          allHolidays[dateStr] = [];
+        const dates = [];
+        if (h.start && h.end) {
+          let curr = new Date(h.start);
+          const end = new Date(h.end);
+          while (curr < end) {
+            dates.push(new Date(curr.getTime() + 12 * 3600 * 1000).toISOString().split('T')[0]);
+            curr.setDate(curr.getDate() + 1);
+          }
+        } else {
+          // Fallback if start/end are not available
+          dates.push(h.date.split(' ')[0]);
         }
-        allHolidays[dateStr].push({
-          name: h.name,
-          type: h.type,
-          country: countryCode
+
+        dates.forEach(dateStr => {
+          if (!allHolidays[dateStr]) {
+            allHolidays[dateStr] = [];
+          }
+          allHolidays[dateStr].push({
+            name: h.name,
+            type: h.type,
+            country: countryCode
+          });
         });
       });
     } catch (e) {

@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Sun, CheckCircle2, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Trash2, Search, X, Navigation, AlertTriangle, CloudSun, CloudMoon, Moon, Umbrella } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
+import MainHeader from '../components/MainHeader';
 import { getWeather } from '../services/weather/WeatherService';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
 import { searchPlaces } from '../services/weather/VWorldService';
@@ -290,13 +291,7 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.headerIcon}>
-          <Menu size={24} color={Colors.text} strokeWidth={2.5} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Todo Weather</Text>
-        <View style={styles.headerIcon} />
-      </View>
+      <MainHeader onMenuPress={() => setMenuVisible(true)} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Hero Section */}
