@@ -1,10 +1,26 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import * as Haptics from 'expo-haptics';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions,
-  Alert, Modal, TextInput, ActivityIndicator, Animated, Platform, FlatList,
-  Keyboard, Switch
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Dimensions,
+  Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  Animated,
+  Platform,
+  FlatList,
+  Keyboard,
+  Switch,
+  useWindowDimensions,
+  PanResponder,
+  KeyboardAvoidingView,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
@@ -12,7 +28,7 @@ import {
   Plus, MapPin, Clock, Calendar, ChevronLeft, ChevronRight,
   CheckCircle2, Circle, Search, X, Sun, CloudRain, Cloud,
   CloudSnow, Moon, CheckSquare, Square, Trash2, CalendarDays, Compass,
-  Pencil, AlignLeft
+  Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown
 } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import { getTasks, addTask, toggleTaskCompletion, deleteTask, updateTask } from '../services/task/TaskService';
@@ -31,6 +47,7 @@ import {
   getSupportedCountries
 } from '../services/task/HolidayService';
 
+// Moved width/height inside component for logic, but need global for styles
 const { width, height } = Dimensions.get('window');
 const YEARS = Array.from({ length: 201 }, (_, i) => 1900 + i);
 const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
@@ -205,7 +222,7 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
             key={i}
             style={[
               styles.dayCellMonth,
-              isSelected && { backgroundColor: '#F1F5F9' }
+              isSelected && { backgroundColor: '#E2E8F0' }
             ]}
             onPress={() => onDayPress(day.date, isSelected)}
           >
@@ -288,6 +305,36 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
   return true;
 });
 
+// Toast item — animation starts after mount so native driver works correctly
+const ToastItem = React.memo(({ toast, bottom, onDone, styles }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(2000),
+      Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+    ]);
+    anim.start(() => onDone(toast.id));
+    return () => anim.stop();
+  }, []);
+
+  useEffect(() => {
+    Animated.timing(translateY, {
+      toValue: toast.targetY,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [toast.targetY]);
+
+  return (
+    <Animated.View style={[styles.toastContainer, { opacity, transform: [{ translateY }], bottom }]}>
+      <Text style={styles.toastText}>{toast.message}</Text>
+    </Animated.View>
+  );
+});
+
 const TasksScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
   const isKorean = i18n.language === 'ko';
@@ -300,6 +347,8 @@ const TasksScreen = ({ navigation }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
   const [isTaskListVisible, setIsTaskListVisible] = useState(false);
+    
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
   const [taskWeather, setTaskWeather] = useState({});
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
@@ -319,6 +368,122 @@ const TasksScreen = ({ navigation }) => {
   const modalScrollRef = useRef(null);
   const calendarListRef = useRef(null);
   const isScrollingRef = useRef(false);
+  const sheetAnim = useRef(new Animated.Value(0)).current; // 0: list, 1: detail
+  const [isDetailMenuVisible, setIsDetailMenuVisible] = useState(false);
+  
+  // Toast Stack State
+  const [toasts, setToasts] = useState([]);
+  const toastIdCounter = useRef(0);
+  const TOAST_SPACING = 42;
+  const isAlertActiveRef = useRef(false);
+
+  const showToast = (message) => {
+    const id = toastIdCounter.current++;
+    setToasts(prev => {
+      // Move old toasts UPWARDS when new ones appear at the bottom
+      const shifted = prev.map(t => ({ ...t, targetY: t.targetY - TOAST_SPACING }));
+      return [...shifted, { id, message, targetY: 0 }];
+    });
+  };
+
+  const handleToastDone = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // Modal swipe-to-dismiss logic
+  const modalAddY = useRef(new Animated.Value(height)).current;
+  const listModalTranslateY = useRef(new Animated.Value(height)).current;
+
+  const closeAddModal = useCallback((onAfterClose) => {
+    Keyboard.dismiss();
+    
+    if (isMemoEditing) {
+      setIsMemoEditing(false);
+      return;
+    }
+    
+    Animated.timing(modalAddY, {
+      toValue: height,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsAdding(false);
+      if (onAfterClose) onAfterClose();
+    });
+  }, [modalAddY, isMemoEditing]);
+
+  const closeTaskListModal = useCallback(() => {
+    Animated.timing(listModalTranslateY, {
+      toValue: height,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsTaskListVisible(false);
+      // Reset state so next time it opens at Page 1
+      sheetAnim.setValue(0);
+      setSelectedTaskDetail(null);
+    });
+  }, [listModalTranslateY, sheetAnim]);
+
+  const createModalPanResponder = (translateValue, closeCallback) => {
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderGrant: () => { Keyboard.dismiss(); },
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) translateValue.setValue(gs.dy);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 120 || gs.vy > 0.5) {
+          closeCallback();
+        } else {
+          Animated.spring(translateValue, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 8,
+            speed: 18,
+          }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(translateValue, {
+          toValue: 0,
+          useNativeDriver: true,
+          bounciness: 8,
+          speed: 18,
+        }).start();
+      },
+    });
+  };
+
+  const addModalPanResponder = useRef(createModalPanResponder(modalAddY, closeAddModal)).current;
+  const listModalPanResponder = useRef(createModalPanResponder(listModalTranslateY, closeTaskListModal)).current;
+
+  const renderToast = (context) => {
+    if (toasts.length === 0) return null;
+
+    // Only render the toast in the highest active layer to avoid duplicate overlaps
+    if (isAdding && context !== 'isAdding') return null;
+    if (!isAdding && isTaskListVisible && context !== 'isTaskListVisible') return null;
+    if (!isAdding && !isTaskListVisible && context !== 'main') return null;
+
+    // Position the toast stack at the bottom, just above the "Add New Task" button
+    const toastBottom = insets.bottom + 90;
+
+    return (
+      <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none', zIndex: 9999, justifyContent: 'flex-end' }]}>
+        {toasts.map(toast => (
+          <ToastItem
+            key={toast.id}
+            toast={toast}
+            bottom={toastBottom}
+            onDone={handleToastDone}
+            styles={styles}
+          />
+        ))}
+      </View>
+    );
+  };
 
   // New Task State
   const [newTitle, setNewTitle] = useState('');
@@ -333,7 +498,18 @@ const TasksScreen = ({ navigation }) => {
   const [newLocName, setNewLocName] = useState('');
   const [newWeatherRegion, setNewWeatherRegion] = useState(null);
 
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [isMemoEditing, setIsMemoEditing] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
@@ -548,6 +724,17 @@ const TasksScreen = ({ navigation }) => {
     setIsAdding(true);
   };
 
+  const handleBackToList = () => {
+    Animated.timing(sheetAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setSelectedTaskDetail(null);
+      setIsDetailMenuVisible(false);
+    });
+  };
+
   const handleEditTask = (task) => {
     setEditingTask(task);
     setNewTitle(task.title);
@@ -568,12 +755,34 @@ const TasksScreen = ({ navigation }) => {
       return;
     }
 
+    // Validation: Ensure end is after start. If not, auto-adjust end to match start.
+    let finalEndDate = endDate;
+    let finalEndTime = endTime;
+
+    const startCheck = new Date(taskDate);
+    const endCheck = new Date(endDate);
+    
+    if (!isAllDay) {
+      const [sh, sm] = newTime.split(':').map(Number);
+      const [eh, em] = endTime.split(':').map(Number);
+      startCheck.setHours(sh, sm, 0, 0);
+      endCheck.setHours(eh, em, 0, 0);
+    } else {
+      startCheck.setHours(0, 0, 0, 0);
+      endCheck.setHours(0, 0, 0, 0);
+    }
+
+    if (endCheck < startCheck) {
+      finalEndDate = taskDate;
+      finalEndTime = newTime;
+    }
+
     const taskData = {
       title: newTitle,
       date: dateStr(taskDate),
       time: isAllDay ? null : newTime,
-      endDate: dateStr(endDate),
-      endTime: isAllDay ? null : endTime,
+      endDate: dateStr(finalEndDate),
+      endTime: isAllDay ? null : finalEndTime,
       isAllDay,
       memo: newMemo,
       color: selectedColor,
@@ -584,14 +793,26 @@ const TasksScreen = ({ navigation }) => {
     let updated;
     if (editingTask) {
       updated = await updateTask(editingTask.id, taskData);
+      if (selectedTaskDetail && selectedTaskDetail.id === editingTask.id) {
+        setSelectedTaskDetail({ ...editingTask, ...taskData });
+      }
     } else {
       updated = await addTask(taskData);
     }
 
     setTasks(updated);
     fetchTasksWeather(updated);
-    setIsAdding(false);
+
+    const afterClose = editingTask ? () => {
+      setTimeout(() => {
+        setIsTaskListVisible(true);
+        sheetAnim.setValue(1);
+      }, 50);
+    } : undefined;
+    closeAddModal(afterClose);
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showToast(editingTask ? '일정이 수정되었습니다.' : '새 일정이 등록되었습니다.');
   };
 
   const formatDisplayDate = (date) => {
@@ -600,7 +821,11 @@ const TasksScreen = ({ navigation }) => {
 
   const handleToggle = async (id) => {
     const updated = await toggleTaskCompletion(id);
+    const task = tasks.find(t => t.id === id);
+    const newStatus = !task?.isCompleted;
     setTasks(updated);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    showToast(newStatus ? '일정이 완료되었습니다.' : '일정이 미완료 상태로 변경되었습니다.');
   };
 
   const handleDelete = (id) => {
@@ -617,12 +842,15 @@ const TasksScreen = ({ navigation }) => {
 
   const handleDayPress = React.useCallback((date, isSelected) => {
     if (isSelected) {
+      // Ensure we start from Page 1 (List) when opening
+      sheetAnim.setValue(0);
+      setSelectedTaskDetail(null);
       setIsTaskListVisible(true);
     } else {
       setSelectedDate(date);
       setTaskDate(date);
     }
-  }, []);
+  }, [sheetAnim, setSelectedTaskDetail, setIsTaskListVisible, setSelectedDate, setTaskDate]);
 
   const renderCalendarItem = React.useCallback(({ item: index }) => {
     return (
@@ -670,8 +898,28 @@ const TasksScreen = ({ navigation }) => {
       default: return <Sun size={size} color="#FFB800" />;
     }
   };
+  const getTaskTimeDisplay = (task, targetDate) => {
+    if (task.isAllDay) return t('tasks.allDay', '종일');
+    
+    const curStr = dateStr(targetDate);
+    const startStr = task.date;
+    const endStr = task.endDate || task.date;
+    
+    const isStart = curStr === startStr;
+    const isEnd = curStr === endStr;
+    const isMiddle = curStr > startStr && curStr < endStr;
+    
+    if (isMiddle) return '00:00 - 24:00';
+    if (isStart && isEnd) return `${task.time} - ${task.endTime || task.time}`;
+    if (isStart) return `${task.time} - 24:00`;
+    if (isEnd) return `00:00 - ${task.endTime || task.time}`;
+    
+    return task.time || t('tasks.allDay', '종일');
+  };
+
 
   return (
+    <>
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
       <MainHeader onMenuPress={() => setMenuVisible(true)} />
       <ScrollView
@@ -718,7 +966,7 @@ const TasksScreen = ({ navigation }) => {
               {weekDays.map((day, idx) => {
                 const active = isSameDay(day, selectedDate);
                 const ds = dateStr(day);
-                const dayTasks = (tasks || []).filter(t => ds >= t.date && ds <= (t.endDate || t.date)).slice(0, 3);
+                const dayTasks = (tasks || []).filter(t => !t.isCompleted && ds >= t.date && ds <= (t.endDate || t.date)).slice(0, 3);
 
                 return (
                   <TouchableOpacity key={idx} style={[styles.dayCell, active && styles.activeCell]} onPress={() => setSelectedDate(day)}>
@@ -765,102 +1013,264 @@ const TasksScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* Task List Bottom Sheet Modal */}
+      {/* Unified Task Sheet (List + Detail Navigation) */}
       <Modal
         visible={isTaskListVisible}
-        animationType="slide"
+        animationType="none"
         transparent={true}
-        onRequestClose={() => setIsTaskListVisible(false)}
+        onRequestClose={closeTaskListModal}
+        onShow={() => {
+          Animated.spring(listModalTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+            speed: 14,
+          }).start();
+        }}
       >
-        <View style={styles.sheetBg}>
+        <Animated.View style={[styles.sheetBg, { 
+          backgroundColor: listModalTranslateY.interpolate({
+            inputRange: [0, height * 0.5],
+            outputRange: ['rgba(0,0,0,0.5)', 'rgba(0,0,0,0)']
+          })
+        }]}>
           <TouchableOpacity 
             style={styles.sheetCloser} 
             activeOpacity={1} 
-            onPress={() => setIsTaskListVisible(false)} 
+            onPress={closeTaskListModal} 
           />
-          <View style={styles.sheetContent}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetKnob} />
-              <View style={styles.sheetTitleArea}>
-                <Text style={styles.sheetDateTitle}>{selectedDate.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</Text>
-                <Text style={styles.sheetSubtitle}>Scheduled Tasks</Text>
-              </View>
-              <TouchableOpacity onPress={() => setIsTaskListVisible(false)} style={styles.sheetCloseBtn}>
-                <X size={20} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView 
-              style={styles.sheetList} 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 10 }}
-            >
-              {(filteredTasks || []).length === 0 && !isPublicHoliday(dateStr(selectedDate), holidaysMap) ? (
-                <View style={styles.emptyState}>
-                  <CalendarDays size={48} color={Colors.outlineVariant} strokeWidth={1} style={{ marginBottom: Spacing.md }} />
-                  <Text style={styles.emptyText}>{t('tasks.empty', 'No tasks scheduled.')}</Text>
+          <Animated.View style={[styles.sheetContent, { 
+            height: height * 0.9, 
+            overflow: 'hidden',
+            transform: [{ translateY: listModalTranslateY }]
+          }]}>
+            <Animated.View style={{ 
+              flex: 1, 
+              flexDirection: 'row', 
+              width: width * 2,
+              transform: [{
+                translateX: sheetAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -width]
+                })
+              }]
+            }}>
+              {/* PAGE 1: Task List */}
+              <View style={{ width: width }}>
+                <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
+                  <View style={styles.modalHandle} />
+                  <View style={styles.sheetTitleArea}>
+                    <Text style={styles.sheetDateTitle}>{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일 {['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()]}요일</Text>
+                    <Text style={styles.sheetSubtitle}>Scheduled Tasks</Text>
+                  </View>
                 </View>
-              ) : (
-                <View style={styles.taskList}>
-                  {/* Public Holidays Section */}
-                  {isPublicHoliday(dateStr(selectedDate), holidaysMap) && (
-                    <View style={styles.holidaySection}>
-                      {holidaysMap[dateStr(selectedDate)].map((h, idx) => (
-                        <View key={idx} style={styles.holidayBadge}>
-                          <Text style={styles.holidayNameText}>[{h.country}] {h.name}</Text>
-                          <Text style={styles.holidayTypeText}>Public Holiday</Text>
+
+                <ScrollView 
+                  style={styles.sheetList} 
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 100 }}
+                >
+                  {(filteredTasks || []).length === 0 && !isPublicHoliday(dateStr(selectedDate), holidaysMap) ? (
+                    <View style={styles.emptyState}>
+                      <CalendarDays size={48} color={Colors.outlineVariant} strokeWidth={1} style={{ marginBottom: Spacing.md }} />
+                      <Text style={styles.emptyText}>{t('tasks.empty', 'No tasks scheduled.')}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.taskList}>
+                      {/* Public Holidays Section */}
+                      {isPublicHoliday(dateStr(selectedDate), holidaysMap) && (
+                        <View style={styles.holidaySection}>
+                          {holidaysMap[dateStr(selectedDate)].map((h, idx) => (
+                            <View key={idx} style={styles.holidayBadge}>
+                              <Text style={styles.holidayNameText}>[{h.country}] {h.name}</Text>
+                              <Text style={styles.holidayTypeText}>Public Holiday</Text>
+                            </View>
+                          ))}
                         </View>
-                      ))}
+                      )}
+
+                      {(filteredTasks || []).map((task) => {
+                        const taskCol = task.color || TASK_COLORS[tasks.findIndex(gt => gt.id === task.id) % TASK_COLORS.length];
+                        const timeDisplay = getTaskTimeDisplay(task, selectedDate);
+                        
+                        return (
+                          <TouchableOpacity 
+                            key={task.id} 
+                            style={[styles.timeTreeListItem, task.isCompleted && { opacity: 0.5 }]}
+                            onPress={() => { 
+                              setSelectedTaskDetail(task);
+                              Animated.timing(sheetAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+                            }}
+                          >
+                            <View style={styles.listItemTimeArea}>
+                              <Text style={styles.listItemTimeText}>{timeDisplay}</Text>
+                            </View>
+                            
+                            <View style={[styles.listItemColorBar, { backgroundColor: taskCol }]} />
+                            
+                            <View style={styles.listItemContent}>
+                              <Text style={[styles.listItemTitle, task.isCompleted && styles.taskTitleCompleted]} numberOfLines={1}>
+                                {task.title}
+                              </Text>
+                            </View>
+
+                            <TouchableOpacity onPress={() => handleToggle(task.id)} style={styles.listItemCheck} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                              {task.isCompleted ? 
+                                <CheckCircle2 size={20} color={taskCol} /> : 
+                                <Circle size={20} color={Colors.outlineVariant} />
+                              }
+                            </TouchableOpacity>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   )}
+                </ScrollView>
 
-                  {(filteredTasks || []).map((task) => {
-                    const weather = taskWeather[task.id];
-                    const taskCol = task.color || TASK_COLORS[tasks.findIndex(gt => gt.id === task.id) % TASK_COLORS.length];
-                    return (
-                      <View key={task.id} style={[styles.taskCard, task.isCompleted && styles.completedTask]}>
-                        <TouchableOpacity onPress={() => handleToggle(task.id)} style={styles.checkArea}>
-                          {task.isCompleted ? <CheckSquare size={24} color={taskCol} strokeWidth={2} /> : <Square size={24} color={taskCol + '80'} strokeWidth={2} />}
-                        </TouchableOpacity>
-                        <View style={styles.taskInfo}>
-                          <Text style={[styles.taskTitle, task.isCompleted && styles.taskTitleCompleted]}>{task.title}</Text>
-                          <View style={styles.taskMeta}>
-                            <Clock size={14} color={Colors.textSecondary} style={{ marginRight: 4 }} />
-                            <Text style={styles.metaText}>{task.time || 'All Day'}</Text>
-                          </View>
+                <TouchableOpacity 
+                  style={[styles.sheetAddBtn, { position: 'absolute', bottom: 16, left: 0, right: 0 }]} 
+                  onPress={() => { setIsTaskListVisible(false); openAddModal(); }}
+                >
+                  <Plus size={20} color="white" strokeWidth={3} />
+                  <Text style={styles.sheetAddBtnText}>{t('tasks.addNew', 'Add New Task')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* PAGE 2: Task Detail */}
+              <View style={{ width: width }}>
+                <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
+                  <View style={styles.modalHandle} />
+                  <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
+                    <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn}>
+                      <ChevronLeft size={28} color={Colors.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setIsDetailMenuVisible(true)} style={styles.detailHeaderBtn}>
+                      <MoreHorizontal size={24} color={Colors.text} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {selectedTaskDetail && (
+                  <ScrollView 
+                    style={{ flex: 1 }} 
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 60 }}
+                  >
+                    <View style={styles.detailBody}>
+                      <View style={styles.detailTitleSection}>
+                        <View style={[styles.detailColorBar, { backgroundColor: selectedTaskDetail.color || Colors.primary }]} />
+                        <Text style={[styles.detailTitle, { color: selectedTaskDetail.color || Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
+                      </View>
+
+                      <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={styles.detailDateYear}>{selectedTaskDetail.date.split('-')[0]}년</Text>
+                          <Text style={styles.detailDateMain}>{parseInt(selectedTaskDetail.date.split('-')[1])}월 {parseInt(selectedTaskDetail.date.split('-')[2])}일 ({['일','월','화','수','목','금','토'][new Date(selectedTaskDetail.date).getDay()]})</Text>
+                          {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.time || '00:00'}</Text>}
                         </View>
-                        {weather && !task.isCompleted && (
-                          <View style={styles.weatherBadge}>
-                            {renderWeatherIcon(weather.condKey)}
-                            <Text style={styles.weatherTemp}>{weather.temp}</Text>
+                        <ArrowRight size={24} color={Colors.primary} />
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={styles.detailDateYear}>{(selectedTaskDetail.endDate || selectedTaskDetail.date).split('-')[0]}년</Text>
+                          <Text style={styles.detailDateMain}>{parseInt((selectedTaskDetail.endDate || selectedTaskDetail.date).split('-')[1])}월 {parseInt((selectedTaskDetail.endDate || selectedTaskDetail.date).split('-')[2])}일 ({['일','월','화','수','목','금','토'][new Date(selectedTaskDetail.endDate || selectedTaskDetail.date).getDay()]})</Text>
+                          {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.endTime || selectedTaskDetail.time || '00:00'}</Text>}
+                        </View>
+                      </View>
+
+                      <View style={styles.detailInfoList}>
+                        {selectedTaskDetail.isAllDay && (
+                          <View style={styles.detailInfoItem}>
+                            <Clock size={20} color={Colors.outline} />
+                            <Text style={styles.detailInfoText}>{t('tasks.allDay', '종일')}</Text>
                           </View>
                         )}
-                        <TouchableOpacity style={styles.itemActionBtn} onPress={() => { setIsTaskListVisible(false); handleEditTask(task); }}>
-                          <Pencil size={18} color={Colors.primary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.trashBtn} onPress={() => handleDelete(task.id)}>
-                          <Trash2 size={18} color={Colors.outlineVariant} />
-                        </TouchableOpacity>
+                        {(selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion) && (
+                          <View style={styles.detailInfoItem}>
+                            <MapPin size={20} color={Colors.outline} />
+                            <Text style={styles.detailInfoText}>
+                              {selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion?.name}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.detailInfoItem}>
+                          <Tag size={20} color={Colors.outline} />
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: selectedTaskDetail.color || Colors.primary }} />
+                            <Text style={styles.detailInfoText}>
+                              {TASK_COLOR_LABELS.find(l => l.color === (selectedTaskDetail.color || Colors.primary))?.name || '기본 색상'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.detailInfoItem}>
+                          <AlignLeft size={20} color={Colors.outline} />
+                          <Text style={styles.detailInfoText}>{selectedTaskDetail.memo || 'No memo'}</Text>
+                        </View>
                       </View>
-                    );
-                  })}
-                </View>
-              )}
-            </ScrollView>
+                    </View>
+                  </ScrollView>
+                )}
 
-            <TouchableOpacity 
-              style={styles.sheetAddBtn} 
-              onPress={() => {
-                setIsTaskListVisible(false);
-                openAddModal();
-              }}
-            >
-              <Plus size={20} color="white" strokeWidth={3} />
-              <Text style={styles.sheetAddBtnText}>Add New Task</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+                {isDetailMenuVisible && (
+                  <>
+                    <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setIsDetailMenuVisible(false)} />
+                    <View style={styles.floatingMenu}>
+                      <TouchableOpacity style={styles.menuItem} onPress={async () => {
+                        setIsDetailMenuVisible(false);
+                        const updated = await toggleTaskCompletion(selectedTaskDetail.id);
+                        setTasks(updated);
+                        const newStatus = !selectedTaskDetail.isCompleted;
+                        setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        showToast(newStatus ? '일정이 완료되었습니다.' : '일정이 미완료 상태로 변경되었습니다.');
+                      }}>
+                        <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
+                        <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
+                          {selectedTaskDetail.isCompleted ? '미완료로 표시' : '완료로 표시'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.menuItem} onPress={async () => {
+                        setIsDetailMenuVisible(false);
+                        const shareText = `[Todo] ${selectedTaskDetail.title}\nPeriod: ${selectedTaskDetail.date} ~ ${selectedTaskDetail.endDate || selectedTaskDetail.date}\nNotes: ${selectedTaskDetail.memo || ''}`;
+                        await Clipboard.setStringAsync(shareText);
+                        showToast('일정 내용이 복사되었습니다.');
+                      }}>
+                        <Share2 size={18} color={Colors.text} /><Text style={styles.menuText}>공유</Text>
+                      </TouchableOpacity>
+
+                      <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
+
+                      <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); setIsTaskListVisible(false); handleEditTask(selectedTaskDetail); }}>
+                        <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>편집</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.menuItem} onPress={() => {
+                        setIsDetailMenuVisible(false);
+                        const taskId = selectedTaskDetail.id;
+                        isAlertActiveRef.current = true;
+                        Alert.alert('삭제', '이 일정을 삭제할까요?', [
+                          { text: '취소', style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
+                          { text: '삭제', style: 'destructive', onPress: async () => {
+                            isAlertActiveRef.current = false;
+                            handleBackToList();
+                            const updated = await deleteTask(taskId);
+                            setTasks(updated);
+                            showToast('일정이 삭제되었습니다.');
+                          } }
+                        ], { cancelable: false });
+                      }}>
+                        <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>삭제</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          </Animated.View>
+          {renderToast('isTaskListVisible')}
+        </Animated.View>
       </Modal>
+
+      {renderToast('main')}
+    
 
       <TouchableOpacity 
         style={[
@@ -970,162 +1380,226 @@ const TasksScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Add Task Modal */}
       <Modal
         visible={isAdding}
-        animationType="slide"
+        animationType="none"
         transparent={true}
-        onRequestClose={() => setIsAdding(false)}
+        onRequestClose={() => closeAddModal()}
         onShow={() => {
+          Animated.spring(modalAddY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+            speed: 14,
+          }).start();
           modalScrollRef.current?.scrollTo({ y: 0, animated: false });
-          setTimeout(() => titleInputRef.current?.focus(), 150);
+          setTimeout(() => titleInputRef.current?.focus(), 300);
         }}
       >
-        <View style={styles.modalBg}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingTask ? t('tasks.edit_task', 'Edit Task') : t('tasks.add_new', 'Add Task')}</Text>
-              <TouchableOpacity onPress={() => { Keyboard.dismiss(); setIsAdding(false); }}><X size={24} color={Colors.text} /></TouchableOpacity>
-            </View>
-            <ScrollView
-              ref={modalScrollRef}
-              style={styles.modalForm}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ paddingBottom: 40 }}
+        <Animated.View style={[styles.modalBg, { 
+          backgroundColor: modalAddY.interpolate({
+            inputRange: [0, height * 0.5],
+            outputRange: ['rgba(0,0,0,0.5)', 'rgba(0,0,0,0)']
+          })
+        }]}>
+          <Animated.View style={[styles.modalContent, { transform: [{ translateY: modalAddY }] }]}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={{ flex: 1 }}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
             >
-              <TextInput
-                ref={titleInputRef}
-                style={styles.timeTreeTitle}
-                placeholder={t('tasks.placeholder', 'Title')}
-                value={newTitle}
-                onChangeText={setNewTitle}
-                returnKeyType="done"
-                onSubmitEditing={() => Keyboard.dismiss()}
-              />
-
-              {/* Color Selection Row */}
-              <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setShowColorPicker(true); }}>
-                <View style={styles.rowLead}>
-                  <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
-                  <Text style={styles.timeTreeRowText}>
-                    {TASK_COLOR_LABELS.find(l => l.color === selectedColor)?.name || '라벨 선택'}
-                  </Text>
+              {isMemoEditing ? (
+                /* Full Screen Memo Editor */
+                <View style={{ flex: 1 }}>
+                  <View style={styles.modalHeader}>
+                    <View style={styles.modalHandle} />
+                    <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                      <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerActionBtn}>
+                        <ChevronLeft size={28} color={Colors.text} />
+                      </TouchableOpacity>
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={styles.modalTitle}>Memo</Text>
+                        <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '600' }}>
+                          {newMemo.length} / 1000
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerSaveBtn}>
+                        <Text style={styles.headerSaveText}>{t('common.done', 'Done')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={{ flex: 1, paddingBottom: Platform.OS === 'ios' ? 20 : 0 }}>
+                    <TextInput
+                      style={[styles.fullMemoInput, { flex: 1 }]}
+                      placeholder={t('tasks.memo_placeholder', 'Add notes...')}
+                      value={newMemo}
+                      onChangeText={setNewMemo}
+                      multiline
+                      autoFocus
+                      maxLength={1000}
+                      placeholderTextColor={Colors.outline}
+                      textAlignVertical="top"
+                    />
+                  </View>
                 </View>
-                <ChevronRight size={20} color={Colors.outline} />
-              </TouchableOpacity>
+              ) : (
+                /* Main Form */
+                <>
+                  <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
+                    <View style={styles.modalHandle} />
+                    <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                      <TouchableOpacity onPress={() => closeAddModal()} style={styles.headerActionBtn}>
+                        <ChevronLeft size={28} color={Colors.text} />
+                      </TouchableOpacity>
+                      
+                      <Text style={styles.modalTitle}>{editingTask ? t('tasks.edit_task', 'Edit Task') : t('tasks.add_new', 'Add Task')}</Text>
+                      
+                      {isKeyboardVisible ? (
+                        <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <KeyboardIcon size={22} color={Colors.primary} />
+                            <ChevronDown size={14} color={Colors.primary} />
+                          </View>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity 
+                          onPress={handleSaveTask} 
+                          disabled={!newTitle.trim()} 
+                          style={[styles.headerSaveBtn, !newTitle.trim() && { opacity: 0.5 }]}
+                        >
+                          <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                  <ScrollView
+                    ref={modalScrollRef}
+                    style={styles.modalForm}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ paddingBottom: 250 }}
+                    automaticallyAdjustKeyboardInsets={true}
+                  >
+                    <TextInput
+                      ref={titleInputRef}
+                      style={styles.timeTreeTitle}
+                      placeholder={t('tasks.placeholder', 'Title')}
+                      value={newTitle}
+                      onChangeText={setNewTitle}
+                      returnKeyType="done"
+                      onSubmitEditing={() => Keyboard.dismiss()}
+                    />
 
-              <View style={styles.timeTreeDivider} />
-
-              {/* All-day Toggle */}
-              <View style={styles.timeTreeRow}>
-                <View style={styles.rowLead}>
-                  <Compass size={22} color={isAllDay ? Colors.primary : Colors.textSecondary} />
-                  <Text style={styles.timeTreeRowText}>{t('tasks.all_day', 'All Day')}</Text>
-                </View>
-                <Switch
-                  value={isAllDay}
-                  onValueChange={setIsAllDay}
-                  trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }}
-                  thumbColor={isAllDay ? Colors.primary : '#F4F7FE'}
-                />
-              </View>
-
-              <View style={styles.timeTreeDivider} />
-
-              {/* Start Date/Time */}
-              <View style={styles.timeTreeRow}>
-                <View style={styles.rowLead}>
-                  <Calendar size={20} color={Colors.textSecondary} />
-                  <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
-                </View>
-                <View style={styles.rowTail}>
-                  <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowDatePicker(true); }}>
-                    <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
-                  </TouchableOpacity>
-                  {!isAllDay && (
-                    <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); setShowTimePicker(true); }}>
-                      <Text style={styles.timeTreeTimeText}>{newTime}</Text>
+                    {/* Color Selection Row */}
+                    <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setShowColorPicker(true); }}>
+                      <View style={styles.rowLead}>
+                        <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
+                        <Text style={styles.timeTreeRowText}>
+                          {TASK_COLOR_LABELS.find(l => l.color === selectedColor)?.name || '라벨 선택'}
+                        </Text>
+                      </View>
+                      <ChevronRight size={20} color={Colors.outline} />
                     </TouchableOpacity>
-                  )}
-                </View>
-              </View>
 
-              {/* End Date/Time */}
-              <View style={styles.timeTreeRow}>
-                <View style={styles.rowLead}>
-                  <View style={{ width: 22 }} />
-                  <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
-                </View>
-                <View style={styles.rowTail}>
-                  <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowEndDatePicker(true); }}>
-                    <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
-                  </TouchableOpacity>
-                  {!isAllDay && (
-                    <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); setShowEndTimePicker(true); }}>
-                      <Text style={styles.timeTreeTimeText}>{endTime}</Text>
+                    <View style={styles.timeTreeDivider} />
+
+                    {/* All-day Toggle */}
+                    <View style={styles.timeTreeRow}>
+                      <View style={styles.rowLead}>
+                        <Compass size={22} color={isAllDay ? Colors.primary : Colors.textSecondary} />
+                        <Text style={styles.timeTreeRowText}>{t('tasks.all_day', 'All Day')}</Text>
+                      </View>
+                      <Switch
+                        value={isAllDay}
+                        onValueChange={setIsAllDay}
+                        trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }}
+                        thumbColor={isAllDay ? Colors.primary : '#F4F7FE'}
+                      />
+                    </View>
+
+                    <View style={styles.timeTreeDivider} />
+
+                    {/* Start Date/Time */}
+                    <View style={styles.timeTreeRow}>
+                      <View style={styles.rowLead}>
+                        <Calendar size={20} color={Colors.textSecondary} />
+                        <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
+                      </View>
+                      <View style={styles.rowTail}>
+                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowDatePicker(true); }}>
+                          <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
+                        </TouchableOpacity>
+                        {!isAllDay && (
+                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); setShowTimePicker(true); }}>
+                            <Text style={styles.timeTreeTimeText}>{newTime}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* End Date/Time */}
+                    <View style={styles.timeTreeRow}>
+                      <View style={styles.rowLead}>
+                        <View style={{ width: 22 }} />
+                        <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
+                      </View>
+                      <View style={styles.rowTail}>
+                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowEndDatePicker(true); }}>
+                          <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
+                        </TouchableOpacity>
+                        {!isAllDay && (
+                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); setShowEndTimePicker(true); }}>
+                            <Text style={styles.timeTreeTimeText}>{endTime}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    <View style={styles.timeTreeDivider} />
+
+                    {/* Location & Weather */}
+                    <View style={styles.timeTreeRow}>
+                      <View style={styles.rowLead}>
+                        <MapPin size={22} color={Colors.textSecondary} />
+                        <TextInput
+                          style={styles.timeTreeInput}
+                          placeholder={t('tasks.loc_placeholder', 'Location')}
+                          value={newLocName}
+                          onChangeText={setNewLocName}
+                        />
+                      </View>
+                    </View>
+
+
+
+                    <View style={styles.timeTreeDivider} />
+
+                    {/* Memo Section */}
+                    <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
+                      <View style={styles.memoHeader}>
+                        <AlignLeft size={18} color={Colors.textSecondary} />
+                        <Text style={styles.memoLabel}>{t('tasks.memo', 'Memo')}</Text>
+                      </View>
+                      <View style={styles.memoPreviewBox}>
+                        <Text 
+                          style={[styles.memoPreviewText, !newMemo && { color: Colors.outline }]} 
+                          numberOfLines={10}
+                          ellipsizeMode="tail"
+                        >
+                          {newMemo ? (
+                            newMemo.split('\n').length > 10 
+                              ? newMemo.split('\n').slice(0, 10).join('\n') + '...'
+                              : newMemo
+                          ) : t('tasks.memo_placeholder', 'Add notes...')}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
-                  )}
-                </View>
-              </View>
 
-              <View style={styles.timeTreeDivider} />
-
-              {/* Location & Weather */}
-              <View style={styles.timeTreeRow}>
-                <View style={styles.rowLead}>
-                  <MapPin size={22} color={Colors.textSecondary} />
-                  <TextInput
-                    style={styles.timeTreeInput}
-                    placeholder={t('tasks.loc_placeholder', 'Location')}
-                    value={newLocName}
-                    onChangeText={setNewLocName}
-                  />
-                </View>
-                <TouchableOpacity onPress={() => setSearchMode('location')}>
-                  <Search size={20} color={Colors.primary} />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity style={styles.timeTreeRow} onPress={() => setSearchMode('weather')}>
-                <View style={styles.rowLead}>
-                  <Sun size={22} color={newWeatherRegion ? Colors.primary : Colors.textSecondary} />
-                  <Text style={[styles.timeTreeValue, !newWeatherRegion && { color: Colors.outline }]}>
-                    {newWeatherRegion ? newWeatherRegion.name : t('tasks.weather_loc', 'Weather Region')}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Memo */}
-              <View style={[styles.timeTreeRow, { alignItems: 'flex-start', marginTop: 12 }]}>
-                <View style={[styles.rowLead, { paddingTop: 4 }]}>
-                  <AlignLeft size={22} color={Colors.textSecondary} />
-                </View>
-                <TextInput
-                  style={styles.timeTreeMemo}
-                  placeholder={t('tasks.memo_placeholder', 'Memo')}
-                  value={newMemo}
-                  onChangeText={setNewMemo}
-                  multiline
-                />
-              </View>
-
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity 
-                style={styles.modalCancelBtn} 
-                onPress={() => { Keyboard.dismiss(); setIsAdding(false); }}
-              >
-                <Text style={styles.cancelBtnText}>{t('common.cancel', 'Cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveTask}>
-                <Text style={styles.saveBtnText}>
-                  {editingTask ? t('common.done', 'Done') : t('common.save', 'Save')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+                  </ScrollView>
+                </>
+              )}
+            </KeyboardAvoidingView>
+          </Animated.View>
 
           {/* Color Picker Overlay */}
           {showColorPicker && (
@@ -1177,10 +1651,10 @@ const TasksScreen = ({ navigation }) => {
           {/* Date / Time Pickers */}
           {Platform.OS === 'android' && (
             <>
-              {showDatePicker && <DateTimePicker value={taskDate} mode="date" display="default" onChange={onDateChange} />}
-              {showTimePicker && <DateTimePicker value={(() => { const [h, m] = newTime.split(':').map(Number); const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d; })()} mode="time" is24Hour={true} display="default" onChange={onTimeChange} />}
-              {showEndDatePicker && <DateTimePicker value={endDate} mode="date" display="default" onChange={onEndDateChange} />}
-              {showEndTimePicker && <DateTimePicker value={(() => { const [h, m] = endTime.split(':').map(Number); const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d; })()} mode="time" is24Hour={true} display="default" onChange={onEndTimeChange} />}
+              {showDatePicker && <DateTimePicker value={taskDate} mode="date" display="spinner" onChange={onDateChange} />}
+              {showTimePicker && <DateTimePicker value={(() => { const [h, m] = newTime.split(':').map(Number); const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d; })()} mode="time" is24Hour={true} display="spinner" onChange={onTimeChange} />}
+              {showEndDatePicker && <DateTimePicker value={endDate} mode="date" display="spinner" onChange={onEndDateChange} />}
+              {showEndTimePicker && <DateTimePicker value={(() => { const [h, m] = endTime.split(':').map(Number); const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d; })()} mode="time" is24Hour={true} display="spinner" onChange={onEndTimeChange} />}
             </>
           )}
 
@@ -1200,34 +1674,43 @@ const TasksScreen = ({ navigation }) => {
                     <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', 'Done')}</Text>
                   </TouchableOpacity>
                 </View>
-                <DateTimePicker
-                  value={(() => {
-                    if (showDatePicker) return taskDate;
-                    if (showEndDatePicker) return endDate;
-                    if (showTimePicker) {
-                      const [h, m] = newTime.split(':').map(Number);
-                      const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
-                    }
-                    if (showEndTimePicker) {
-                      const [h, m] = endTime.split(':').map(Number);
-                      const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
-                    }
-                    return new Date();
-                  })()}
-                  mode={(showDatePicker || showEndDatePicker) ? "date" : "time"}
-                  display="spinner"
-                  is24Hour={true}
-                  onChange={(e, d) => {
-                    if (showDatePicker) onDateChange(e, d);
-                    else if (showEndDatePicker) onEndDateChange(e, d);
-                    else if (showTimePicker) onTimeChange(e, d);
-                    else if (showEndTimePicker) onEndTimeChange(e, d);
-                  }}
-                />
+                <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+                  <DateTimePicker
+                    value={(() => {
+                      try {
+                        if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
+                        if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
+                        if (showTimePicker) {
+                          const [h, m] = newTime.split(':').map(Number);
+                          const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
+                        }
+                        if (showEndTimePicker) {
+                          const [h, m] = endTime.split(':').map(Number);
+                          const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
+                        }
+                      } catch (e) {
+                        return new Date();
+                      }
+                      return new Date();
+                    })()}
+                    mode={(showDatePicker || showEndDatePicker) ? 'date' : 'time'}
+                    display="spinner"
+                    is24Hour={true}
+                    textColor="black"
+                    onChange={(event, date) => {
+                      if (showDatePicker) onDateChange(event, date);
+                      else if (showEndDatePicker) onEndDateChange(event, date);
+                      else if (showTimePicker) onTimeChange(event, date);
+                      else if (showEndTimePicker) onEndTimeChange(event, date);
+                    }}
+                    style={{ height: 216, width: width }}
+                  />
+                </View>
               </View>
             </View>
           )}
-        </View>
+          {renderToast('isAdding')}
+        </Animated.View>
       </Modal>
 
       <Modal
@@ -1336,12 +1819,16 @@ const TasksScreen = ({ navigation }) => {
         </View>
       </Modal>
 
+    
+
       <MenuModal 
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
         onReset={() => loadData()} 
       />
+
     </View>
+    </>
   );
 };
 
@@ -1381,12 +1868,27 @@ const styles = StyleSheet.create({
   sectionHeader: { marginBottom: Spacing.xl },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase' },
   sectionSubtitle: { fontSize: 22, fontWeight: '800', color: Colors.text, marginTop: 2 },
-  taskList: { gap: Spacing.sm },
-  taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 12, borderRadius: 20, elevation: 1, shadowColor: Colors.shadow, shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  taskList: { gap: 0 },
+  timeTreeListItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 12, 
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC'
+  },
+  listItemTimeArea: { width: 85, alignItems: 'flex-end', paddingRight: 12 },
+  listItemTimeText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, textAlign: 'right' },
+  listItemColorBar: { width: 3, height: 18, borderRadius: 1.5 },
+  listItemContent: { flex: 1, paddingLeft: 12 },
+  listItemTitle: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  listItemCheck: { paddingHorizontal: 12 },
+  taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', paddingLeft: 12, paddingRight: 8, borderRadius: 20, elevation: 1, shadowColor: Colors.shadow, shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  taskDetailClickArea: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   completedTask: { opacity: 0.5 },
-  checkArea: { marginRight: 12 },
+  checkArea: { paddingVertical: 10, paddingRight: 4 },
   taskInfo: { flex: 1 },
-  taskTitle: { fontSize: 16, fontWeight: '700', color: Colors.text, marginBottom: 4 },
+  taskTitle: { fontSize: 16, fontWeight: '700', color: Colors.text, marginBottom: 2 },
   taskTitleCompleted: { textDecorationLine: 'line-through', color: Colors.textSecondary },
   taskMeta: { flexDirection: 'row', alignItems: 'center' },
   metaText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
@@ -1416,15 +1918,41 @@ const styles = StyleSheet.create({
   wheelItemText: { fontSize: 18, color: Colors.outline, fontWeight: '600', lineHeight: ITEM_HEIGHT, includeFontPadding: false, textAlignVertical: 'center', textAlign: 'center' },
   activeWheelText: { color: '#1B254B', fontWeight: '800' },
   pickerFooter: { flexDirection: 'row', marginTop: 32, gap: 12 },
+  modalHeader: { 
+    alignItems: 'center', 
+    paddingTop: 8, 
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9'
+  },
+  modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, marginBottom: 8 },
+  headerActionBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSaveBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSaveText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: Colors.text },
   todayBtn: { flex: 1, height: 52, borderRadius: 16, borderColor: '#1B254B', borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
   todayBtnText: { fontSize: 15, fontWeight: '700', color: '#1B254B' },
   confirmBtn: { flex: 1.5, height: 52, borderRadius: 16, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center' },
   confirmBtnText: { fontSize: 15, fontWeight: '700', color: 'white' },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: height * 0.9, padding: Spacing.xl },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.text },
+  modalContent: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: height * 0.9, paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl },
   modalForm: { flex: 1 },
 
   // TimeTree Style
@@ -1435,12 +1963,50 @@ const styles = StyleSheet.create({
   timeTreeRowText: { fontSize: 16, fontWeight: '700', color: Colors.text, marginLeft: 12 },
   timeTreeLabel: { fontSize: 15, fontWeight: '700', color: Colors.textSecondary, marginLeft: 12, width: 42 },
   timeTreeValue: { fontSize: 16, fontWeight: '600', color: Colors.text, marginLeft: 12 },
-  timeTreePickerText: { fontSize: 15, fontWeight: '700', color: Colors.primary, backgroundColor: Colors.primary + '10', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  timeTreeTimeText: { fontSize: 15, fontWeight: '700', color: Colors.primary },
-  timeLabelSmall: { backgroundColor: Colors.primary + '10', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginLeft: 8 },
+  timeTreePickerText: { fontSize: 15, fontWeight: '700', color: '#00668a', backgroundColor: '#00668a1A', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  timeTreeTimeText: { fontSize: 15, fontWeight: '700', color: '#00668a' },
+  timeLabelSmall: { backgroundColor: '#00668a1A', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginLeft: 8 },
   timeTreeDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 },
   timeTreeInput: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.text, marginLeft: 10, paddingVertical: 4 },
-  timeTreeMemo: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.text, marginLeft: 12, minHeight: 120, textAlignVertical: 'top', paddingTop: 4 },
+  memoSection: { marginTop: 16, paddingHorizontal: 4 },
+  memoHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  memoLabel: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
+  timeTreeMemoFull: { 
+    fontSize: 16, 
+    fontWeight: '500', 
+    color: Colors.text, 
+    minHeight: 150, 
+    textAlignVertical: 'top', 
+    padding: 16, 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  fullMemoInput: {
+    flex: 1,
+    fontSize: 16,
+    color: Colors.text,
+    padding: 20,
+    textAlignVertical: 'top',
+    minHeight: 300,
+  },
+  memoPreviewBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  memoPreviewText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.text,
+    width: '100%',
+    flexShrink: 1,
+  },
   timeTreeSaveBtn: { backgroundColor: '#111827', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginTop: 40, marginBottom: 40 },
 
   modalFooter: { 
@@ -1456,15 +2022,17 @@ const styles = StyleSheet.create({
   modalCancelBtn: { 
     flex: 1, 
     height: 56, 
-    borderRadius: 18, 
-    backgroundColor: '#F4F7FE', 
+    borderRadius: 16, 
+    backgroundColor: '#F8FAFC', 
     justifyContent: 'center', 
-    alignItems: 'center' 
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
   },
   modalSaveBtn: { 
-    flex: 2, 
+    flex: 1, 
     height: 56, 
-    borderRadius: 18, 
+    borderRadius: 16, 
     backgroundColor: '#111827', 
     justifyContent: 'center', 
     alignItems: 'center' 
@@ -1482,7 +2050,7 @@ const styles = StyleSheet.create({
   saveBtnText: { color: 'white', fontSize: 17, fontWeight: '800' },
   innerSearchOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'white', zIndex: 100, padding: 20, paddingTop: Constants.statusBarHeight + 10 },
   iosPickerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end', zIndex: 200 },
-  iosPickerCard: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 20 },
+  iosPickerCard: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40, height: 320 },
   iosPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.surfaceContainer },
   iosPickerTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
   iosPickerDone: { fontSize: 16, fontWeight: '800', color: Colors.primary },
@@ -1598,6 +2166,72 @@ const styles = StyleSheet.create({
   selectedCountryName: { fontSize: 16, fontWeight: '700', color: Colors.text },
   selectedCountryCode: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, marginTop: 2 },
   countryRemoveBtn: { padding: 8, backgroundColor: 'white', borderRadius: 10 },
+
+  // Task Detail Styles (TimeTree Style)
+  detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  detailContent: { flex: 1, backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, marginTop: 40 },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, height: 60 },
+  detailHeaderBtn: { padding: 10 },
+  detailBody: { paddingHorizontal: 24, paddingTop: 10 },
+  detailTitleSection: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 32 },
+  detailColorBar: { width: 6, height: 32, borderRadius: 3, marginRight: 16, marginTop: 4 },
+  detailTitle: { flex: 1, fontSize: 26, fontWeight: '800', lineHeight: 34 },
+  detailDateSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 40, paddingVertical: 10 },
+  detailDateBlock: { flex: 1 },
+  detailDateYear: { fontSize: 13, fontWeight: '700', color: Colors.outline, marginBottom: 4 },
+  detailDateMain: { fontSize: 20, fontWeight: '800', color: Colors.text },
+  detailDateTime: { fontSize: 24, fontWeight: '800', color: Colors.text, marginTop: 4 },
+  detailInfoList: { gap: 24 },
+  detailInfoItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  detailInfoText: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  detailFooter: { display: 'none' },
+
+  // Floating Menu Styles
+  floatingMenu: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 8,
+    width: 180,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 12,
+  },
+  menuText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  toastContainer: {
+    position: 'absolute',
+    left: '10%',
+    right: '10%',
+    backgroundColor: 'rgba(60,60,60,0.72)',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  },
+  toastText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
 });
 
 export default TasksScreen;

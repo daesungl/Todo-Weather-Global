@@ -41,7 +41,7 @@ export const addTask = async (taskData) => {
     const tasks = await getTasks();
     const newTask = {
         ...taskData,
-        id: Date.now().toString(),
+        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
         isCompleted: false,
         createdAt: new Date().toISOString(),
     };
