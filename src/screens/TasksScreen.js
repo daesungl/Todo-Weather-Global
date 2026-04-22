@@ -38,16 +38,22 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const ITEM_HEIGHT = 50;
 const TASK_COLOR_LABELS = [
-  { name: '로열 블루', color: '#1E40AF' },
-  { name: '에메랄드 포레스트', color: '#059669' },
-  { name: '션샤인 골드', color: '#D97706' },
-  { name: '비비드 레드', color: '#DC2626' },
-  { name: '일렉트릭 퍼플', color: '#7C3AED' },
-  { name: '오션 스카이', color: '#0284C7' },
-  { name: '테라코타 오렌지', color: '#C2410C' },
-  { name: '플럼 마젠타', color: '#BE123C' },
-  { name: '모던 슬레이트', color: '#475569' },
-  { name: '미드나잇 블랙', color: '#111827' },
+  { name: '세이지 그린', color: '#A8B89F' },
+  { name: '올리브 그린', color: '#574C00' },
+  { name: '테라코타', color: '#C66B3D' },
+  { name: '네이비 블루', color: '#10367D' },
+  { name: '차콜', color: '#2B2B2B' },
+  { name: '오렌지', color: '#EA2E00' },
+  { name: '크림슨 레드', color: '#B40023' },
+  { name: '다크 블루', color: '#2A234F' },
+  { name: '블러쉬 핑크', color: '#FFB3C3' },
+  { name: '머스타드', color: '#887114' },
+  { name: '포레스트 그린', color: '#06530B' },
+  { name: '파스텔 퍼플', color: '#BBBFEC' },
+  { name: '라벤더', color: '#EBEBEB' },
+  { name: '크림', color: '#F4EFE6' },
+  { name: '아이보리', color: '#FEF9DB' },
+  { name: '베이지', color: '#F0E7D6' },
 ];
 
 const TASK_COLORS = TASK_COLOR_LABELS.map(l => l.color);
@@ -66,7 +72,12 @@ const getDateFromIndex = (index) => {
   return date;
 };
 
-const dateStr = (date) => date.toISOString().split('T')[0];
+const dateStr = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 const isSameDay = (d1, d2) => dateStr(d1) === dateStr(d2);
 
 const getMonthDays = (baseDate) => {
@@ -99,12 +110,47 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
   const days = React.useMemo(() => getMonthDays(baseDate), [baseDate]);
   
   const { monthTasks, taskSlots } = React.useMemo(() => {
-    const mTasks = (tasks || []).filter(t => {
+    // 1. Filter user tasks
+    const mTasksFromUser = (tasks || []).filter(t => {
       if (t.isCompleted) return false;
       const monthStart = dateStr(days[0].date);
       const monthEnd = dateStr(days[days.length - 1].date);
       return t.date <= monthEnd && (t.endDate || t.date) >= monthStart;
-    }).sort((a, b) => {
+    });
+
+    // 2. Convert public holidays to tasks (Group consecutive days with same name)
+    const hTasks = [];
+    let currentH = null;
+    days.forEach(day => {
+      const ds = dateStr(day.date);
+      const hols = (holidaysMap[ds] || []).filter(h => h.type === 'public');
+      if (hols.length > 0) {
+        const name = hols[0].name;
+        if (currentH && currentH.title === name) {
+          currentH.endDate = ds;
+        } else {
+          currentH = {
+            id: `h_${name}_${ds}`,
+            title: name,
+            date: ds,
+            endDate: ds,
+            color: Colors.error,
+            isHoliday: true
+          };
+          hTasks.push(currentH);
+        }
+      } else {
+        currentH = null;
+      }
+    });
+
+    // 3. Combine and sort
+    const combinedTasks = [...mTasksFromUser, ...hTasks].sort((a, b) => {
+      // Holidays first
+      const pA = a.isHoliday ? 0 : 1;
+      const pB = b.isHoliday ? 0 : 1;
+      if (pA !== pB) return pA - pB;
+
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       const durA = new Date(a.endDate || a.date) - new Date(a.date);
       const durB = new Date(b.endDate || b.date) - new Date(b.date);
@@ -114,7 +160,7 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
     const slots = {};
     const occ = Array.from({ length: days.length }, () => []);
 
-    mTasks.forEach(task => {
+    combinedTasks.forEach(task => {
       const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
       const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
       const effectiveStart = startIdx === -1 ? 0 : startIdx;
@@ -141,8 +187,8 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
       }
     });
     
-    return { monthTasks: mTasks, taskSlots: slots };
-  }, [tasks, days]);
+    return { monthTasks: combinedTasks, taskSlots: slots };
+  }, [tasks, days, holidaysMap]);
 
   const todayStr = React.useMemo(() => dateStr(new Date()), []);
 
@@ -172,8 +218,12 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
                   styles.dayNum,
                   !day.current && { color: Colors.outlineVariant },
                   isToday && styles.todayText,
-                  (!isToday && (isPublicHoliday(ds, holidaysMap) || day.date.getDay() === 0)) && { color: Colors.error },
-                  (!isToday && day.date.getDay() === 6) && { color: Colors.secondary }
+                  (!isToday && (isPublicHoliday(ds, holidaysMap) || day.date.getDay() === 0)) && { 
+                    color: day.current ? Colors.error : Colors.error + '40' 
+                  },
+                  (!isToday && day.date.getDay() === 6) && { 
+                    color: day.current ? Colors.secondary : Colors.secondary + '40' 
+                  }
                 ]}>{day.date.getDate()}</Text>
               </View>
             </View>
@@ -185,9 +235,10 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
                   const isStart = ds === taskInSlot.date;
                   const isEnd = ds === (taskInSlot.endDate || taskInSlot.date);
                   const col = taskInSlot.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === taskInSlot.id) % TASK_COLORS.length];
+                  const opacity = taskInSlot.isCompleted ? '40' : (day.current ? 'CC' : '30');
                   return (
-                    <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + (taskInSlot.isCompleted ? '40' : 'CC') }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
-                      {(isStart || (i % 7 === 0)) && <Text style={styles.calendarBarText} numberOfLines={1}>{taskInSlot.title}</Text>}
+                    <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + opacity }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
+                      {(isStart || (i % 7 === 0)) && <Text style={[styles.calendarBarText, !day.current && { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={1}>{taskInSlot.title}</Text>}
                     </View>
                   );
                 })
@@ -199,14 +250,15 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
                     const isStart = ds === taskInSlot.date;
                     const isEnd = ds === (taskInSlot.endDate || taskInSlot.date);
                     const col = taskInSlot.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === taskInSlot.id) % TASK_COLORS.length];
+                    const opacity = taskInSlot.isCompleted ? '40' : (day.current ? 'CC' : '30');
                     return (
-                      <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + (taskInSlot.isCompleted ? '40' : 'CC') }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
-                        {(isStart || (i % 7 === 0)) && <Text style={styles.calendarBarText} numberOfLines={1}>{taskInSlot.title}</Text>}
+                      <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + opacity }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
+                        {(isStart || (i % 7 === 0)) && <Text style={[styles.calendarBarText, !day.current && { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={1}>{taskInSlot.title}</Text>}
                       </View>
                     );
                   })}
                   <View style={styles.moreTasksRow}>
-                    <Text style={styles.moreTasksText}>+{dayTasks.length - 3}</Text>
+                    <Text style={[styles.moreTasksText, !day.current && { opacity: 0.5 }]}>+{dayTasks.length - 3}</Text>
                   </View>
                 </>
               )}
@@ -333,14 +385,16 @@ const TasksScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
-    if (holidayCountries.length > 0) {
-      const year = selectedDate.getFullYear();
-      // Fetch for current, previous and next year to ensure smooth transitions
-      const h1 = getHolidaysForYear(year - 1, holidayCountries);
-      const h2 = getHolidaysForYear(year, holidayCountries);
-      const h3 = getHolidaysForYear(year + 1, holidayCountries);
-      setHolidaysMap({ ...h1, ...h2, ...h3 });
+    const year = selectedDate.getFullYear();
+    if (holidayCountries.length === 0) {
+      setHolidaysMap({});
+      return;
     }
+    // Fetch for current, previous and next year to ensure smooth transitions
+    const h1 = getHolidaysForYear(year - 1, holidayCountries);
+    const h2 = getHolidaysForYear(year, holidayCountries);
+    const h3 = getHolidaysForYear(year + 1, holidayCountries);
+    setHolidaysMap({ ...h1, ...h2, ...h3 });
   }, [holidayCountries, selectedDate.getFullYear()]);
 
   const loadPreferences = async () => {

@@ -14,6 +14,7 @@ export const getHolidaysForYear = (year, countries) => {
   
   countries.forEach(countryCode => {
     try {
+      // Set language to Korean if available, fallback to English
       const hd = new Holidays(countryCode);
       const holidays = hd.getHolidays(year);
       
@@ -22,12 +23,24 @@ export const getHolidaysForYear = (year, countries) => {
         if (h.start && h.end) {
           let curr = new Date(h.start);
           const end = new Date(h.end);
+          
+          // Special adjustment for Korean Seollal (Lunar New Year)
+          // Library rule sometimes starts on the day of Seollal, but KR law is Day-1, Day, Day+1
+          const isSeollal = countryCode === 'KR' && (h.name.includes('설날') || h.name.toLowerCase().includes('seollal'));
+          if (isSeollal) {
+            curr.setDate(curr.getDate() - 1);
+            end.setDate(end.getDate() - 1);
+          }
+
           while (curr < end) {
-            dates.push(new Date(curr.getTime() + 12 * 3600 * 1000).toISOString().split('T')[0]);
+            // Use local date string parts to avoid timezone shifts
+            const y = curr.getFullYear();
+            const m = String(curr.getMonth() + 1).padStart(2, '0');
+            const d = String(curr.getDate()).padStart(2, '0');
+            dates.push(`${y}-${m}-${d}`);
             curr.setDate(curr.getDate() + 1);
           }
         } else {
-          // Fallback if start/end are not available
           dates.push(h.date.split(' ')[0]);
         }
 
@@ -47,15 +60,110 @@ export const getHolidaysForYear = (year, countries) => {
     }
   });
 
+  // Manual injection for KR 2026+ new holidays (based on latest legislation)
+  if (countries.includes('KR') && year >= 2026) {
+    const lDay = `${year}-05-01`;
+    if (!allHolidays[lDay]) {
+      allHolidays[lDay] = [{ name: '노동절', type: 'public', country: 'KR' }];
+    } else if (!allHolidays[lDay].some(h => h.name.includes('노동') || h.name.includes('Labour'))) {
+      allHolidays[lDay].push({ name: '노동절', type: 'public', country: 'KR' });
+    }
+  }
+
+  // Post-processing for Korea's substitute holidays (KR specific enhancement)
+  if (countries.includes('KR')) {
+    const substitutes = {};
+    Object.keys(allHolidays).forEach(ds => {
+      const hols = allHolidays[ds];
+      hols.forEach(h => {
+        if (h.country === 'KR' && h.type === 'public') {
+          const date = new Date(ds);
+          const day = date.getDay(); // 0: Sun, 6: Sat
+          
+          // Support both Korean and English names from the library
+          const name = h.name.toLowerCase();
+          const isGroupA = ['설날', '추석', 'lunar new year', 'thanksgiving'].some(n => name.includes(n.toLowerCase()));
+          const isGroupB = [
+            '삼일절', '3·1절', '3.1절', '어린이날', '부처님오신날', '석가탄신일', '광복절', '개천절', '한글날', '성탄절', '기독탄신일', '제헌절', '노동절', '근로자의 날',
+            'independence movement', 'children\'s day', 'buddha\'s birthday', 'liberation day', 'national foundation day', 'hangul day', 'christmas', 'constitution day', 'labour day'
+          ].some(n => name.includes(n.toLowerCase()));
+          
+          let shouldSub = false;
+          let offset = 0;
+
+          if (isGroupA && day === 0) {
+            shouldSub = true;
+            offset = 1;
+          } else if (isGroupB) {
+            if (day === 0) {
+              shouldSub = true;
+              offset = 1;
+            } else if (day === 6) {
+              shouldSub = true;
+              offset = 2;
+            }
+          }
+
+          if (shouldSub) {
+            let subDate = new Date(date);
+            subDate.setDate(date.getDate() + offset);
+            let subDateStr = subDate.toISOString().split('T')[0];
+            
+            // Skip existing public holidays to find the next available business day
+            while (allHolidays[subDateStr] && allHolidays[subDateStr].some(xh => xh.type === 'public' && xh.country === 'KR')) {
+              subDate.setDate(subDate.getDate() + 1);
+              subDateStr = subDate.toISOString().split('T')[0];
+            }
+            
+            if (!substitutes[subDateStr]) {
+              substitutes[subDateStr] = [];
+            }
+            // Use a clean Korean name for the substitute
+            let cleanName = h.name;
+            if (name.includes('independence') || name.includes('3·1') || name.includes('3.1') || name.includes('삼일')) cleanName = '3·1절';
+            else if (name.includes('children')) cleanName = '어린이날';
+            else if (name.includes('buddha') || name.includes('석가')) cleanName = '부처님오신날';
+            else if (name.includes('liberation')) cleanName = '광복절';
+            else if (name.includes('foundation')) cleanName = '개천절';
+            else if (name.includes('hangul')) cleanName = '한글날';
+            else if (name.includes('christmas') || name.includes('기독')) cleanName = '성탄절';
+            else if (name.includes('constitution')) cleanName = '제헌절';
+            else if (name.includes('labour')) cleanName = '노동절';
+
+            const subName = cleanName.includes('대체') ? cleanName : `${cleanName} 대체공휴일`;
+            substitutes[subDateStr].push({
+              name: subName,
+              type: 'public',
+              country: 'KR'
+            });
+          }
+        }
+      });
+    });
+
+    // Merge substitutes back, ensuring no duplicates and handling overlaps
+    Object.keys(substitutes).forEach(sDate => {
+      if (!allHolidays[sDate]) {
+        allHolidays[sDate] = substitutes[sDate];
+      } else {
+        substitutes[sDate].forEach(sh => {
+          if (!allHolidays[sDate].some(existing => existing.name.includes(sh.name.split(' ')[0]))) {
+            allHolidays[sDate].push(sh);
+          }
+        });
+      }
+    });
+  }
+
   return allHolidays;
 };
 
-/**
- * Get the default country code based on device locale
- */
 export const getDefaultCountry = () => {
-  const regionCode = Localization.region;
-  return regionCode || 'US'; // Fallback to US
+  const locales = Localization.getLocales();
+  if (locales && locales.length > 0 && locales[0].regionCode) {
+    return locales[0].regionCode;
+  }
+  return Localization.region || 'KR'; // 한국 사용자 우선 고려하여 기본값 KR로 설정
 };
 
 /**
