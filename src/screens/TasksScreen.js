@@ -335,6 +335,35 @@ const ToastItem = React.memo(({ toast, bottom, onDone, styles }) => {
   );
 });
 
+const CountryItem = React.memo(({ item, isSelected, onPress }) => (
+  <TouchableOpacity 
+    style={styles.countryResultItem}
+    onPress={() => onPress(item.code)}
+  >
+    <View style={{ flex: 1 }}>
+      <Text style={styles.countryResultName}>{item.displayPrimary}</Text>
+      {item.displaySecondary ? <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{item.displaySecondary}</Text> : null}
+    </View>
+    <Text style={styles.countryResultCode}>{item.code}</Text>
+    {isSelected && <CheckCircle2 size={18} color={Colors.primary} />}
+  </TouchableOpacity>
+));
+
+const SelectedCountryItem = React.memo(({ code, country, onRemove }) => (
+  <View style={styles.selectedCountryItem}>
+    <View>
+      <Text style={styles.selectedCountryName}>{country?.displayPrimary || code}</Text>
+      <Text style={styles.selectedCountryCode}>{country?.displaySecondary || country?.name || code} ({code})</Text>
+    </View>
+    <TouchableOpacity 
+      style={styles.countryRemoveBtn}
+      onPress={() => onRemove(code)}
+    >
+      <Trash2 size={18} color={Colors.error} />
+    </TouchableOpacity>
+  </View>
+));
+
 const TasksScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
   const isKorean = i18n.language === 'ko';
@@ -348,6 +377,10 @@ const TasksScreen = ({ navigation }) => {
   const [isTaskListVisible, setIsTaskListVisible] = useState(false);
     
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
+  
+  // FlatList 강제 리마운트용 키 (대규모 점프 시 렉 방지)
+  const [calendarListKey, setCalendarListKey] = useState('calendar-list-init');
+  
   const [taskWeather, setTaskWeather] = useState({});
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
@@ -582,11 +615,16 @@ const TasksScreen = ({ navigation }) => {
       setHolidaysMap({});
       return;
     }
-    // Fetch for current, previous and next year to ensure smooth transitions
-    const h1 = getHolidaysForYear(year - 1, holidayCountries);
-    const h2 = getHolidaysForYear(year, holidayCountries);
-    const h3 = getHolidaysForYear(year + 1, holidayCountries);
-    setHolidaysMap({ ...h1, ...h2, ...h3 });
+    
+    // Defer the heavy calculation by 50ms so the UI (checkbox) updates instantly
+    const timer = setTimeout(() => {
+      const h1 = getHolidaysForYear(year - 1, holidayCountries);
+      const h2 = getHolidaysForYear(year, holidayCountries);
+      const h3 = getHolidaysForYear(year + 1, holidayCountries);
+      setHolidaysMap({ ...h1, ...h2, ...h3 });
+    }, 50);
+
+    return () => clearTimeout(timer);
   }, [holidayCountries, selectedDate.getFullYear()]);
 
   const loadPreferences = async () => {
@@ -660,6 +698,13 @@ const TasksScreen = ({ navigation }) => {
 
   const applyPicker = () => {
     const newDate = new Date(tempYear, tempMonth, selectedDate.getDate());
+    
+    // 점프 거리가 3개월을 초과하면 FlatList를 새로고침하여 중간 렌더링 렉(Freeze) 방지
+    const monthDiff = (newDate.getFullYear() - selectedDate.getFullYear()) * 12 + (newDate.getMonth() - selectedDate.getMonth());
+    if (Math.abs(monthDiff) > 3) {
+      setCalendarListKey(`calendar-list-${Date.now()}`);
+    }
+
     // 해당 월의 마지막 날짜 처리
     if (newDate.getMonth() !== tempMonth) {
       newDate.setDate(0);
@@ -848,6 +893,12 @@ const TasksScreen = ({ navigation }) => {
     }
   }, [sheetAnim, setSelectedTaskDetail, setIsTaskListVisible, setSelectedDate, setTaskDate]);
 
+  const calendarItemLayout = React.useCallback((data, index) => ({
+    length: width - Spacing.lg * 2,
+    offset: (width - Spacing.lg * 2) * index,
+    index,
+  }), []);
+
   const renderCalendarItem = React.useCallback(({ item: index }) => {
     return (
       <MonthGrid
@@ -955,6 +1006,7 @@ const TasksScreen = ({ navigation }) => {
           </View>
 
           <FlatList
+            key={calendarListKey}
             ref={calendarListRef}
             data={monthGridData}
             horizontal
@@ -962,11 +1014,12 @@ const TasksScreen = ({ navigation }) => {
             showsHorizontalScrollIndicator={false}
             keyExtractor={item => item.toString()}
             initialScrollIndex={getMonthIndex(selectedDate)}
-            getItemLayout={(_, index) => ({
-              length: width - Spacing.lg * 2,
-              offset: (width - Spacing.lg * 2) * index,
-              index,
-            })}
+            getItemLayout={calendarItemLayout}
+            windowSize={3}
+            initialNumToRender={2}
+            maxToRenderPerBatch={2}
+            updateCellsBatchingPeriod={50}
+            removeClippedSubviews={true}
             onMomentumScrollBegin={() => { isScrollingRef.current = true; }}
             onMomentumScrollEnd={(e) => {
               const index = Math.round(e.nativeEvent.contentOffset.x / (width - Spacing.lg * 2));
@@ -1053,12 +1106,12 @@ const TasksScreen = ({ navigation }) => {
                   ) : (
                     <View style={styles.taskList}>
                       {/* Public Holidays Section */}
-                      {isPublicHoliday(dateStr(selectedDate), holidaysMap) && (
+                      {holidaysMap[dateStr(selectedDate)] && holidaysMap[dateStr(selectedDate)].length > 0 && (
                         <View style={styles.holidaySection}>
                           {holidaysMap[dateStr(selectedDate)].map((h, idx) => (
                             <View key={idx} style={styles.holidayBadge}>
                               <Text style={styles.holidayNameText}>[{h.country}] {h.name}</Text>
-                              <Text style={styles.holidayTypeText}>Public Holiday</Text>
+                              <Text style={styles.holidayTypeText}>{h.type === 'public' ? t('tasks.public_holiday', 'Public Holiday') : t('tasks.observance', 'Observance')}</Text>
                             </View>
                           ))}
                         </View>
@@ -1767,26 +1820,21 @@ const TasksScreen = ({ navigation }) => {
                   initialNumToRender={10}
                   maxToRenderPerBatch={10}
                   windowSize={5}
+                  getItemLayout={(data, index) => ({ length: 65, offset: 65 * index, index })}
                   ListHeaderComponent={<Text style={styles.sectionSmallTitle}>Search Results</Text>}
-                  renderItem={({ item: c }) => (
-                    <TouchableOpacity 
-                      style={styles.countryResultItem}
-                      onPress={() => {
-                        if (!holidayCountries.includes(c.code)) {
-                          const next = [...holidayCountries, c.code];
+                  renderItem={({ item }) => (
+                    <CountryItem 
+                      item={item} 
+                      isSelected={holidayCountries.includes(item.code)} 
+                      onPress={(code) => {
+                        if (!holidayCountries.includes(code)) {
+                          const next = [...holidayCountries, code];
                           setHolidayCountries(next);
                           saveCountries(next);
                         }
                         setCountrySearch('');
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.countryResultName}>{c.displayPrimary}</Text>
-                        {c.displaySecondary ? <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{c.displaySecondary}</Text> : null}
-                      </View>
-                      <Text style={styles.countryResultCode}>{c.code}</Text>
-                      {holidayCountries.includes(c.code) && <CheckCircle2 size={18} color={Colors.primary} />}
-                    </TouchableOpacity>
+                      }} 
+                    />
                   )}
                 />
               ) : (
@@ -1796,28 +1844,19 @@ const TasksScreen = ({ navigation }) => {
                   style={{ flex: 1 }}
                   showsVerticalScrollIndicator={false}
                   initialNumToRender={15}
+                  getItemLayout={(data, index) => ({ length: 75, offset: 75 * index, index })}
                   ListHeaderComponent={<Text style={styles.sectionSmallTitle}>Selected Countries</Text>}
-                  renderItem={({ item: code }) => {
-                    const country = processedCountries.find(c => c.code === code);
-                    return (
-                      <View style={styles.selectedCountryItem}>
-                        <View>
-                          <Text style={styles.selectedCountryName}>{country?.displayPrimary || code}</Text>
-                          <Text style={styles.selectedCountryCode}>{country?.displaySecondary || country?.name || code} ({code})</Text>
-                        </View>
-                        <TouchableOpacity 
-                          style={styles.countryRemoveBtn}
-                          onPress={() => {
-                            const next = holidayCountries.filter(c => c !== code);
-                            setHolidayCountries(next);
-                            saveCountries(next);
-                          }}
-                        >
-                          <Trash2 size={18} color={Colors.error} />
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  }}
+                  renderItem={({ item: code }) => (
+                    <SelectedCountryItem 
+                      code={code} 
+                      country={processedCountries.find(c => c.code === code)}
+                      onRemove={(cCode) => {
+                        const next = holidayCountries.filter(c => c !== cCode);
+                        setHolidayCountries(next);
+                        saveCountries(next);
+                      }}
+                    />
+                  )}
                 />
               )}
             </View>

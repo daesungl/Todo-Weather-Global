@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = '@user_holiday_countries';
 
+const hdCache = {};
+
 /**
  * Get holidays for a given year and countries
  * @param {number} year 
@@ -14,8 +16,10 @@ export const getHolidaysForYear = (year, countries) => {
   
   countries.forEach(countryCode => {
     try {
-      // Set language to Korean if available, fallback to English
-      const hd = new Holidays(countryCode);
+      if (!hdCache[countryCode]) {
+        hdCache[countryCode] = new Holidays(countryCode);
+      }
+      const hd = hdCache[countryCode];
       const holidays = hd.getHolidays(year);
       
       holidays.forEach(h => {
