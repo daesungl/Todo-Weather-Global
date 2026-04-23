@@ -256,8 +256,11 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
                 
                 const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
                 const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
-                const weekStartIdx = Math.max(startIdx, i - (i % 7));
-                const weekEndIdx = Math.min(endIdx, weekStartIdx + (6 - (weekStartIdx % 7)));
+                // Clamp -1 (out-of-range) to calendar bounds, matching slot-calculation logic
+                const effectiveStartIdx = startIdx === -1 ? 0 : startIdx;
+                const effectiveEndIdx = endIdx === -1 ? days.length - 1 : endIdx;
+                const weekStartIdx = Math.max(effectiveStartIdx, i - (i % 7));
+                const weekEndIdx = Math.min(effectiveEndIdx, weekStartIdx + (6 - (weekStartIdx % 7)));
                 const isSegmentStart = i === weekStartIdx;
                 const spanInWeek = weekEndIdx - weekStartIdx + 1;
                 const cellWidth = (width - Spacing.lg * 2) / 7;
