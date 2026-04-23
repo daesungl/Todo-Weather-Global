@@ -277,13 +277,28 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
                       isMulti && !isEnd && { borderTopRightRadius: 0, borderBottomRightRadius: 0, marginRight: -1, paddingRight: 0 }
                     ]}
                   >
-                    {isSegmentStart && (
-                      <View 
+                    {isSegmentStart && spanInWeek === 1 && (
+                      // Single-day: direct child so bar's flex layout centers the text
+                      <Text
                         pointerEvents="none"
-                        style={{ 
-                          width: cellWidth * spanInWeek, 
-                          position: 'absolute', 
-                          left: 0, 
+                        style={[
+                          styles.calendarBarText,
+                          { textAlign: 'center', width: '100%' },
+                          !day.current && { color: 'rgba(255,255,255,0.7)' }
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {task.title}
+                      </Text>
+                    )}
+                    {isSegmentStart && spanInWeek > 1 && (
+                      // Multi-day: absolute overlay spanning multiple cells
+                      <View
+                        pointerEvents="none"
+                        style={{
+                          width: cellWidth * spanInWeek,
+                          position: 'absolute',
+                          left: 0,
                           top: 0,
                           bottom: 0,
                           justifyContent: 'center',
@@ -291,16 +306,12 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
                           zIndex: 20,
                         }}
                       >
-                        <Text 
+                        <Text
                           style={[
-                            styles.calendarBarText, 
-                            { 
-                              textAlign: 'center', 
-                              width: '100%',
-                              paddingHorizontal: 2
-                            },
+                            styles.calendarBarText,
+                            { textAlign: 'center', width: '100%', paddingHorizontal: 2 },
                             !day.current && { color: 'rgba(255,255,255,0.7)' }
-                          ]} 
+                          ]}
                           numberOfLines={1}
                         >
                           {task.title}
@@ -1949,12 +1960,12 @@ const styles = StyleSheet.create({
   dayNum: { fontSize: 13, fontWeight: '700', color: Colors.text },
 
   calendarSlotContainer: { flex: 1, paddingHorizontal: 1, gap: 1 },
-  emptySlotRow: { height: 13 },
-  calendarTaskBar: { height: 13, justifyContent: 'center', paddingHorizontal: 4 },
+  emptySlotRow: { height: 14 },
+  calendarTaskBar: { height: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
   barStart: { borderTopLeftRadius: 4, borderBottomLeftRadius: 4, marginLeft: 2 },
   barEnd: { borderTopRightRadius: 4, borderBottomRightRadius: 4, marginRight: 2 },
   barMiddle: { marginHorizontal: 0 },
-  calendarBarText: { fontSize: 10, fontWeight: '700', color: 'white' },
+  calendarBarText: { fontSize: 10, fontWeight: '700', color: 'white', lineHeight: 14, includeFontPadding: false, textAlignVertical: 'center' },
   moreTasksRow: { height: 13, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
   moreTasksText: { fontSize: 9, fontWeight: '800', color: Colors.textSecondary },
 
