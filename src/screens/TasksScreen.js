@@ -775,6 +775,11 @@ const TasksScreen = ({ navigation }) => {
     if (date) setTaskDate(date);
   };
 
+  const onEndDateChange = (event, date) => {
+    if (Platform.OS === 'android') setShowEndDatePicker(false);
+    if (date) setEndDate(date);
+  };
+
   const onTimeChange = (event, date) => {
     if (Platform.OS === 'android') setShowTimePicker(false);
     if (date) {
@@ -782,11 +787,6 @@ const TasksScreen = ({ navigation }) => {
       const minutes = date.getMinutes().toString().padStart(2, '0');
       setNewTime(`${hours}:${minutes}`);
     }
-  };
-
-  const onEndDateChange = (event, date) => {
-    if (Platform.OS === 'android') setShowEndDatePicker(false);
-    if (date) setEndDate(date);
   };
 
   const onEndTimeChange = (event, date) => {
@@ -1738,10 +1738,50 @@ const TasksScreen = ({ navigation }) => {
           {/* Date / Time Pickers */}
           {Platform.OS === 'android' && (
             <>
-              {showDatePicker && <DateTimePicker value={taskDate} mode="date" display="spinner" onChange={onDateChange} />}
-              {showTimePicker && <DateTimePicker value={(() => { const [h, m] = newTime.split(':').map(Number); const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d; })()} mode="time" is24Hour={true} display="spinner" onChange={onTimeChange} />}
-              {showEndDatePicker && <DateTimePicker value={endDate} mode="date" display="spinner" onChange={onEndDateChange} />}
-              {showEndTimePicker && <DateTimePicker value={(() => { const [h, m] = endTime.split(':').map(Number); const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d; })()} mode="time" is24Hour={true} display="spinner" onChange={onEndTimeChange} />}
+              {showDatePicker && (
+                <View style={styles.inlinePickerContainer}>
+                  <DateTimePicker value={taskDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onDateChange} />
+                </View>
+              )}
+              {showTimePicker && (
+                <View style={styles.customWheelContainer}>
+                  <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select Start Time</Text></View>
+                  <DateTimePicker
+                    value={(() => {
+                      const d = new Date(taskDate);
+                      const [h, m] = newTime.split(':').map(Number);
+                      d.setHours(h, m);
+                      return d;
+                    })()}
+                    mode="time"
+                    is24Hour={true}
+                    display="spinner"
+                    onChange={onTimeChange}
+                  />
+                </View>
+              )}
+              {showEndDatePicker && (
+                <View style={styles.inlinePickerContainer}>
+                  <DateTimePicker value={endDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onEndDateChange} />
+                </View>
+              )}
+              {showEndTimePicker && (
+                <View style={styles.customWheelContainer}>
+                  <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select End Time</Text></View>
+                  <DateTimePicker
+                    value={(() => {
+                      const d = new Date(endDate);
+                      const [h, m] = endTime.split(':').map(Number);
+                      d.setHours(h, m);
+                      return d;
+                    })()}
+                    mode="time"
+                    is24Hour={true}
+                    display="spinner"
+                    onChange={onEndTimeChange}
+                  />
+                </View>
+              )}
             </>
           )}
 
@@ -2350,6 +2390,59 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  inlinePickerContainer: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    marginTop: 10,
+    padding: 10,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10 },
+      android: { elevation: 2 }
+    })
+  },
+  customWheelContainer: {
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: 24,
+    marginTop: 10,
+    overflow: 'hidden',
+    paddingBottom: 8,
+  },
+  wheelHeader: {
+    padding: 12,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.outlineVariant,
+  },
+  wheelHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  wheelRowCustom: {
+    flexDirection: 'row',
+    height: ITEM_HEIGHT * 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  wheelColCustom: {
+    flex: 1,
+    height: ITEM_HEIGHT * 3,
+  },
+  wheelItemCustom: {
+    height: ITEM_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelItemTextCustom: {
+    fontSize: 18,
+    color: Colors.outline,
+    fontWeight: '500',
+  },
+  activeWheelTextCustom: {
+    color: Colors.onBackground,
+    fontSize: 22,
+    fontWeight: '800',
   },
 });
 

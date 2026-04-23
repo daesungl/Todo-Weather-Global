@@ -370,7 +370,7 @@ const HomeScreen = ({ navigation }) => {
                     style={styles.regionCard}
                     onPress={() => {
                       if (weather) {
-                        navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: region.name, regionId: region.id });
+                        navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: region.name, regionId: region.id, region: region });
                       }
                     }}
                   >

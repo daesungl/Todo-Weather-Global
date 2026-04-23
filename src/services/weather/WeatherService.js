@@ -17,7 +17,38 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
     // 0. Preliminary Cache Check
     if (!force) {
       const cachedData = await getCache(cacheKey);
-      if (cachedData) return cachedData;
+      if (cachedData) {
+        // 캐시된 데이터를 현재 시각 기준으로 isDay 재계산
+        // tzOffsetMs가 있으면 해당 지역 현지 시간 사용, 없으면 KST 폴백 (구 캐시 호환)
+        const now = new Date();
+        let offsetMs;
+        if (cachedData.tzOffsetMs !== undefined) {
+          // 신규 캐시: 저장된 현지 타임존 오프셋 사용
+          offsetMs = cachedData.tzOffsetMs;
+        } else if (cachedData.lon !== undefined) {
+          // 구 캐시(tzOffsetMs 없음): 경도 기반 근사 타임존 (15° = 1시간)
+          offsetMs = Math.round(cachedData.lon / 15) * 3600000;
+        } else {
+          // 최후 폴백: KST
+          offsetMs = 9 * 60 * 60 * 1000;
+        }
+        const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
+        cachedData.isDay = localHour >= 6 && localHour < 18;
+
+        // isDay 변화에 따라 condKey도 교정 (맑음 ↔ 맑은 밤)
+        if (!cachedData.isDay && (cachedData.condKey === 'sunny' || cachedData.condKey === 'clear' || cachedData.condKey === 'mostly_sunny')) {
+          cachedData.condKey = 'clear_night';
+        } else if (cachedData.isDay && cachedData.condKey === 'clear_night') {
+          cachedData.condKey = 'sunny';
+        }
+        
+        // Ensure addressName exists for subtitle display
+        if (!cachedData.addressName && cachedData.locationName) {
+          cachedData.addressName = cachedData.locationName;
+        }
+        
+        return cachedData;
+      }
     }
 
     // 1. Determine location info (Resilient VWorld check)
@@ -70,7 +101,8 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
             ...kma, 
             ...sun, 
             alert: alert, 
-            locationName: address,
+            locationName: regionId || address, // Keep provided name if available
+            addressName: address, // Store full address separately
             lat,
             lon,
             isAccurateSource: true 
@@ -95,7 +127,8 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
       console.log(`[${globalName}] 날씨 데이터 ( weatherAPI ) 조회 완료`);
       const result = { 
         ...weatherData, 
-        locationName: globalName, 
+        locationName: regionId || globalName, 
+        addressName: globalName,
         lat, 
         lon,
         isAccurateSource: false 

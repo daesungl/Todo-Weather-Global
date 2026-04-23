@@ -13,7 +13,8 @@
       "backgroundColor": "#f7f9ff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.page78.todoweather"
     },
     "android": {
       "adaptiveIcon": {

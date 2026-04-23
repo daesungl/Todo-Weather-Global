@@ -155,6 +155,8 @@ export const fetchGlobalWeather = async (lat, lon) => {
       dailyForecast,
       hourlyForecast,
       isDay: !!current.is_day,
+      // 현지 타임존 오프셋 저장 (캐시 재사용 시 현지 시간 기준 isDay 재계산용)
+      tzOffsetMs: Math.round((data.location.localtime_epoch * 1000 - Date.now()) / 3600000) * 3600000,
       alert: alertData,
       nowKey: localNowKey, // Provide local now key
       

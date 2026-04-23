@@ -11,6 +11,7 @@ import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import AirService from '../services/weather/AirService';
+import WeatherService from '../services/weather/WeatherService';
 import { fetchExtraMetrics } from '../services/weather/GlobalService';
 import { saveCache } from '../services/StorageService';
 
@@ -70,13 +71,20 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   };
 
   const [weatherData, setWeatherData] = useState({ ...defaultData, ...initialData });
+  
+  // 전체 데이터 로딩 상태 (initialData가 없을 때 사용)
+  const needsFullLoad = !initialData?.temp || initialData?.temp === '--°';
+  const [loadingFull, setLoadingFull] = useState(needsFullLoad && (!!route.params?.region?.lat || !!initialData?.lat));
+
   const hasAccurateAQInit = !!initialData?.pollutants &&
     initialData?.aqiValue !== '--' &&
     initialData?.aqiText !== '실시간 대기질 정보를 업데이트 중입니다.';
-  const [loadingAir, setLoadingAir] = useState(!hasAccurateAQInit);
+  const [loadingAir, setLoadingAir] = useState(!hasAccurateAQInit && !loadingFull);
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
+  // WeatherService와 동일한 캐시키를 loadAsyncData에서 재사용하기 위한 ref
+  const weatherCacheKeyRef = useRef('');
 
   // Pulse animation for loading skeleton
   useEffect(() => {
@@ -136,11 +144,27 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const sunPos = getSunPosition();
 
   useEffect(() => {
-    const lat = initialData?.lat;
-    const lon = initialData?.lon;
+    const region = route.params?.region;
+    const lat = initialData?.lat || region?.lat;
+    const lon = initialData?.lon || region?.lon;
+    const name = initialData?.locationName || region?.name;
+    const address = initialData?.addressName && initialData.addressName !== '--'
+      ? initialData.addressName
+      : (region?.address || '');
+
+    // Home/Flow 모두 동일한 캐시키 규칙 적용 (WeatherService와 일치)
+    // Home: route.params.regionId = region.id, Flow: name 사용
+    const regionId = route.params?.regionId || name || '';
+    if (lat && lon && regionId) {
+      weatherCacheKeyRef.current = `weather_v6_${parseFloat(lat).toFixed(4)}_${parseFloat(lon).toFixed(4)}_${regionId}`;
+    }
+
+    if (needsFullLoad && lat && lon) {
+      loadFullWeatherData(lat, lon, name, address);
+    }
 
     const interaction = InteractionManager.runAfterInteractions(() => {
-      // aqiValue가 실제로 유효한 값(숫자 또는 문자)인지 확인 - undefined와 '--' 모두 누락으로 처리
+      // aqiValue가 실제로 유효한 값(숫자 또는 문자)인지 확인
       const aqiOk = initialData?.aqiValue !== undefined &&
         initialData?.aqiValue !== '--' &&
         initialData?.aqiValue !== null &&
@@ -148,17 +172,68 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       const hasAccurateAQ = aqiOk && (!!initialData?.pollutants || !!initialData?.stationName);
       const needsExtra = !initialData?.uvIndex || initialData?.uvIndex === '--';
 
-      console.log(`[Detail] hasAccurateAQ=${hasAccurateAQ}, stationName=${initialData?.stationName}, aqiValue=${initialData?.aqiValue}`);
-
-      if (!hasAccurateAQ && lat && lon) {
+      if (!hasAccurateAQ && lat && lon && !loadingFull) {
         loadAsyncData(lat, lon, needsExtra);
-      } else {
+      } else if (!loadingFull) {
         setLoadingAir(false);
       }
     });
 
     return () => interaction.cancel();
-  }, [initialData?.lat, initialData?.lon]);
+  }, [initialData?.lat, initialData?.lon, route.params?.region]);
+
+  const loadFullWeatherData = async (lat, lon, name, address = '') => {
+    // 위경도가 유효한 숫자인지 엄격히 체크
+    const numLat = parseFloat(lat);
+    const numLon = parseFloat(lon);
+
+    if (isNaN(numLat) || isNaN(numLon)) {
+      console.warn('[WeatherDetail] Invalid coordinates:', lat, lon);
+      setLoadingFull(false);
+      return;
+    }
+
+    try {
+      setLoadingFull(true);
+      // WeatherService 내부와 동일한 캐시키 규칙: weather_v6_lat_lon_regionId
+      weatherCacheKeyRef.current = `weather_v6_${numLat.toFixed(4)}_${numLon.toFixed(4)}_${name}`;
+      console.log(`[WeatherDetail] Fetching full weather for ${name} (${numLat}, ${numLon})`);
+      const data = await WeatherService.getWeather(numLat, numLon, false, name, address);
+
+      if (data) {
+        // 캐시된 데이터의 addressName이 locationName과 같으면 잘못 저장된 것 → 교정 후 캐시 재저장
+        if (address && data.addressName && data.addressName === data.locationName) {
+          data.addressName = address;
+          await saveCache(weatherCacheKeyRef.current, data);
+        }
+
+        setWeatherData(prev => {
+          const updated = {
+            ...prev,
+            ...data,
+            // 서버 데이터가 부실하더라도 우리가 알고 있는 이름은 지킨다
+            locationName: (data.locationName && data.locationName !== 'Error Loading' && data.locationName !== '--')
+              ? data.locationName
+              : (name || prev.locationName || '--')
+          };
+          // 온도가 숫자로만 왔을 경우 기호 추가
+          if (updated.temp && typeof updated.temp === 'number') {
+            updated.temp = `${updated.temp}°`;
+          } else if (updated.temp && !String(updated.temp).includes('°')) {
+            updated.temp = `${updated.temp}°`;
+          }
+          return updated;
+        });
+        
+        // 대기질 데이터 연동
+        loadAsyncData(numLat, numLon, true);
+      }
+    } catch (err) {
+      console.error('[WeatherDetail] Full load error:', err);
+    } finally {
+      setLoadingFull(false);
+    }
+  };
 
   const loadAsyncData = async (lat, lon, needsExtra) => {
     try {
@@ -228,9 +303,11 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           return updated;
         });
 
-        // Sync new accurate data back to cache
-        const cacheKey = `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${initialData?.regionId || ''}`;
-        if (finalData) {
+        // WeatherService와 동일한 캐시키로 대기질 포함 전체 데이터 write-back
+        // 날씨 1h / 에어코리아 1h / 일출일몰 24h 각 서비스 TTL 정책은 각 서비스 내부에서 관리
+        const cacheKey = weatherCacheKeyRef.current
+          || `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${route.params?.regionId || ''}`;
+        if (finalData && cacheKey) {
           await saveCache(cacheKey, finalData);
         }
       }
@@ -557,15 +634,20 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     />
   );
 
-  const isLoading = !initialData || (!initialData.temp && !initialData.locationName);
+  const isLoading = loadingFull || (!weatherData.temp && !weatherData.locationName && !route.params?.region);
 
   if (isLoading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#E6F7FF' }]}>
         <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: Spacing.md }} />
         <Text style={{ fontSize: 16, color: Colors.textSecondary, fontWeight: '600' }}>
           {t('common.loading', '기상 정보를 불러오는 중입니다...')}
         </Text>
+        {route.params?.region?.name && (
+          <Text style={{ fontSize: 14, color: Colors.textSecondary, marginTop: 8 }}>
+            {route.params.region.name}
+          </Text>
+        )}
       </View>
     );
   }
@@ -592,11 +674,24 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         </TouchableOpacity>
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {route.params?.isCurrentLocation ? t('weather.current_location') : (route.params?.locationName || weatherData.locationName)}
+            {route.params?.isCurrentLocation
+              ? t('weather.current_location')
+              : (route.params?.region?.name || route.params?.locationName
+                  || (weatherData.locationName && weatherData.locationName !== '--' ? weatherData.locationName : '--'))}
           </Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>
-            {route.params?.isCurrentLocation ? weatherData.locationName : (route.params?.locationName ? weatherData.locationName : '')}
-          </Text>
+          {(() => {
+            const isCurrentLoc = route.params?.isCurrentLocation;
+            const addrName = weatherData.addressName;
+            // 표시 타이틀로 쓰이는 이름 (region.name 우선)
+            const displayName = route.params?.region?.name || route.params?.locationName || weatherData.locationName || '';
+            // 현재 위치: addressName이 displayName과 같아도 그대로 표시 (주소가 곧 서브타이틀)
+            // 일반 지역: addressName이 displayName과 같으면 잘못된 캐시 → region.address로 폴백
+            const isMeaningful = addrName && addrName !== '--' && (isCurrentLoc || addrName !== displayName);
+            const subtitle = isMeaningful
+              ? addrName
+              : (route.params?.region?.address || '');
+            return subtitle ? <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text> : null;
+          })()}
         </View>
         <View style={styles.iconBtnPlaceholder} />
       </View>
@@ -608,10 +703,18 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         <LinearGradient colors={['#E6F7FF', '#effafd', '#f7f9ff']} style={styles.heroSection}>
           <View style={styles.heroMain}>
             {renderWeatherIcon(weatherData.condKey)}
-            <Text style={styles.heroTemp}>{weatherData.temp}</Text>
-            <Text style={styles.conditionSub}>{t(`weather.${weatherData.condKey || 'sunny'}`)}</Text>
+            <Text style={styles.heroTemp}>
+              {weatherData.temp && String(weatherData.temp).includes('°') ? weatherData.temp : `${weatherData.temp || '--'}°`}
+            </Text>
+            <Text style={styles.conditionSub}>
+              {weatherData.isDay === false && (weatherData.condKey === 'sunny' || weatherData.condKey === 'clear')
+                ? t('weather.clear_night', 'Clear Night')
+                : t(`weather.${weatherData.condKey || 'sunny'}`)}
+            </Text>
             <View style={styles.heroHighLow}>
-              <Text style={styles.heroHLText}>{`${t('common.high')} ${weatherData.highTemp}  |  ${t('common.low')} ${weatherData.lowTemp}`}</Text>
+              <Text style={styles.heroHLText}>
+                {`${t('common.high')} ${String(weatherData.highTemp).includes('°') ? weatherData.highTemp : `${weatherData.highTemp || '--'}°`}  |  ${t('common.low')} ${String(weatherData.lowTemp).includes('°') ? weatherData.lowTemp : `${weatherData.lowTemp || '--'}°`}`}
+              </Text>
             </View>
           </View>
         </LinearGradient>

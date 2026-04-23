@@ -51,6 +51,8 @@
   },
   "weather": {
     "sunny": "Sunny",
+    "clear": "Clear",
+    "clear_night": "Clear Night",
     "mostly_sunny": "Mostly Sunny",
     "partly_cloudy": "Partly Cloudy",
     "cloudy": "Cloudy",

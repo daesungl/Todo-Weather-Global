@@ -51,6 +51,8 @@
   },
   "weather": {
     "sunny": "맑음",
+    "clear": "맑음",
+    "clear_night": "맑은 밤",
     "mostly_sunny": "대체로 맑음",
     "partly_cloudy": "구름 조금",
     "cloudy": "흐림",

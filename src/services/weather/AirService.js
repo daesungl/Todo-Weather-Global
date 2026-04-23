@@ -1,13 +1,15 @@
 import axios from 'axios';
+import { getCache, saveCache } from '../StorageService';
 
 // API Keys from Environment
 // decodeURIComponent 필요: env에 이미 인코딩된 값이 들어있어 axios params로 넘기면 이중인코딩 → 401
 const SERVICE_KEY = decodeURIComponent(process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '');
 const VWORLD_API_KEY = process.env.EXPO_PUBLIC_VWORLD_API_KEY || '';
 
-// 5분 메모리 캐시: 같은 측정소 중복 호출 방지 (429 에러 절감)
-const _cache = new Map();
-const CACHE_TTL = 60 * 60 * 1000; // 대기질 캐시 주기 60분으로 상향 (에어코리아 부하 방지)
+// 인메모리 캐시: 같은 세션 내 중복 호출 즉시 차단 (AsyncStorage I/O 없이 빠르게)
+const _memCache = new Map();
+// AsyncStorage 캐시 키 prefix (앱 재시작 후에도 1시간 유지)
+const AIR_CACHE_PREFIX = 'air_v1_';
 
 /**
  * 1. Convert Position to TM Coordinate (epsg:5181)
@@ -137,13 +139,25 @@ export const fetchAirQuality = async (lat, lon, address = '') => {
     return null;
   }
 
-  // 5분 메모리 캐시 조회 (같은 좌표 중복 호출 방지)
-  const cacheKey = `${lat.toFixed(4)}_${lon.toFixed(4)}`;
-  const cached = _cache.get(cacheKey);
-  if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
-    console.log(`[AirService] Cache HIT for ${cacheKey} (station: ${cached.data?.stationName})`);
-    return cached.data;
+  const coordKey = `${lat.toFixed(4)}_${lon.toFixed(4)}`;
+  const storageCacheKey = `${AIR_CACHE_PREFIX}${coordKey}`;
+
+  // 1. 인메모리 캐시 (세션 내 즉각 히트)
+  const memCached = _memCache.get(coordKey);
+  if (memCached) {
+    console.log(`[AirService] Mem-cache HIT for ${coordKey}`);
+    return memCached;
   }
+
+  // 2. AsyncStorage 영구 캐시 (앱 재시작 후 복원, 429 방지)
+  try {
+    const persisted = await getCache(storageCacheKey);
+    if (persisted) {
+      console.log(`[AirService] Persistent cache HIT for ${coordKey} (station: ${persisted?.stationName})`);
+      _memCache.set(coordKey, persisted); // 세션 메모리에도 올려둠
+      return persisted;
+    }
+  } catch (_) { /* 캐시 읽기 실패 시 무시하고 API 호출 */ }
 
   try {
     console.log(`[AirService] fetchAirQuality start: lat=${lat}, lon=${lon}, addr="${address}"`);
@@ -206,8 +220,9 @@ export const fetchAirQuality = async (lat, lon, address = '') => {
       }
     };
 
-    // 결과를 메모리 캐시에 저장 (5분간 중복 호출 방지)
-    _cache.set(cacheKey, { data: result, ts: Date.now() });
+    // 결과를 인메모리 + AsyncStorage 양쪽 캐시에 저장 (1시간 TTL)
+    _memCache.set(coordKey, result);
+    saveCache(storageCacheKey, result).catch(() => {}); // 비동기 저장, 실패 무시
     return result;
   } catch (error) {
     return null;

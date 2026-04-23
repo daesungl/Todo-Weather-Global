@@ -139,7 +139,7 @@ const getMidBaseTime = () => {
   return { baseDate, baseTime };
 };
 
-const mapKMAtoCondKey = (sky, pty) => {
+const mapKMAtoCondKey = (sky, pty, isDay = true) => {
   if (pty && pty !== '0') {
     if (pty === '1' || pty === '5') return 'light_rain';
     if (pty === '2' || pty === '6') return 'rainy';
@@ -147,10 +147,10 @@ const mapKMAtoCondKey = (sky, pty) => {
     if (pty === '4') return 'moderate_rain';
     return 'rainy';
   }
-  if (sky === '1') return 'sunny';
-  if (sky === '3') return 'partly_cloudy';
+  if (sky === '1') return isDay ? 'sunny' : 'clear_night';
+  if (sky === '3') return isDay ? 'partly_cloudy' : 'mostly_clear_night';
   if (sky === '4') return 'cloudy';
-  return 'sunny';
+  return isDay ? 'sunny' : 'clear_night';
 };
 
 const findMidRegionCodes = (addressObj) => {
@@ -287,17 +287,18 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         else if (pcpVal === '1mm 미만') pcpVal = '~1mm';
         else if (!pcpVal.includes('mm') && !isNaN(pcpVal)) pcpVal = `${pcpVal}mm`;
 
+        const isHourDay = hour >= 6 && hour < 18;
         return {
           time: hourLabel,
           temp: `${h.temp}°`,
-          condKey: mapKMAtoCondKey(h.sky, h.pty),
+          condKey: mapKMAtoCondKey(h.sky, h.pty, isHourDay),
           pop: `${h.pop}%`,
           pcp: pcpVal,
           wind: `${Math.round(h.wind)}m/s`,
           windDeg: (parseInt(h.windDeg) + 180) % 360,
           hum: `${h.hum}%`,
           fullTime: `${h.date}${h.time}`,
-          isDay: hour >= 6 && hour < 18
+          isDay: isHourDay
         };
       });
 
@@ -456,7 +457,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       lowTemp: `${Math.round(lowLimit)}°`,
       humidity: `${liveWeather.humidity || '--'}%`,
       feelsLike: liveWeather.temp ? `${Math.round(liveWeather.temp)}°` : '--°',
-      condKey: mapKMAtoCondKey(liveWeather.sky, liveWeather.pty),
+      condKey: mapKMAtoCondKey(liveWeather.sky, liveWeather.pty, nowKST.getUTCHours() >= 6 && nowKST.getUTCHours() < 18),
       dailyForecast,
       hourlyForecast,
       wfSv: wfSv,
@@ -469,6 +470,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       aqiIndex: 0,
       pollutants: null,
       isDay: nowKST.getUTCHours() >= 6 && nowKST.getUTCHours() < 18,
+      tzOffsetMs: 9 * 60 * 60 * 1000, // KST = UTC+9 고정
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
