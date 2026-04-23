@@ -94,6 +94,7 @@
     "enter_title": "Please enter a title",
     "empty": "No tasks scheduled.",
     "holiday_settings": "Holiday Settings",
-    "holiday_guide": "Select countries to show public holidays"
+    "holiday_guide": "Select countries to show public holidays",
+    "search_country_placeholder": "Search country (e.g. Korea)"
   }
 }

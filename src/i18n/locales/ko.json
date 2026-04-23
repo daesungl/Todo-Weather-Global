@@ -94,6 +94,7 @@
     "enter_title": "제목을 입력해주세요",
     "empty": "예정된 일정이 없습니다.",
     "holiday_settings": "공휴일 설정",
-    "holiday_guide": "달력에 표시할 국가를 선택하세요"
+    "holiday_guide": "달력에 표시할 국가를 선택하세요",
+    "search_country_placeholder": "국가 검색 (예: 대한민국)"
   }
 }

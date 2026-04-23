@@ -163,11 +163,9 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
 
     // 3. Combine and sort
     const combinedTasks = [...mTasksFromUser, ...hTasks].sort((a, b) => {
-      // Holidays first
       const pA = a.isHoliday ? 0 : 1;
       const pB = b.isHoliday ? 0 : 1;
       if (pA !== pB) return pA - pB;
-
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       const durA = new Date(a.endDate || a.date) - new Date(a.date);
       const durB = new Date(b.endDate || b.date) - new Date(b.date);
@@ -222,7 +220,8 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
             key={i}
             style={[
               styles.dayCellMonth,
-              isSelected && { backgroundColor: '#E2E8F0' }
+              isSelected && { backgroundColor: '#E2E8F0' },
+              { zIndex: 7 - (i % 7) } // Ensure text from left-side cells overlaps right-side cells
             ]}
             onPress={() => onDayPress(day.date, isSelected)}
           >
@@ -245,39 +244,73 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
               </View>
             </View>
             <View style={styles.calendarSlotContainer}>
-              {dayTasks.length <= 4 ? (
-                [0, 1, 2, 3].map(slotIdx => {
-                  const taskInSlot = dayTasks.find(t => taskSlots[t.id] === slotIdx);
-                  if (!taskInSlot) return <View key={slotIdx} style={styles.emptySlotRow} />;
-                  const isStart = ds === taskInSlot.date;
-                  const isEnd = ds === (taskInSlot.endDate || taskInSlot.date);
-                  const col = taskInSlot.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === taskInSlot.id) % TASK_COLORS.length];
-                  const opacity = taskInSlot.isCompleted ? '40' : (day.current ? 'CC' : '30');
-                  return (
-                    <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + opacity }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
-                      {(isStart || (i % 7 === 0)) && <Text style={[styles.calendarBarText, !day.current && { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={1}>{taskInSlot.title}</Text>}
-                    </View>
-                  );
-                })
-              ) : (
-                <>
-                  {[0, 1, 2].map(slotIdx => {
-                    const taskInSlot = dayTasks.find(t => taskSlots[t.id] === slotIdx);
-                    if (!taskInSlot) return <View key={slotIdx} style={styles.emptySlotRow} />;
-                    const isStart = ds === taskInSlot.date;
-                    const isEnd = ds === (taskInSlot.endDate || taskInSlot.date);
-                    const col = taskInSlot.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === taskInSlot.id) % TASK_COLORS.length];
-                    const opacity = taskInSlot.isCompleted ? '40' : (day.current ? 'CC' : '30');
-                    return (
-                      <View key={slotIdx} style={[styles.calendarTaskBar, { backgroundColor: col + opacity }, isStart && styles.barStart, isEnd && styles.barEnd, !isStart && !isEnd && styles.barMiddle]}>
-                        {(isStart || (i % 7 === 0)) && <Text style={[styles.calendarBarText, !day.current && { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={1}>{taskInSlot.title}</Text>}
+              {[0, 1, 2, 3].map(slotIdx => {
+                const task = dayTasks.find(t => taskSlots[t.id] === slotIdx);
+                if (!task) return <View key={slotIdx} style={styles.emptySlotRow} />;
+                
+                const isStart = ds === task.date;
+                const isEnd = ds === (task.endDate || task.date);
+                const isMulti = task.endDate && task.endDate !== task.date;
+                const col = task.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === task.id) % TASK_COLORS.length];
+                const opacity = task.isCompleted ? '40' : (day.current ? 'CC' : '30');
+                
+                const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
+                const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
+                const weekStartIdx = Math.max(startIdx, i - (i % 7));
+                const weekEndIdx = Math.min(endIdx, weekStartIdx + (6 - (weekStartIdx % 7)));
+                const isSegmentStart = i === weekStartIdx;
+                const spanInWeek = weekEndIdx - weekStartIdx + 1;
+                const cellWidth = (width - Spacing.lg * 2) / 7;
+
+                return (
+                  <View 
+                    key={slotIdx} 
+                    style={[
+                      styles.calendarTaskBar, 
+                      { backgroundColor: col + opacity },
+                      isStart && styles.barStart,
+                      isEnd && styles.barEnd,
+                      isMulti && !isStart && { borderTopLeftRadius: 0, borderBottomLeftRadius: 0, marginLeft: -1, paddingLeft: 0 },
+                      isMulti && !isEnd && { borderTopRightRadius: 0, borderBottomRightRadius: 0, marginRight: -1, paddingRight: 0 }
+                    ]}
+                  >
+                    {isSegmentStart && (
+                      <View 
+                        pointerEvents="none"
+                        style={{ 
+                          width: cellWidth * spanInWeek, 
+                          position: 'absolute', 
+                          left: 0, 
+                          top: 0,
+                          bottom: 0,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          zIndex: 20,
+                        }}
+                      >
+                        <Text 
+                          style={[
+                            styles.calendarBarText, 
+                            { 
+                              textAlign: 'center', 
+                              width: '100%',
+                              paddingHorizontal: 2
+                            },
+                            !day.current && { color: 'rgba(255,255,255,0.7)' }
+                          ]} 
+                          numberOfLines={1}
+                        >
+                          {task.title}
+                        </Text>
                       </View>
-                    );
-                  })}
-                  <View style={styles.moreTasksRow}>
-                    <Text style={[styles.moreTasksText, !day.current && { opacity: 0.5 }]}>+{dayTasks.length - 3}</Text>
+                    )}
                   </View>
-                </>
+                );
+              })}
+              {dayTasks.length > 4 && (
+                <View style={styles.moreTasksRow}>
+                  <Text style={[styles.moreTasksText, !day.current && { opacity: 0.5 }]}>+{dayTasks.length - 4}</Text>
+                </View>
               )}
             </View>
           </TouchableOpacity>
@@ -1055,17 +1088,19 @@ const TasksScreen = ({ navigation }) => {
           }).start();
         }}
       >
-        <Animated.View style={[styles.sheetBg, { 
-          backgroundColor: listModalTranslateY.interpolate({
-            inputRange: [0, height * 0.5],
-            outputRange: ['rgba(0,0,0,0.5)', 'rgba(0,0,0,0)'],
-            extrapolate: 'clamp'
-          })
-        }]}>
-          <TouchableOpacity 
-            style={styles.sheetCloser} 
-            activeOpacity={1} 
-            onPress={closeTaskListModal} 
+        <View style={styles.modalBg}>
+          <Animated.View 
+            style={[
+              StyleSheet.absoluteFill,
+              { 
+                backgroundColor: 'black',
+                opacity: listModalTranslateY.interpolate({
+                  inputRange: [0, height],
+                  outputRange: [0.5, 0],
+                  extrapolate: 'clamp'
+                })
+              }
+            ]} 
           />
           <Animated.View style={[styles.sheetContent, { 
             height: height * 0.9, 
@@ -1294,7 +1329,7 @@ const TasksScreen = ({ navigation }) => {
             </Animated.View>
           </Animated.View>
           {renderToast('isTaskListVisible')}
-        </Animated.View>
+        </View>
       </Modal>
 
       {renderToast('main')}
@@ -1426,13 +1461,20 @@ const TasksScreen = ({ navigation }) => {
           setTimeout(() => titleInputRef.current?.focus(), 300);
         }}
       >
-        <Animated.View style={[styles.modalBg, { 
-          backgroundColor: modalAddY.interpolate({
-            inputRange: [0, height * 0.5],
-            outputRange: ['rgba(0,0,0,0.5)', 'rgba(0,0,0,0)'],
-            extrapolate: 'clamp'
-          })
-        }]}>
+        <View style={styles.modalBg}>
+          <Animated.View 
+            style={[
+              StyleSheet.absoluteFill,
+              { 
+                backgroundColor: 'black',
+                opacity: modalAddY.interpolate({
+                  inputRange: [0, height],
+                  outputRange: [0.5, 0],
+                  extrapolate: 'clamp'
+                })
+              }
+            ]} 
+          />
           <Animated.View style={[styles.modalContent, { transform: [{ translateY: modalAddY }] }]}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1741,7 +1783,7 @@ const TasksScreen = ({ navigation }) => {
             </View>
           )}
           {renderToast('isAdding')}
-        </Animated.View>
+        </View>
       </Modal>
 
       <Modal
@@ -1759,13 +1801,20 @@ const TasksScreen = ({ navigation }) => {
           }).start();
         }}
       >
-        <Animated.View style={[styles.modalBg, { 
-          backgroundColor: holidayModalY.interpolate({
-            inputRange: [0, height * 0.5],
-            outputRange: ['rgba(0,0,0,0.5)', 'rgba(0,0,0,0)'],
-            extrapolate: 'clamp'
-          })
-        }]}>
+        <View style={styles.modalBg}>
+          <Animated.View 
+            style={[
+              StyleSheet.absoluteFill,
+              { 
+                backgroundColor: 'black',
+                opacity: holidayModalY.interpolate({
+                  inputRange: [0, height],
+                  outputRange: [0.5, 0],
+                  extrapolate: 'clamp'
+                })
+              }
+            ]} 
+          />
           <Animated.View style={[styles.modalContent, { transform: [{ translateY: holidayModalY }] }]}>
             <View style={styles.modalHeader} {...holidayModalPanResponder.panHandlers}>
               <View style={styles.modalHandle} />
@@ -1799,7 +1848,7 @@ const TasksScreen = ({ navigation }) => {
               <Search size={18} color={Colors.outline} style={{ marginRight: 8 }} />
               <TextInput 
                 style={styles.searchField} 
-                placeholder="Search country (e.g. Korea, United States)" 
+                placeholder={t('tasks.search_country_placeholder', 'Search country (e.g. Korea)')} 
                 value={countrySearch}
                 onChangeText={setCountrySearch}
               />
@@ -1861,10 +1910,8 @@ const TasksScreen = ({ navigation }) => {
               )}
             </View>
           </Animated.View>
-        </Animated.View>
+        </View>
       </Modal>
-
-    
 
       <MenuModal 
         visible={menuVisible} 
@@ -1889,9 +1936,9 @@ const styles = StyleSheet.create({
   weekdayLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 0 },
   weekdayText: { width: (width - Spacing.lg * 2) / 7, textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
   weekStrip: { flexDirection: 'row', justifyContent: 'space-between' },
-  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
   dayCell: { width: (width - Spacing.lg * 2 - 20) / 7, height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
-  dayCellMonth: { width: (width - Spacing.lg * 2) / 7, height: 95, borderRadius: 8, marginBottom: 4, overflow: 'hidden' },
+  dayCellMonth: { width: (width - Spacing.lg * 2) / 7, height: 95, borderRadius: 8, marginBottom: 4 },
   dayCellTop: { paddingVertical: 4, alignItems: 'center', height: 32, zIndex: 10 },
   dayNumContainer: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   todayCircle: { backgroundColor: Colors.text },
@@ -1904,7 +1951,7 @@ const styles = StyleSheet.create({
   barStart: { borderTopLeftRadius: 4, borderBottomLeftRadius: 4, marginLeft: 2 },
   barEnd: { borderTopRightRadius: 4, borderBottomRightRadius: 4, marginRight: 2 },
   barMiddle: { marginHorizontal: 0 },
-  calendarBarText: { fontSize: 9, fontWeight: '700', color: 'white' },
+  calendarBarText: { fontSize: 10, fontWeight: '700', color: 'white' },
   moreTasksRow: { height: 13, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
   moreTasksText: { fontSize: 9, fontWeight: '800', color: Colors.textSecondary },
 
@@ -1986,7 +2033,7 @@ const styles = StyleSheet.create({
   },
   headerSaveText: {
     color: 'white',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   modalTitle: { fontSize: 17, fontWeight: '800', color: Colors.text },
