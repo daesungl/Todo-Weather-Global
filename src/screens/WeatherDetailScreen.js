@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager, PanResponder } from 'react-native';
+import { TouchableOpacity } from 'react-native-gesture-handler';
 import {
   ChevronLeft, Sun, Moon, Cloud, CloudRain, Wind, Droplets,
   SunMedium, AlertTriangle, Calendar, Navigation,
@@ -70,7 +71,31 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     source: 'KOREA METEOROLOGICAL ADMINISTRATION'
   };
 
-  const [weatherData, setWeatherData] = useState({ ...defaultData, ...initialData });
+  // initialData를 그대로 쓰면 낮에 캐시된 condKey(sunny)가 밤에도 노출됨.
+  // tzOffsetMs로 현지 시각 기준 isDay/condKey를 즉시 교정한다.
+  const correctDayNight = (data) => {
+    if (!data || !data.condKey) return data;
+    const now = new Date();
+    let offsetMs;
+    if (data.tzOffsetMs !== undefined) {
+      offsetMs = data.tzOffsetMs;
+    } else if (data.lon !== undefined) {
+      offsetMs = Math.round(data.lon / 15) * 3600000;
+    } else {
+      return data; // 보정 불가
+    }
+    const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
+    const isDay = localHour >= 6 && localHour < 18;
+    let condKey = data.condKey;
+    if (!isDay && (condKey === 'sunny' || condKey === 'clear' || condKey === 'mostly_sunny')) {
+      condKey = 'clear_night';
+    } else if (isDay && condKey === 'clear_night') {
+      condKey = 'sunny';
+    }
+    return { ...data, isDay, condKey };
+  };
+
+  const [weatherData, setWeatherData] = useState({ ...defaultData, ...correctDayNight(initialData) });
   
   // 전체 데이터 로딩 상태 (initialData가 없을 때 사용)
   const needsFullLoad = !initialData?.temp || initialData?.temp === '--°';
@@ -390,7 +415,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
   const renderHourlyIcon = (condKey, isDay = true) => {
     const size = 20;
-    const isNight = isDay === false || condKey === 'clear-night';
+    const isNight = isDay === false || condKey === 'clear_night' || condKey === 'mostly_clear_night';
     const moonColor = "#A1C9FF"; // 푸르스름한 달빛 색상
 
     switch (condKey) {
@@ -408,7 +433,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       case 'partly_cloudy':
       case 'mostly_sunny':
       case 'mostly_clear':
-      case 'clear_night':
+      case 'mostly_clear_night':
         return (
           <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
             {!isNight ? (
@@ -419,6 +444,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             <Cloud size={size * 0.9} color="#CFD8DC" strokeWidth={1.8} style={{ position: 'absolute', bottom: -6, right: -8 }} />
           </View>
         );
+      case 'clear_night':
+        return <Moon size={size} color={moonColor} fill={moonColor} strokeWidth={2.2} />;
       case 'sunny':
       case 'clear':
         return !isNight ? (
@@ -473,10 +500,14 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         if (idx > 0 && (h.time === '0시' || h.time === 'Midnight')) {
           dayOffset++;
         }
+        // "지금"은 예보 모델이 아닌 실황 데이터(히어로 영역과 동일)를 사용
+        const isNow = idx === 0;
+        const condKey = isNow ? (weatherData.condKey || h.condKey || h.condition) : (h.condKey || h.condition);
+        const isDay = isNow ? (weatherData.isDay !== undefined ? weatherData.isDay : h.isDay) : h.isDay;
         return {
           ...h,
-          time: idx === 0 ? '지금' : h.time,
-          icon: renderHourlyIcon(h.condKey || h.condition, h.isDay),
+          time: isNow ? '지금' : h.time,
+          icon: renderHourlyIcon(condKey, isDay),
           dayLabel: getDayLabel(dayOffset)
         };
       });
@@ -598,7 +629,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       case 'partly_cloudy':
       case 'mostly_sunny':
       case 'mostly_clear':
-      case 'clear_night':
+      case 'mostly_clear_night':
         return (
           <View style={[style, { width: size, height: size, justifyContent: 'center', alignItems: 'center' }]}>
             {isDay ? (
@@ -609,6 +640,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             <Cloud size={size * 0.9} color="#CFD8DC" strokeWidth={strokeWidth} style={{ position: 'absolute', bottom: -size * 0.25, right: -size * 0.35 }} />
           </View>
         );
+      case 'clear_night':
+        return <Moon size={size} color={moonColor} fill={moonColor} strokeWidth={strokeWidth} style={style} />;
       case 'sunny':
       case 'clear':
         return isDay ? (

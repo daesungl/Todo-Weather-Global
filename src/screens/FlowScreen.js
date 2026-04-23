@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Dimensions,
   Animated,
   Platform,
@@ -17,8 +16,8 @@ import {
   PanResponder,
   FlatList,
 } from 'react-native';
+import { GestureHandlerRootView, TouchableOpacity } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
@@ -696,6 +695,7 @@ const FlowScreen = ({ navigation }) => {
 
       {/* --- Flow Create/Edit Modal --- */}
       <Modal animationType="slide" transparent={true} visible={flowModalVisible} onRequestClose={() => setFlowModalVisible(false)}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.modalOverlay}>
           <View style={styles.editModalContent}>
             <View style={styles.editHeader}>
@@ -754,10 +754,12 @@ const FlowScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
+        </GestureHandlerRootView>
       </Modal>
 
       {/* --- Search Modal --- */}
       <Modal animationType="slide" transparent={true} visible={searchModalVisible} onRequestClose={closeSearch}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.modalOverlay}>
           <View style={styles.searchModalContent}>
             <View style={styles.modalHeader}>
@@ -767,6 +769,7 @@ const FlowScreen = ({ navigation }) => {
             <ScrollView style={styles.searchResultsList}>{isSearching ? <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} /> : searchResults.map((item) => (<TouchableOpacity key={item.id} style={styles.resultItem} onPress={() => handleSelection(item)}><View style={styles.resultIconWrap}><MapPin size={20} color={Colors.primary} /></View><View style={styles.resultInfo}><View style={styles.resultHeader}><Text style={styles.resultName}>{item.name}</Text></View><Text style={styles.resultAddress}>{item.address}</Text></View></TouchableOpacity>))}</ScrollView>
           </View>
         </View>
+        </GestureHandlerRootView>
       </Modal>
 
       {/* --- Edit Step Modal --- */}
@@ -776,7 +779,8 @@ const FlowScreen = ({ navigation }) => {
         animationType="slide"
         onRequestClose={closeEditModal}
       >
-        <TouchableOpacity 
+        <GestureHandlerRootView style={{ flex: 1 }}>
+        <TouchableOpacity
           style={styles.modalOverlay} 
           activeOpacity={1} 
           onPress={closeEditModal}
@@ -930,12 +934,14 @@ const FlowScreen = ({ navigation }) => {
               </ScrollView>
             </Animated.View>
         </TouchableOpacity>
+        </GestureHandlerRootView>
       </Modal>
 
       <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { loadInitialData(); }} />
 
       {/* --- Simple Memo Sub-Modal --- */}
       <Modal visible={memoModalVisible} transparent animationType="fade">
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.subModalOverlay}>
           <View style={styles.memoModalContent}>
             <View style={styles.subModalHeader}>
@@ -955,6 +961,7 @@ const FlowScreen = ({ navigation }) => {
             />
           </View>
         </View>
+        </GestureHandlerRootView>
       </Modal>
     </View>
   );

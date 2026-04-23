@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Dimensions,
   Alert,
   Modal,
@@ -19,7 +18,10 @@ import {
   useWindowDimensions,
   PanResponder,
   KeyboardAvoidingView,
+  Pressable,
+  TouchableOpacity,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -263,7 +265,7 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
                 const weekEndIdx = Math.min(effectiveEndIdx, weekStartIdx + (6 - (weekStartIdx % 7)));
                 const isSegmentStart = i === weekStartIdx;
                 const spanInWeek = weekEndIdx - weekStartIdx + 1;
-                const cellWidth = (width - Spacing.lg * 2) / 7;
+                const cellWidth = Math.floor((width - Spacing.lg * 2) / 7);
 
                 return (
                   <View 
@@ -552,7 +554,42 @@ const TasksScreen = ({ navigation }) => {
   const holidayModalPanResponder = useRef(createModalPanResponder(holidayModalY, closeHolidayModal)).current;
   const listModalPanResponder = useRef(createModalPanResponder(listModalTranslateY, closeTaskListModal)).current;
 
-  // Modal animations are now handled via onShow prop for better reliability
+  // Modal open animations triggered via useEffect (more reliable than onShow on iOS)
+  useEffect(() => {
+    if (isAdding) {
+      modalAddY.setValue(height);
+      Animated.spring(modalAddY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 14,
+      }).start();
+    }
+  }, [isAdding]);
+
+  useEffect(() => {
+    if (isTaskListVisible) {
+      listModalTranslateY.setValue(height);
+      Animated.spring(listModalTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 14,
+      }).start();
+    }
+  }, [isTaskListVisible]);
+
+  useEffect(() => {
+    if (showHolidaySettings) {
+      holidayModalY.setValue(height);
+      Animated.spring(holidayModalY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 14,
+      }).start();
+    }
+  }, [showHolidaySettings]);
 
 
   const renderToast = (context) => {
@@ -799,6 +836,8 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const openAddModal = () => {
+    console.log('[FAB] openAddModal called, isAdding will be set to true');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setEditingTask(null);
     setNewTitle('');
     setTaskDate(new Date(selectedDate));
@@ -809,6 +848,7 @@ const TasksScreen = ({ navigation }) => {
     setNewMemo('');
     setNewLocName('');
     setNewWeatherRegion(null);
+    modalAddY.setValue(height);
     setIsAdding(true);
   };
 
@@ -1061,7 +1101,11 @@ const TasksScreen = ({ navigation }) => {
             showsHorizontalScrollIndicator={false}
             keyExtractor={item => item.toString()}
             initialScrollIndex={getMonthIndex(selectedDate)}
-            getItemLayout={calendarItemLayout}
+            getItemLayout={(data, index) => ({
+              length: width - Spacing.lg * 2,
+              offset: (width - Spacing.lg * 2) * index,
+              index,
+            })}
             windowSize={3}
             initialNumToRender={2}
             maxToRenderPerBatch={2}
@@ -1092,16 +1136,8 @@ const TasksScreen = ({ navigation }) => {
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={closeTaskListModal}
-        onShow={() => {
-          listModalTranslateY.setValue(height);
-          Animated.spring(listModalTranslateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-            speed: 14,
-          }).start();
-        }}
       >
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.modalBg}>
           <Animated.View 
             style={[
@@ -1344,23 +1380,17 @@ const TasksScreen = ({ navigation }) => {
           </Animated.View>
           {renderToast('isTaskListVisible')}
         </View>
+        </GestureHandlerRootView>
       </Modal>
 
       {renderToast('main')}
     
 
-      <TouchableOpacity 
-        style={[
-          styles.fab, 
-          { bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16 } // TabBar height(64) + spacing(10) + extra(16)
-        ]} 
-        onPress={openAddModal}
-      >
-        <Plus size={32} color="white" strokeWidth={3} />
-      </TouchableOpacity>
+      {/* Picker and Adding modals will be rendered here as siblings */}
 
       {/* Wheel Picker Modal */}
       <Modal visible={isPickerVisible} transparent animationType="fade" onRequestClose={() => setIsPickerVisible(false)}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.pickerBg}>
           <View style={styles.pickerContent}>
             <View style={styles.pickerHeader}>
@@ -1455,6 +1485,7 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
+        </GestureHandlerRootView>
       </Modal>
 
       <Modal
@@ -1464,19 +1495,13 @@ const TasksScreen = ({ navigation }) => {
         statusBarTranslucent={true}
         onRequestClose={closeAddModal}
         onShow={() => {
-          modalAddY.setValue(height);
-          Animated.spring(modalAddY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-            speed: 14,
-          }).start();
           modalScrollRef.current?.scrollTo({ y: 0, animated: false });
           setTimeout(() => titleInputRef.current?.focus(), 300);
         }}
       >
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.modalBg}>
-          <Animated.View 
+          <Animated.View
             style={[
               StyleSheet.absoluteFill,
               { 
@@ -1838,6 +1863,7 @@ const TasksScreen = ({ navigation }) => {
           )}
           {renderToast('isAdding')}
         </View>
+        </GestureHandlerRootView>
       </Modal>
 
       <Modal
@@ -1846,17 +1872,10 @@ const TasksScreen = ({ navigation }) => {
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={closeHolidayModal}
-        onShow={() => {
-          holidayModalY.setValue(height);
-          Animated.timing(holidayModalY, {
-            toValue: 0,
-            duration: 280,
-            useNativeDriver: true,
-          }).start();
-        }}
       >
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.modalBg}>
-          <Animated.View 
+          <Animated.View
             style={[
               StyleSheet.absoluteFill,
               { 
@@ -1965,14 +1984,33 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </Animated.View>
         </View>
+        </GestureHandlerRootView>
       </Modal>
 
-      <MenuModal 
-        visible={menuVisible} 
+      <MenuModal
+        visible={menuVisible}
         onClose={() => setMenuVisible(false)} 
         onReset={() => loadData()} 
       />
 
+      {/* FAB: 터치 영역을 넉넉하게 확보 (hitSlop) 하여 사용자 경험 개선 */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        style={[
+          styles.fab,
+          { 
+            bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16, 
+            zIndex: 10001,
+            elevation: 11
+          }
+        ]}
+        onPress={openAddModal}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <View pointerEvents="none">
+          <Plus size={32} color="white" strokeWidth={3} />
+        </View>
+      </TouchableOpacity>
     </View>
     </>
   );
@@ -1987,12 +2025,12 @@ const styles = StyleSheet.create({
   viewToggleBtn: { padding: 8, backgroundColor: '#F4F7FE', borderRadius: 12 },
   viewToggleText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
   calendarArea: { paddingHorizontal: 0 },
-  weekdayLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 0 },
-  weekdayText: { width: (width - Spacing.lg * 2) / 7, textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
+  weekdayLabels: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 10, paddingHorizontal: 0 },
+  weekdayText: { width: Math.floor((width - Spacing.lg * 2) / 7), textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
   weekStrip: { flexDirection: 'row', justifyContent: 'space-between' },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
-  dayCell: { width: (width - Spacing.lg * 2 - 20) / 7, height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
-  dayCellMonth: { width: (width - Spacing.lg * 2) / 7, height: 95, borderRadius: 8, marginBottom: 4 },
+  dayCell: { width: Math.floor((width - Spacing.lg * 2 - 20) / 7), height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
+  dayCellMonth: { width: Math.floor((width - Spacing.lg * 2) / 7), height: 95, borderRadius: 8, marginBottom: 4 },
   dayCellTop: { paddingVertical: 4, alignItems: 'center', height: 32, zIndex: 10 },
   dayNumContainer: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   todayCircle: { backgroundColor: Colors.text },

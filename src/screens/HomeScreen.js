@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder } from 'react-native';
+import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Sun, CheckCircle2, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Trash2, Search, X, Navigation, AlertTriangle, CloudSun, CloudMoon, Moon, Umbrella } from 'lucide-react-native';
+import { Sun, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Trash2, Search, X, Navigation, AlertTriangle, CloudSun, CloudMoon, Moon, Umbrella } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
@@ -103,11 +105,13 @@ const HomeScreen = ({ navigation }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Initial load
-  useEffect(() => {
-    fetchMainWeather();
-    loadRegions();
-  }, []);
+  // 화면 포커스 시마다 날씨 재조회 (낮에 캐시된 데이터가 밤에도 그대로 남는 문제 방지)
+  useFocusEffect(
+    useCallback(() => {
+      fetchMainWeather();
+      loadRegions();
+    }, [])
+  );
 
   // Search Debounce logic
   useEffect(() => {
@@ -255,17 +259,37 @@ const HomeScreen = ({ navigation }) => {
     setSearchResults([]);
   };
 
-  const renderWeatherIcon = (key, size = 64, color = Colors.primary) => {
+  // tzOffsetMs 기반으로 condKey의 낮/밤을 실시간 교정
+  const liveCondKey = (weatherObj) => {
+    if (!weatherObj?.condKey) return weatherObj?.condKey;
+    const now = new Date();
+    let offsetMs;
+    if (weatherObj.tzOffsetMs !== undefined) {
+      offsetMs = weatherObj.tzOffsetMs;
+    } else if (weatherObj.lon !== undefined) {
+      offsetMs = Math.round(weatherObj.lon / 15) * 3600000;
+    } else {
+      return weatherObj.condKey;
+    }
+    const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
+    const isDay = localHour >= 6 && localHour < 18;
+    const key = weatherObj.condKey;
+    if (!isDay && (key === 'sunny' || key === 'clear' || key === 'mostly_sunny')) return 'clear_night';
+    if (isDay && key === 'clear_night') return 'sunny';
+    return key;
+  };
+
+  const renderWeatherIcon = (key, size = 64, color = Colors.primary, isDay = true) => {
     const strokeWidth = 2;
     switch (key) {
       case 'sunny':
       case 'clear':
-        return <Sun size={size} color="#FFD600" fill="#FFD600" />;
+        return isDay ? <Sun size={size} color="#FFD600" fill="#FFD600" /> : <Moon size={size} color="#A1C9FF" fill="#A1C9FF" />;
       case 'clear_night':
         return <Moon size={size} color="#A1C9FF" fill="#A1C9FF" />;
       case 'partly_cloudy':
       case 'mostly_sunny':
-        return <CloudSun size={size} color={color} strokeWidth={strokeWidth} />;
+        return isDay ? <CloudSun size={size} color={color} strokeWidth={strokeWidth} /> : <CloudMoon size={size} color={color} strokeWidth={strokeWidth} />;
       case 'mostly_clear_night':
         return <CloudMoon size={size} color={color} strokeWidth={strokeWidth} />;
       case 'cloudy':
@@ -283,7 +307,7 @@ const HomeScreen = ({ navigation }) => {
       case 'lightning':
         return <CloudLightning size={size} color={color} strokeWidth={strokeWidth} />;
       default:
-        return <Sun size={size} color="#FFD600" fill="#FFD600" />;
+        return isDay ? <Sun size={size} color="#FFD600" fill="#FFD600" /> : <Moon size={size} color="#A1C9FF" fill="#A1C9FF" />;
     }
   };
 
@@ -336,14 +360,14 @@ const HomeScreen = ({ navigation }) => {
                   <View style={styles.tempMainRow}>
                     <Text style={styles.heroTempBig}>{parseInt(currentWeather?.temp) || '--'}°</Text>
                     <View style={styles.heroVisualWrap}>
-                      {renderWeatherIcon(currentWeather?.condKey, 100, "white")}
+                      {renderWeatherIcon(liveCondKey(currentWeather), 100, "white", currentWeather?.isDay !== false)}
                     </View>
                   </View>
 
                   <View style={styles.heroBottom}>
                     <View style={styles.conditionBadge}>
                       <Text style={styles.conditionTextSmall}>
-                        {currentWeather?.condKey ? t(`weather.${currentWeather.condKey}`) : t('common.loading')}
+                        {currentWeather?.condKey ? t(`weather.${liveCondKey(currentWeather)}`) : t('common.loading')}
                       </Text>
                     </View>
                     <Text style={styles.highLowText}>
@@ -398,7 +422,7 @@ const HomeScreen = ({ navigation }) => {
                     <View style={styles.regionCardMain}>
                       <View style={styles.weatherInfoLeft}>
                         {weather ? (
-                          renderWeatherIcon(weather.condKey, 56, Colors.primary)
+                          renderWeatherIcon(liveCondKey(weather), 56, Colors.primary, weather?.isDay !== false)
                         ) : (
                           <ActivityIndicator size="small" color={Colors.outline} />
                         )}
@@ -464,23 +488,12 @@ const HomeScreen = ({ navigation }) => {
              </TouchableOpacity>
            ))}
         </View>
-
-        <TouchableOpacity style={styles.briefingCard} onPress={() => navigation.navigate('Tasks')}>
-          <View style={styles.briefIconWrap}>
-            <CheckCircle2 size={24} color={Colors.primary} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={Typography.body}>{t('home.tasks_count', { count: 3 })}</Text>
-            <Text style={Typography.bodySmall}>{t('home.tasks_upcoming', { task: 'Weather Logic Update', time: '14:00' })}</Text>
-          </View>
-        </TouchableOpacity>
       </ScrollView>
-
-
 
       <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} />
       
       <Modal animationType="slide" transparent={true} visible={searchModalVisible} onRequestClose={() => setSearchModalVisible(false)}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.searchHeader}>
@@ -542,6 +555,7 @@ const HomeScreen = ({ navigation }) => {
             </ScrollView>
           </View>
         </View>
+        </GestureHandlerRootView>
       </Modal>
     </View>
   );
@@ -837,27 +851,7 @@ const styles = StyleSheet.create({
   activeIndicatorText: {
     color: 'white',
   },
-  briefingCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.lg,
-    backgroundColor: 'white',
-    borderRadius: 28,
-    gap: Spacing.md,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    marginBottom: Spacing.md,
-  },
-  briefIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.surfaceContainerLow,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+
   typeBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,

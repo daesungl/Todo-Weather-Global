@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions } from 'react-native';
+import { TouchableOpacity } from 'react-native-gesture-handler';
 import { Sun, CheckCircle2, Compass } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../theme';
@@ -16,7 +17,10 @@ export default function CustomTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.bottomNavContainer, { bottom: Math.max(insets.bottom, 20) + 10 }]}>
+    <View 
+      style={[styles.bottomNavContainer, { bottom: Math.max(insets.bottom, 20) + 10 }]}
+      pointerEvents="box-none"
+    >
       <View style={styles.glassNav}>
         {TABS.map((tab, index) => {
           const isActive = state.index === index;
@@ -25,7 +29,10 @@ export default function CustomTabBar({ state, navigation }) {
             <TouchableOpacity
               key={tab.name}
               style={[styles.navItem, isActive && styles.activeNavItem]}
-              onPress={() => navigation.navigate(tab.name)}
+              onPress={() => {
+                console.log(`[CustomTabBar] Navigating to: ${tab.name}`);
+                navigation.navigate(tab.name);
+              }}
               activeOpacity={0.7}
             >
               <Icon

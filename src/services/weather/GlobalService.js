@@ -155,8 +155,20 @@ export const fetchGlobalWeather = async (lat, lon) => {
       dailyForecast,
       hourlyForecast,
       isDay: !!current.is_day,
-      // 현지 타임존 오프셋 저장 (캐시 재사용 시 현지 시간 기준 isDay 재계산용)
-      tzOffsetMs: Math.round((data.location.localtime_epoch * 1000 - Date.now()) / 3600000) * 3600000,
+      // 현지 타임존 오프셋 계산:
+      // localtime("2024-04-24 15:30")을 UTC로 해석한 ms - localtime_epoch(UTC ms)
+      // → 예) LA PDT(UTC-7): 15:30 UTC epoch - 22:30 UTC epoch = -7h
+      tzOffsetMs: (() => {
+        try {
+          const [datePart, timePart] = data.location.localtime.split(' ');
+          const [y, mo, d] = datePart.split('-').map(Number);
+          const [h, mi] = timePart.split(':').map(Number);
+          const localAsUtcMs = Date.UTC(y, mo - 1, d, h, mi, 0);
+          return Math.round((localAsUtcMs - data.location.localtime_epoch * 1000) / 3600000) * 3600000;
+        } catch {
+          return 0;
+        }
+      })(),
       alert: alertData,
       nowKey: localNowKey, // Provide local now key
       
@@ -169,6 +181,9 @@ export const fetchGlobalWeather = async (lat, lon) => {
       pollutants,
       
       timestamp: new Date().toISOString(),
+      // WeatherAPI가 반환하는 현지 도시명 (address 없을 때 폴백용)
+      apiLocationName: [data.location.name, data.location.region, data.location.country]
+        .filter(Boolean).join(', '),
     };
   } catch (error) {
     return null;

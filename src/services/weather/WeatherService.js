@@ -46,7 +46,10 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
         if (!cachedData.addressName && cachedData.locationName) {
           cachedData.addressName = cachedData.locationName;
         }
-        
+
+        // Save corrected isDay/condKey back to cache so next read is already correct
+        saveCache(cacheKey, cachedData).catch(() => {});
+
         return cachedData;
       }
     }
@@ -101,12 +104,20 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
             ...kma, 
             ...sun, 
             alert: alert, 
-            locationName: regionId || address, // Keep provided name if available
-            addressName: address, // Store full address separately
+            locationName: regionId || address, 
+            addressName: address, 
             lat,
             lon,
             isAccurateSource: true 
           };
+
+          // Final isDay Correction
+          const now = new Date();
+          const kstOffset = 9 * 60 * 60 * 1000;
+          const nowKST = new Date(now.getTime() + kstOffset);
+          const hour = nowKST.getUTCHours();
+          result.isDay = hour >= 6 && hour < 18;
+
           await saveCache(cacheKey, result);
           return result;
         }
@@ -123,16 +134,27 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
       const globalName = address || 'Global Location';
       console.log(`[${globalName}] 날씨 데이터 ( weatherAPI ) 조회 중`);
       const weatherData = await fetchGlobalWeather(lat, lon);
-      
-      console.log(`[${globalName}] 날씨 데이터 ( weatherAPI ) 조회 완료`);
-      const result = { 
-        ...weatherData, 
-        locationName: regionId || globalName, 
-        addressName: globalName,
-        lat, 
+
+      // address 없을 때 WeatherAPI가 반환한 도시명으로 폴백 (e.g. "Cupertino, California, United States")
+      const resolvedName = address || weatherData?.apiLocationName || 'Global Location';
+
+      console.log(`[${resolvedName}] 날씨 데이터 ( weatherAPI ) 조회 완료`);
+      const result = {
+        ...weatherData,
+        locationName: regionId || resolvedName,
+        addressName: resolvedName,
+        lat,
         lon,
-        isAccurateSource: false 
+        isAccurateSource: false
       };
+
+      // Final isDay Correction
+      const now = new Date();
+      const kstOffset = 9 * 60 * 60 * 1000;
+      const nowKST = new Date(now.getTime() + kstOffset);
+      const hour = nowKST.getUTCHours();
+      result.isDay = hour >= 6 && hour < 18;
+
       await saveCache(cacheKey, result);
       return result;
     } catch (globalErr) {

@@ -44,7 +44,7 @@ export const fetchSunInfo = async (lat, lon) => {
 
   try {
     console.log(`[SunService] Fetching sun info for ${lat}, ${lon} (${locdate})`);
-    const response = await axios.get('http://apis.data.go.kr/B090041/openapi/service/RiseSetInfoService/getLCRiseSetInfo', {
+    const response = await axios.get('https://apis.data.go.kr/B090041/openapi/service/RiseSetInfoService/getLCRiseSetInfo', {
       params: {
         serviceKey: SERVICE_KEY,
         locdate: locdate,

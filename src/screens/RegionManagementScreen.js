@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Modal, TextInput, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Modal, TextInput, FlatList, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Trash2, Plus, Sun, Search, X, MapPin, Droplets, Wind, Zap, CloudRain } from 'lucide-react-native';
+import { ChevronLeft, Trash2, Plus, Sun, Search, X, MapPin, Droplets, Wind, Zap, CloudRain, Moon, Cloud, CloudSnow } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
@@ -56,6 +57,26 @@ const RegionManagementScreen = ({ navigation }) => {
     loadRegions(); // Refresh weather
   };
 
+  const renderWeatherIcon = (condKey, isDay = true) => {
+    const iconSize = 48;
+    const iconColor = Colors.primary;
+    
+    switch (condKey) {
+      case 'sunny':
+        return isDay ? <Sun size={iconSize} color={iconColor} style={styles.weatherIcon} /> 
+                     : <Moon size={iconSize} color={iconColor} style={styles.weatherIcon} />;
+      case 'rainy':
+        return <CloudRain size={iconSize} color={iconColor} style={styles.weatherIcon} />;
+      case 'cloudy':
+        return <Cloud size={iconSize} color={iconColor} style={styles.weatherIcon} />;
+      case 'snowy':
+        return <CloudSnow size={iconSize} color={iconColor} style={styles.weatherIcon} />;
+      default:
+        return isDay ? <Sun size={iconSize} color={iconColor} style={styles.weatherIcon} /> 
+                     : <Moon size={iconSize} color={iconColor} style={styles.weatherIcon} />;
+    }
+  };
+
   const renderRegionCard = (item) => {
     const weather = weatherDataMap[item.id];
     
@@ -71,7 +92,7 @@ const RegionManagementScreen = ({ navigation }) => {
         
         <View style={styles.cardBody}>
           <View style={styles.bodyLeft}>
-            <Sun size={48} color={Colors.primary} style={styles.weatherIcon} />
+            {renderWeatherIcon(weather?.condKey, weather?.isDay !== false)}
             <View style={styles.tempCol}>
                 <Text style={styles.tempLarge}>{weather?.temp || '--'}°</Text>
                 <Text style={styles.conditionTextSmall}>({t(`weather.${weather?.condKey || 'sunny'}`)})</Text>
@@ -103,6 +124,7 @@ const RegionManagementScreen = ({ navigation }) => {
 
   const SearchModal = () => (
     <Modal animationType="slide" transparent={true} visible={searchModalVisible} onRequestClose={() => setSearchModalVisible(false)}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <View style={styles.searchHeader}>
@@ -151,6 +173,7 @@ const RegionManagementScreen = ({ navigation }) => {
           </View>
         </View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 

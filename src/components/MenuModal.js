@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Animated, Dimensions, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert } from 'react-native';
+import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages } from 'lucide-react-native';
@@ -107,21 +108,21 @@ const MenuModal = ({ visible, onClose, onReset }) => {
       animationType="none"
     >
       <View style={styles.overlay}>
-        <TouchableOpacity 
-          style={styles.backdropPressable} 
-          activeOpacity={1} 
+        <Pressable
+          style={styles.backdropPressable}
           onPress={onClose}
         >
           <Animated.View style={[
             styles.backdrop,
             { opacity: opacityAnim }
           ]} />
-        </TouchableOpacity>
-        
+        </Pressable>
+
         <Animated.View style={[
-          styles.drawer, 
+          styles.drawer,
           { transform: [{ translateX: slideAnim }] }
         ]}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
           <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
             {/* Header - Minimalist Editorial Style */}
             <View style={styles.header}>
@@ -181,6 +182,7 @@ const MenuModal = ({ visible, onClose, onReset }) => {
               </View>
             </ScrollView>
           </View>
+          </GestureHandlerRootView>
         </Animated.View>
       </View>
     </Modal>
