@@ -657,7 +657,7 @@ const FlowScreen = ({ navigation }) => {
                       }}
                       onPress={() => setSelectedFlow(flow)}
                       style={[isActive && { opacity: 0.8, transform: [{ scale: 1.02 }] }]}
-                      activeOpacity={0.7}
+                      activeOpacity={0.9}
                       delayLongPress={250}
                     >
                       <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
@@ -673,6 +673,7 @@ const FlowScreen = ({ navigation }) => {
                           >
                             <Trash2 size={18} color="rgba(255,255,255,0.8)" />
                           </BorderlessButton>
+
                         </View>
                         <View style={styles.cardMiddle}>
                           <Text style={styles.cardTitle}>{flow.title}</Text>
@@ -699,15 +700,21 @@ const FlowScreen = ({ navigation }) => {
       {selectedFlow && renderTimelineDetail()}
 
       {/* --- Flow Modal --- */}
-      <Modal visible={flowModalVisible} transparent animationType="slide" onRequestClose={() => setFlowModalVisible(false)}>
+      <Modal 
+        visible={flowModalVisible} 
+        transparent={true} 
+        animationType="slide" 
+
+        onRequestClose={() => setFlowModalVisible(false)}
+      >
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <GHButton style={styles.modalOverlay} activeOpacity={1} onPress={() => { Keyboard.dismiss(); setFlowModalVisible(false); }}>
+          <View style={[styles.modalBg, { flex: 1 }]}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ justifyContent: 'flex-end', flex: 1 }}>
-              <GHButton activeOpacity={1} style={styles.editModalContent}>
+              <View style={styles.editModalContent}>
                 <View style={styles.editHeader}>
-                  <GHButton onPress={() => setFlowModalVisible(false)} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></GHButton>
+                  <Pressable onPress={() => setFlowModalVisible(false)} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></Pressable>
                   <Text style={styles.editTitle}>{editingFlow ? 'Edit Journey' : 'New Journey'}</Text>
-                  <GHButton 
+                  <Pressable 
                     onPress={isKeyboardVisible ? Keyboard.dismiss : saveFlow} 
                     style={styles.headerActionBtn}
                     disabled={isSaving}
@@ -719,7 +726,7 @@ const FlowScreen = ({ navigation }) => {
                     ) : (
                       <Text style={styles.headerSaveText}>{editingFlow ? 'Save' : 'Add'}</Text>
                     )}
-                  </GHButton>
+                  </Pressable>
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -731,57 +738,51 @@ const FlowScreen = ({ navigation }) => {
 
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Weather Region (Optional)</Text>
-                  <GHButton activeOpacity={0.7} style={[styles.regionSelector, flowLocation && styles.regionSelectorActive]} onPress={() => openSearch('flow')}>
+                  <Pressable style={({ pressed }) => [styles.regionSelector, flowLocation && styles.regionSelectorActive, pressed && { opacity: 0.7 }]} onPress={() => openSearch('flow')}>
                     <View style={[styles.regionIconWrap, flowLocation && styles.regionIconWrapActive]}><MapPin size={20} color={flowLocation ? 'white' : Colors.outline} /></View>
                     <View style={styles.regionInfo}>
                       <Text style={[styles.regionMainText, !flowLocation && styles.regionPlaceholder]}>{flowLocation || 'Where to check weather?'}</Text>
                       <Text style={styles.regionSubText}>{flowLocation ? 'Weather forecast linked' : 'Tap to search'}</Text>
                     </View>
                     <ChevronRight size={18} color={Colors.outline} />
-                  </GHButton>
+                  </Pressable>
                 </View>
 
-                <GHButton activeOpacity={0.8} onPress={saveFlow} style={{ marginTop: Spacing.md }}>
+                <Pressable onPress={saveFlow} style={({ pressed }) => [{ marginTop: Spacing.md }, pressed && { opacity: 0.9 }]}>
                   <LinearGradient colors={Colors.primaryGradient || [Colors.primary, '#4f46e5']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.premiumSubmitBtn}>
                     <Check size={20} color="white" strokeWidth={3} /><Text style={styles.premiumSubmitText}>{editingFlow ? 'Save Changes' : 'Confirm Journey'}</Text>
                   </LinearGradient>
-                </GHButton>
+                </Pressable>
 
                 {searchModalVisible && searchMode === 'flow' && renderSearchLayer()}
-              </GHButton>
+              </View>
             </KeyboardAvoidingView>
-          </GHButton>
+          </View>
         </GestureHandlerRootView>
       </Modal>
 
       {/* --- Step Modal --- */}
-      <Modal visible={editModalVisible} transparent animationType="none" onRequestClose={closeEditModal}>
+      <Modal 
+        visible={editModalVisible} 
+        transparent={true} 
+        animationType="slide" 
+
+        onRequestClose={closeEditModal}
+      >
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <GHButton 
-            style={styles.modalOverlay} 
-            activeOpacity={1} 
-            onPress={() => { Keyboard.dismiss(); closeEditModal(); }}
-          >
-            <Animated.View 
-              style={[
-                styles.editModalContent, 
-                { transform: [{ translateY: modalAnim.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }] }
-              ]} 
-              {...panResponder.panHandlers}
-              onStartShouldSetResponder={() => true}
-              onTouchEnd={(e) => e.stopPropagation()}
-            >
+          <View style={[styles.modalBg, { flex: 1 }]}>
+            <View style={styles.editModalContent}>
               <View style={styles.modalHandle} />
               <View style={styles.editHeader}>
-                <GHButton onPress={closeEditModal} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></GHButton>
+                <Pressable onPress={closeEditModal} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></Pressable>
                 <Text style={styles.editTitle}>{editingStep ? 'Edit Schedule' : 'New Schedule'}</Text>
-                <GHButton onPress={isKeyboardVisible ? Keyboard.dismiss : saveStep} style={styles.headerActionBtn}>
+                <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveStep} style={styles.headerActionBtn}>
                   {isKeyboardVisible ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
                   ) : (
                     <Text style={styles.headerSaveText}>Save</Text>
                   )}
-                </GHButton>
+                </Pressable>
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
@@ -791,126 +792,61 @@ const FlowScreen = ({ navigation }) => {
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <View style={styles.labelRow}><Text style={styles.inputLabel}>Weather Region</Text><GHButton onPress={() => openSearch('step')} style={styles.searchAccessoryBtn}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></GHButton></View>
-                  <View style={styles.regionDisplay}><MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} /><Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]}>{selectedRegion ? selectedRegion.name : 'No region selected'}</Text>{selectedRegion && <GHButton onPress={() => setSelectedRegion(null)}><X size={16} color={Colors.outline} /></GHButton>}</View>
+                  <View style={styles.labelRow}><Text style={styles.inputLabel}>Weather Region</Text><Pressable onPress={() => openSearch('step')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
+                  <View style={styles.regionDisplay}><MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} /><Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]}>{selectedRegion ? selectedRegion.name : 'No region selected'}</Text>{selectedRegion && <Pressable onPress={() => setSelectedRegion(null)}><X size={16} color={Colors.outline} /></Pressable>}</View>
                 </View>
 
                 <View style={styles.rowInputs}>
-                  <View style={[styles.inputGroup, { flex: 1.5, marginRight: 12 }]}><Text style={styles.inputLabel}>Date</Text><GHButton style={styles.editInputWrap} onPress={() => { setShowDatePicker(!showDatePicker); setShowTimePicker(false); }}><Calendar size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editDate}</Text></GHButton></View>
-                  <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.inputLabel}>Time</Text><GHButton style={styles.editInputWrap} onPress={() => { setShowTimePicker(!showTimePicker); setShowDatePicker(false); }}><Clock size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editTime}</Text></GHButton></View>
+                  <View style={[styles.inputGroup, { flex: 1.5, marginRight: 12 }]}><Text style={styles.inputLabel}>Date</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowDatePicker(!showDatePicker); setShowTimePicker(false); }}><Calendar size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editDate}</Text></Pressable></View>
+                  <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.inputLabel}>Time</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowTimePicker(!showTimePicker); setShowDatePicker(false); }}><Clock size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editTime}</Text></Pressable></View>
                 </View>
+
+                {showDatePicker && (
+                  <View style={styles.pickerContainer}>
+                    <DateTimePicker
+                      value={new Date(editDate || Date.now())}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={onDateChange}
+                      minimumDate={new Date(2020, 0, 1)}
+                    />
+                  </View>
+                )}
+
+                {showTimePicker && (
+                  <View style={styles.pickerContainer}>
+                    <DateTimePicker
+                      value={(() => {
+                        const [h, m] = (editTime || '00:00').split(':');
+                        const d = new Date();
+                        d.setHours(parseInt(h), parseInt(m));
+                        return d;
+                      })()}
+                      mode="time"
+                      is24Hour={true}
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={onTimeChange}
+                    />
+                  </View>
+                )}
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Memo</Text>
-                  <GHButton 
-                    style={[styles.compactInputRow, { minHeight: 52 }]} 
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setMemoModalVisible(true);
-                    }}
-                  >
-                    <AlignLeft size={18} color={Colors.primary} />
-                    <Text style={[styles.compactInputText, !editMemo && { color: Colors.outline }]} numberOfLines={1}>
-                      {editMemo || 'Add details...'}
-                    </Text>
-                  </GHButton>
+                  <View style={styles.labelRow}><Text style={styles.inputLabel}>Memo</Text></View>
+                  <TextInput style={styles.memoInput} value={editMemo} onChangeText={setEditMemo} placeholder="Notes, addresses, or tips..." placeholderTextColor={Colors.outline} multiline numberOfLines={4} />
                 </View>
 
-                {/* Sub-layers (Pickers, Memo) are rendered here as absolute views */}
+                {editingStep && (
+                  <Pressable style={({ pressed }) => [styles.deleteFullBtn, { marginTop: 10, marginBottom: 40 }, pressed && { opacity: 0.7 }]} onPress={deleteStep}>
+                    <Trash2 size={18} color={Colors.error} /><Text style={styles.deleteFullText}>Delete Schedule</Text>
+                  </Pressable>
+                )}
                 
-                <View style={styles.modalFooter}>
-                  {editingStep && (
-                    <GHButton style={styles.deleteAction} onPress={deleteStep}>
-                      <Trash2 size={22} color={Colors.error} />
-                    </GHButton>
-                  )}
-                  <GHButton activeOpacity={0.8} onPress={saveStep} style={styles.saveAction}>
-                    <LinearGradient 
-                      colors={Colors.primaryGradient || [Colors.primary, '#4f46e5']} 
-                      start={{ x: 0, y: 0 }} 
-                      end={{ x: 1, y: 0 }} 
-                      style={styles.saveGradient}
-                    >
-                      <Check size={20} color="white" strokeWidth={3} />
-                      <Text style={styles.saveActionText}>{editingStep ? 'Save Changes' : 'Add to Flow'}</Text>
-                    </LinearGradient>
-                  </GHButton>
-                </View>
+                <View style={{ height: 100 }} />
               </ScrollView>
-
-              {/* Internal Popup Layers (Absolute positioned for stability) */}
-              {showDatePicker && (
-                <View style={styles.absolutePopupOverlay}>
-                  <GHButton style={styles.absolutePopupBackdrop} activeOpacity={1} onPress={() => setShowDatePicker(false)} />
-                  <Animated.View style={styles.pickerModalContent}>
-                    <View style={styles.pickerHeader}>
-                      <Text style={styles.pickerTitle}>Select Date</Text>
-                      <GHButton onPress={() => setShowDatePicker(false)} style={styles.pickerConfirmBtn}>
-                        <Text style={styles.pickerConfirmText}>Done</Text>
-                      </GHButton>
-                    </View>
-                    <DateTimePicker 
-                      value={new Date(editDate)} 
-                      mode="date" 
-                      display={Platform.OS === 'ios' ? 'inline' : 'calendar'} 
-                      onChange={onDateChange}
-                      themeVariant="light"
-                    />
-                  </Animated.View>
-                </View>
-              )}
-
-              {showTimePicker && (
-                <View style={styles.absolutePopupOverlay}>
-                  <GHButton style={styles.absolutePopupBackdrop} activeOpacity={1} onPress={() => setShowTimePicker(false)} />
-                  <Animated.View style={styles.pickerModalContent}>
-                    <View style={styles.pickerHeader}>
-                      <Text style={styles.pickerTitle}>Select Time</Text>
-                      <GHButton onPress={() => setShowTimePicker(false)} style={styles.pickerConfirmBtn}>
-                        <Text style={styles.pickerConfirmText}>Done</Text>
-                      </GHButton>
-                    </View>
-                    <DateTimePicker 
-                      value={(() => { const d = new Date(editDate); const [h, m] = editTime.split(':').map(Number); d.setHours(h, m); return d; })()} 
-                      mode="time" 
-                      is24Hour={true} 
-                      display="spinner" 
-                      onChange={onTimeChange}
-                      themeVariant="light"
-                    />
-                  </Animated.View>
-                </View>
-              )}
-
-              {memoModalVisible && (
-                <View style={styles.absolutePopupOverlay}>
-                  <GHButton style={styles.absolutePopupBackdrop} activeOpacity={1} onPress={() => setMemoModalVisible(false)} />
-                  <Animated.View style={styles.memoModalContent}>
-                    <View style={styles.subModalHeader}>
-                      <Text style={styles.subModalTitle}>Schedule Memo</Text>
-                      <GHButton 
-                        onPress={() => setMemoModalVisible(false)}
-                        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-                      >
-                        <Check size={24} color={Colors.primary} />
-                      </GHButton>
-                    </View>
-                    <TextInput 
-                      style={styles.memoTextInput} 
-                      value={editMemo} 
-                      onChangeText={setEditMemo} 
-                      placeholder="Write down details here..." 
-                      placeholderTextColor={Colors.outline} 
-                      multiline 
-                      autoFocus 
-                    />
-                  </Animated.View>
-                </View>
-              )}
-
+              
               {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
-            </Animated.View>
-          </GHButton>
+            </View>
+          </View>
         </GestureHandlerRootView>
       </Modal>
 
@@ -1015,6 +951,7 @@ const styles = StyleSheet.create({
   resultHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   resultName: { ...Typography.h3, fontSize: 16 },
   resultAddress: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, marginTop: 2 },
+  modalBg: { backgroundColor: 'rgba(0,0,0,0.5)' },
   editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
   editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
   editTitle: { ...Typography.h2, fontSize: 24, letterSpacing: -0.5, color: Colors.onBackground },

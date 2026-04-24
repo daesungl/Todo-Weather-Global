@@ -21,7 +21,7 @@ import {
   Pressable,
   TouchableOpacity,
 } from 'react-native';
-import { GestureHandlerRootView, TouchableOpacity as GHButton } from 'react-native-gesture-handler';
+import { BorderlessButton } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -518,8 +518,9 @@ const TasksScreen = ({ navigation }) => {
 
   const createModalPanResponder = (translateValue, closeCallback) => {
     return PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => false,
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 1 && Math.abs(gs.dy) > Math.abs(gs.dx),
       onPanResponderGrant: () => { Keyboard.dismiss(); },
       onPanResponderMove: (_, gs) => {
         if (gs.dy > 0) translateValue.setValue(gs.dy);
@@ -551,42 +552,8 @@ const TasksScreen = ({ navigation }) => {
   const holidayModalPanResponder = useRef(createModalPanResponder(holidayModalY, closeHolidayModal)).current;
   const listModalPanResponder = useRef(createModalPanResponder(listModalTranslateY, closeTaskListModal)).current;
 
-  // Modal open animations triggered via useEffect (more reliable than onShow on iOS)
-  useEffect(() => {
-    if (isAdding) {
-      modalAddY.setValue(height);
-      Animated.spring(modalAddY, {
-        toValue: 0,
-        useNativeDriver: true,
-        bounciness: 4,
-        speed: 14,
-      }).start();
-    }
-  }, [isAdding]);
+  // Modal open animations are now triggered directly via onPress/onShow for better reliability.
 
-  useEffect(() => {
-    if (isTaskListVisible) {
-      listModalTranslateY.setValue(height);
-      Animated.spring(listModalTranslateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        bounciness: 4,
-        speed: 14,
-      }).start();
-    }
-  }, [isTaskListVisible]);
-
-  useEffect(() => {
-    if (showHolidaySettings) {
-      holidayModalY.setValue(height);
-      Animated.spring(holidayModalY, {
-        toValue: 0,
-        useNativeDriver: true,
-        bounciness: 4,
-        speed: 14,
-      }).start();
-    }
-  }, [showHolidaySettings]);
 
 
   const renderToast = (context) => {
@@ -851,6 +818,13 @@ const TasksScreen = ({ navigation }) => {
     setNewLocName('');
     setNewWeatherRegion(null);
     setIsAdding(true);
+    modalAddY.setValue(height);
+    Animated.spring(modalAddY, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 4,
+      speed: 14,
+    }).start();
   };
 
   const handleBackToList = () => {
@@ -876,6 +850,13 @@ const TasksScreen = ({ navigation }) => {
     setNewLocName(task.locationName || '');
     setNewWeatherRegion(task.weatherRegion || null);
     setIsAdding(true);
+    modalAddY.setValue(height);
+    Animated.spring(modalAddY, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 4,
+      speed: 14,
+    }).start();
   };
 
   const handleSaveTask = async () => {
@@ -975,6 +956,13 @@ const TasksScreen = ({ navigation }) => {
       sheetAnim.setValue(0);
       setSelectedTaskDetail(null);
       setIsTaskListVisible(true);
+      listModalTranslateY.setValue(height);
+      Animated.spring(listModalTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 14,
+      }).start();
     } else {
       setSelectedDate(date);
       setTaskDate(date);
@@ -1054,7 +1042,7 @@ const TasksScreen = ({ navigation }) => {
 
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <>
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
       <MainHeader onMenuPress={() => setMenuVisible(true)} />
       <ScrollView
@@ -1068,14 +1056,20 @@ const TasksScreen = ({ navigation }) => {
               <Text style={styles.monthText}>
                 {selectedDate.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
               </Text>
-              <Calendar size={20} color="#1B254B" style={{ marginLeft: 8 }} />
+              <Calendar size={20} color="#1B254B" style={{ marginLeft: 8 }} pointerEvents="none" />
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={[styles.holidayHeaderBtn, { flexShrink: 1, maxWidth: width * 0.4 }]}
               onPress={() => {
-                holidayModalY.setValue(height);
                 setShowHolidaySettings(true);
+                holidayModalY.setValue(height);
+                Animated.spring(holidayModalY, {
+                  toValue: 0,
+                  useNativeDriver: true,
+                  bounciness: 4,
+                  speed: 14,
+                }).start();
               }}
             >
               <MapPin size={14} color={Colors.primary} />
@@ -1138,7 +1132,7 @@ const TasksScreen = ({ navigation }) => {
         statusBarTranslucent={true}
         onRequestClose={closeTaskListModal}
       >
-        <GestureHandlerRootView style={{ flex: 1 }}>
+
         <View style={styles.modalBg}>
           <Animated.View 
             style={[
@@ -1174,8 +1168,19 @@ const TasksScreen = ({ navigation }) => {
                 <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
                   <View style={styles.modalHandle} />
                   <View style={styles.sheetTitleArea}>
-                    <Text style={styles.sheetDateTitle}>{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일 {['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()]}요일</Text>
-                    <Text style={styles.sheetSubtitle}>Scheduled Tasks</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.sheetDateTitle}>{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일 {['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()]}요일</Text>
+                        <Text style={styles.sheetSubtitle}>Scheduled Tasks</Text>
+                      </View>
+                      <TouchableOpacity 
+                        onPress={closeTaskListModal}
+                        style={styles.headerSaveBtn}
+                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                      >
+                        <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
 
@@ -1230,8 +1235,8 @@ const TasksScreen = ({ navigation }) => {
 
                             <TouchableOpacity onPress={() => handleToggle(task.id)} style={styles.listItemCheck} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                               {task.isCompleted ? 
-                                <CheckCircle2 size={20} color={taskCol} /> : 
-                                <Circle size={20} color={Colors.outlineVariant} />
+                                <CheckCircle2 size={20} color={taskCol} pointerEvents="none" /> : 
+                                <Circle size={20} color={Colors.outlineVariant} pointerEvents="none" />
                               }
                             </TouchableOpacity>
                           </TouchableOpacity>
@@ -1255,12 +1260,17 @@ const TasksScreen = ({ navigation }) => {
                 <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
                   <View style={styles.modalHandle} />
                   <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
-                    <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn}>
-                      <ChevronLeft size={28} color={Colors.text} />
+                    <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                      <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setIsDetailMenuVisible(true)} style={styles.detailHeaderBtn}>
-                      <MoreHorizontal size={24} color={Colors.text} />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity onPress={() => setIsDetailMenuVisible(true)} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                        <MoreHorizontal size={24} color={Colors.text} pointerEvents="none" />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={closeTaskListModal} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                        <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
 
@@ -1273,7 +1283,7 @@ const TasksScreen = ({ navigation }) => {
                     <View style={styles.detailBody}>
                       <View style={styles.detailTitleSection}>
                         <View style={[styles.detailColorBar, { backgroundColor: selectedTaskDetail.color || Colors.primary }]} />
-                        <Text style={[styles.detailTitle, { color: selectedTaskDetail.color || Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
+                        <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
                       </View>
 
                       <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>
@@ -1381,7 +1391,7 @@ const TasksScreen = ({ navigation }) => {
           </Animated.View>
           {renderToast('isTaskListVisible')}
         </View>
-        </GestureHandlerRootView>
+
       </Modal>
 
       {renderToast('main')}
@@ -1391,12 +1401,14 @@ const TasksScreen = ({ navigation }) => {
 
       {/* Wheel Picker Modal */}
       <Modal visible={isPickerVisible} transparent animationType="fade" onRequestClose={() => setIsPickerVisible(false)}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
+
         <View style={styles.pickerBg}>
           <View style={styles.pickerContent}>
             <View style={styles.pickerHeader}>
               <Text style={styles.pickerTitle}>Select Date</Text>
-              <TouchableOpacity onPress={() => setIsPickerVisible(false)}><X size={24} color={Colors.text} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setIsPickerVisible(false)} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.wheelWrapper}>
@@ -1486,7 +1498,7 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
-        </GestureHandlerRootView>
+
       </Modal>
 
       <Modal
@@ -1512,8 +1524,12 @@ const TasksScreen = ({ navigation }) => {
                   <View style={styles.modalHeader}>
                     <View style={styles.modalHandle} />
                     <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-                      <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerActionBtn}>
-                        <ChevronLeft size={28} color={Colors.text} />
+                      <TouchableOpacity 
+                        onPress={() => setIsMemoEditing(false)} 
+                        style={styles.headerActionBtn}
+                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                      >
+                        <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                       </TouchableOpacity>
                       <View style={{ alignItems: 'center' }}>
                         <Text style={styles.modalTitle}>Memo</Text>
@@ -1521,8 +1537,12 @@ const TasksScreen = ({ navigation }) => {
                           {newMemo.length} / 1000
                         </Text>
                       </View>
-                      <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerSaveBtn}>
-                        <Text style={styles.headerSaveText}>{t('common.done', 'Done')}</Text>
+                      <TouchableOpacity 
+                        onPress={() => setIsMemoEditing(false)} 
+                        style={styles.headerSaveBtn}
+                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                      >
+                        <Text style={styles.headerSaveText} pointerEvents="none">{t('common.done', 'Done')}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1545,18 +1565,18 @@ const TasksScreen = ({ navigation }) => {
                 <>
                   <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
                     <View style={styles.modalHandle} />
-                    <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-                      <TouchableOpacity onPress={() => closeAddModal()} style={styles.headerActionBtn}>
-                        <ChevronLeft size={28} color={Colors.text} />
+<View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                      <TouchableOpacity onPress={() => closeAddModal()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                        <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                       </TouchableOpacity>
                       
                       <Text style={styles.modalTitle}>{editingTask ? t('tasks.edit_task', 'Edit Task') : t('tasks.add_new', 'Add Task')}</Text>
                       
                       {isKeyboardVisible ? (
-                        <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <KeyboardIcon size={22} color={Colors.primary} />
-                            <ChevronDown size={14} color={Colors.primary} />
+                        <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
+                            <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
+                            <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
                           </View>
                         </TouchableOpacity>
                       ) : (
@@ -1564,8 +1584,9 @@ const TasksScreen = ({ navigation }) => {
                           onPress={handleSaveTask} 
                           disabled={!newTitle.trim()} 
                           style={[styles.headerSaveBtn, !newTitle.trim() && { opacity: 0.5 }]}
+                          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                         >
-                          <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
+                          <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1858,7 +1879,7 @@ const TasksScreen = ({ navigation }) => {
         statusBarTranslucent={true}
         onRequestClose={closeHolidayModal}
       >
-        <GestureHandlerRootView style={{ flex: 1 }}>
+
         <View style={styles.modalBg}>
           <Animated.View
             style={[
@@ -1884,18 +1905,19 @@ const TasksScreen = ({ navigation }) => {
                 </View>
                 <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
                   {isKeyboardVisible ? (
-                    <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <KeyboardIcon size={22} color={Colors.primary} />
-                        <ChevronDown size={14} color={Colors.primary} />
+                    <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
+                        <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
+                        <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
                       </View>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity 
                       onPress={closeHolidayModal} 
                       style={styles.headerSaveBtn}
+                      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                     >
-                      <Text style={styles.headerSaveText} numberOfLines={1}>{t('common.save', 'Save')}</Text>
+                      <Text style={styles.headerSaveText} numberOfLines={1} pointerEvents="none">{t('common.close', '닫기')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1912,7 +1934,7 @@ const TasksScreen = ({ navigation }) => {
               />
               {countrySearch.length > 0 && (
                 <TouchableOpacity onPress={() => setCountrySearch('')}>
-                  <X size={16} color={Colors.outline} />
+                  <X size={16} color={Colors.outline} pointerEvents="none" />
                 </TouchableOpacity>
               )}
             </View>
@@ -1969,7 +1991,7 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </Animated.View>
         </View>
-        </GestureHandlerRootView>
+
       </Modal>
 
       <MenuModal
@@ -1980,27 +2002,25 @@ const TasksScreen = ({ navigation }) => {
 
     </View>
     <Pressable
-      style={{
-        position: 'absolute',
-        bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16 - 2.5, // Center the 60px circle in 65px area
-        right: 30 - 2.5, // Center the 60px circle in 65px area
-        width: 65,
-        height: 65,
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 999999,
-      }}
+      style={({ pressed }) => [
+        styles.fabCircle,
+        {
+          position: 'absolute',
+          bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16,
+          right: 30,
+          zIndex: 999999,
+          opacity: pressed ? 0.7 : 1,
+        }
+      ]}
       onPress={() => {
         console.log('[FAB] Press detected');
         openAddModal();
       }}
-      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
     >
-      <View style={styles.fabCircle}>
-        <Plus size={32} color="white" strokeWidth={3} />
-      </View>
+      <Plus size={32} color="white" strokeWidth={3} pointerEvents="none" />
     </Pressable>
-    </GestureHandlerRootView>
+    </>
   );
 };
 
@@ -2102,6 +2122,8 @@ const styles = StyleSheet.create({
   activeWheelText: { color: '#1B254B', fontWeight: '800' },
   pickerFooter: { flexDirection: 'row', marginTop: 32, gap: 12 },
   modalHeader: { 
+    width: '100%',
+    backgroundColor: 'white',
     alignItems: 'center', 
     paddingTop: 8, 
     paddingBottom: 12,
@@ -2134,7 +2156,7 @@ const styles = StyleSheet.create({
   confirmBtn: { flex: 1.5, height: 52, borderRadius: 16, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center' },
   confirmBtnText: { fontSize: 15, fontWeight: '700', color: 'white' },
 
-  modalBg: { flex: 1, justifyContent: 'flex-end' },
+  modalBg: { flex: 1, justifyContent: 'flex-end', backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(0,0,0,0.5)' },
   modalContent: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: height * 0.9, paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl },
   modalForm: { flex: 1 },
 
