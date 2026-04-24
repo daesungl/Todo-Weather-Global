@@ -77,7 +77,6 @@ const FlowScreen = ({ navigation }) => {
   const [editingFlow, setEditingFlow] = useState(null);
   const [flowTitle, setFlowTitle] = useState('');
   const [flowDescription, setFlowDescription] = useState('');
-  const [flowPeriod, setFlowPeriod] = useState('');
   const [flowLocation, setFlowLocation] = useState('');
   const [flowAddress, setFlowAddress] = useState('');
   const [flowLat, setFlowLat] = useState(null);
@@ -173,7 +172,6 @@ const FlowScreen = ({ navigation }) => {
     setFlowLat(null);
     setFlowLon(null);
     setFlowDescription('');
-    setFlowPeriod('');
   };
 
   const loadInitialData = async () => {
@@ -317,12 +315,12 @@ const FlowScreen = ({ navigation }) => {
       }
 
       const updatedFlows = editingFlow
-        ? flows.map(f => f.id === editingFlow.id ? { ...f, title: flowTitle, description: flowDescription, period: flowPeriod, location: flowLocation, address: flowAddress, lat: flowLat, lon: flowLon, weatherSummary, weatherCondKey, weatherIsDay } : f)
+        ? flows.map(f => f.id === editingFlow.id ? { ...f, title: flowTitle, description: flowDescription, location: flowLocation, address: flowAddress, lat: flowLat, lon: flowLon, weatherSummary, weatherCondKey, weatherIsDay } : f)
         : await addFlow({
             id: Date.now().toString(),
             title: flowTitle,
             description: flowDescription,
-            period: flowPeriod || 'Multi-day Planning',
+            period: 'Multi-day Planning',
             location: flowLocation || 'No Region',
             address: flowAddress || '',
             progress: 0,
@@ -349,6 +347,10 @@ const FlowScreen = ({ navigation }) => {
   };
 
   const saveStep = async () => {
+    if (!editActivity.trim()) {
+      Alert.alert("Activity Required", "Please enter what you are doing.");
+      return;
+    }
     if (!editTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
       Alert.alert("Invalid Time", "Please use HH:mm format");
       return;
@@ -441,7 +443,6 @@ const FlowScreen = ({ navigation }) => {
     setEditingFlow(flow);
     setFlowTitle(flow ? flow.title : '');
     setFlowDescription(flow ? (flow.description || '') : '');
-    setFlowPeriod(flow ? (flow.period || '') : '');
     setFlowLocation(flow ? flow.location : '');
     setFlowAddress(flow ? (flow.address || '') : '');
     setFlowLat(flow ? flow.lat : null);
@@ -671,10 +672,20 @@ const FlowScreen = ({ navigation }) => {
                   <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.status === 'current' && styles.dotCurrent]} />
                   {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
                 </View>
-                <GHButton activeOpacity={0.7} onPress={() => openEditStep(step)} style={[styles.stepInfoCard, step.status === 'current' && styles.activeStepCard, step.warning && styles.warningStepCard]}>
+                <Pressable 
+                  onPress={() => openEditStep(step)} 
+                  style={({ pressed }) => [
+                    styles.stepInfoCard, 
+                    step.status === 'current' && styles.activeStepCard, 
+                    step.warning && styles.warningStepCard,
+                    pressed && { opacity: 0.7 }
+                  ]}
+                >
                   <View style={styles.stepHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.stepActivity} numberOfLines={1}>{step.activity}</Text>
+                    <View style={{ flex: 1, justifyContent: 'center' }}>
+                      <Text style={styles.stepActivity} numberOfLines={1}>
+                        {step.activity && step.activity.trim() !== '' ? step.activity : 'Untitled Schedule'}
+                      </Text>
                       {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
                       {step.region && (
                         <View style={styles.stepRegionRow}>
@@ -684,22 +695,13 @@ const FlowScreen = ({ navigation }) => {
                       )}
                     </View>
                     {step.weather && (
-                        <GHButton
-                          onPress={() => navigation.navigate('WeatherDetail', {
-                            region: {
-                              name: step.region?.name || step.activity,
-                              address: step.region?.address || '',
-                              lat: parseFloat(step.lat || step.region?.lat),
-                              lon: parseFloat(step.lon || step.region?.lon)
-                            }
-                          })}
-                        >
-                          {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 18, Colors.primary, step.weather?.isDay !== false)}
-                        </GHButton>
+                      <View style={{ marginLeft: 8 }}>
+                        {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
+                      </View>
                     )}
                   </View>
                   {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>Rain alert: Indoor backup recommended</Text></View>}
-                </GHButton>
+                </Pressable>
               </View>
             ))}
           </View>
@@ -845,12 +847,15 @@ const FlowScreen = ({ navigation }) => {
 
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                       <View style={styles.modalContentPadding}>
-                        <Text style={styles.inputLabel}>Flow Title</Text>
-                        <View style={styles.compactInputRow}><Flag size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder="e.g. Hawaii Trip, Morning Routine" placeholderTextColor={Colors.outline} /></View>
+                        <Text style={styles.inputLabel}>Flow Title <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        <View style={[styles.compactInputRow, !flowTitle && styles.compactInputRowRequired]}>
+                          <Flag size={18} color={flowTitle ? Colors.primary : Colors.error} />
+                          <TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder="e.g. Hawaii Trip, Morning Routine" placeholderTextColor={Colors.outline} />
+                        </View>
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}><Text style={styles.inputLabel}>Base Region (Optional)</Text><Pressable onPress={() => openSearch('flow')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
+                        <View style={styles.labelRow}><Text style={styles.inputLabel}>Base Region</Text><Pressable onPress={() => openSearch('flow')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
                         <View style={styles.regionDisplay}>
                           <MapPin size={18} color={flowLocation ? Colors.primary : Colors.outline} />
                           <Text style={[styles.regionDisplayText, !flowLocation && { color: Colors.outline }]}>
@@ -867,11 +872,6 @@ const FlowScreen = ({ navigation }) => {
                       <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>Description</Text>
                         <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder="What is this flow about?" placeholderTextColor={Colors.outline} /></View>
-                      </View>
-
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Period</Text>
-                        <View style={styles.compactInputRow}><Calendar size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowPeriod} onChangeText={setFlowPeriod} placeholder="e.g. 2024.05.10 - 05.15" placeholderTextColor={Colors.outline} /></View>
                       </View>
 
                       <View style={{ height: 100 }} />
@@ -902,7 +902,13 @@ const FlowScreen = ({ navigation }) => {
                       <View style={styles.modalHandle} />
                     </View>
                     <View style={styles.editHeader}>
-                      <Pressable onPress={closeEditModal} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></Pressable>
+                      {editingStep ? (
+                        <Pressable onPress={deleteStep} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.headerDeleteBtn}>
+                          <Trash2 size={20} color={Colors.error} />
+                        </Pressable>
+                      ) : (
+                        <View style={{ width: 40 }} />
+                      )}
                       <Text style={styles.editTitle}>{editingStep ? 'Edit Schedule' : 'New Schedule'}</Text>
                       <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveStep} style={styles.headerActionBtn}>
                         {isKeyboardVisible ? (
@@ -915,8 +921,11 @@ const FlowScreen = ({ navigation }) => {
 
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                       <View style={styles.modalContentPadding}>
-                        <Text style={styles.inputLabel}>Activity</Text>
-                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder="What are you doing?" placeholderTextColor={Colors.outline} /></View>
+                        <Text style={styles.inputLabel}>Activity <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        <View style={[styles.compactInputRow, !editActivity && styles.compactInputRowRequired]}>
+                          <Edit3 size={18} color={editActivity ? Colors.primary : Colors.error} />
+                          <TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder="What are you doing?" placeholderTextColor={Colors.outline} />
+                        </View>
                       </View>
 
                       <View style={styles.inputGroup}>
@@ -959,7 +968,10 @@ const FlowScreen = ({ navigation }) => {
                       )}
 
                       <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Memo</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <Text style={styles.inputLabel}>Memo</Text>
+                          <Text style={styles.charCount}>{editMemo.length}/500</Text>
+                        </View>
                         <TextInput
                           style={styles.memoInlineInput}
                           value={editMemo}
@@ -968,14 +980,9 @@ const FlowScreen = ({ navigation }) => {
                           placeholderTextColor={Colors.outline}
                           multiline
                           textAlignVertical="top"
+                          maxLength={500}
                         />
                       </View>
-
-                      {editingStep && (
-                        <Pressable style={({ pressed }) => [styles.deleteFullBtn, { marginTop: 10, marginBottom: 40 }, pressed && { opacity: 0.7 }]} onPress={deleteStep}>
-                          <Trash2 size={18} color={Colors.error} /><Text style={styles.deleteFullText}>Delete Schedule</Text>
-                        </Pressable>
-                      )}
 
                       <View style={{ height: 60 }} />
                     </ScrollView>
@@ -1054,14 +1061,14 @@ const styles = StyleSheet.create({
   timelineCol: { width: 30, alignItems: 'center' },
   timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.outlineVariant, marginTop: 12 },
   timelineLine: { width: 2, flex: 1, backgroundColor: Colors.outlineVariant, marginVertical: 2 },
-  stepInfoCard: { 
-    flex: 1, backgroundColor: Colors.surfaceContainerLow, borderRadius: 24, padding: Spacing.lg, marginLeft: 12, marginBottom: Spacing.sm,
+  stepInfoCard: {
+    flex: 1, backgroundColor: Colors.surfaceContainerLow, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 12, marginLeft: 12, marginBottom: Spacing.sm, minHeight: 64, justifyContent: 'center',
     ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 }, android: { elevation: 1 } })
   },
   activeStepCard: { backgroundColor: 'white', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 15 }, android: { elevation: 4 } }) },
   warningStepCard: { borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.2)' },
   stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  stepActivity: { ...Typography.h3, fontSize: 15, flex: 1, marginRight: 12 },
+  stepActivity: { ...Typography.h3, fontSize: 15, marginRight: 8, flexShrink: 1 },
   stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 2 },
   stepRegionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   stepRegionLabel: { fontSize: 11, color: Colors.outline, fontWeight: '600', maxWidth: 120 },
@@ -1090,7 +1097,7 @@ const styles = StyleSheet.create({
   resultName: { ...Typography.h3, fontSize: 16 },
   resultAddress: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, marginTop: 2 },
   modalBg: { backgroundColor: 'rgba(0,0,0,0.5)' },
-  editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
+  editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20, maxHeight: height * 0.9 },
   editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
   editTitle: { ...Typography.h2, fontSize: 24, letterSpacing: -0.5, color: Colors.onBackground },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 16, opacity: 0.5 },
@@ -1100,6 +1107,10 @@ const styles = StyleSheet.create({
   searchAccessoryText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   modalContentPadding: { marginBottom: Spacing.xl },
   handleArea: { alignItems: 'center', paddingTop: 4, paddingBottom: 12 },
+  charCount: { fontSize: 12, color: Colors.outline, fontWeight: '500' },
+  headerDeleteBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,59,48,0.08)', alignItems: 'center', justifyContent: 'center' },
+  requiredAsterisk: { color: Colors.error, fontWeight: '700' },
+  compactInputRowRequired: { borderColor: 'rgba(255,59,48,0.35)', borderWidth: 1.5 },
   inputGroup: { marginBottom: Spacing.xl },
   inputLabel: { ...Typography.bodySmall, color: Colors.onBackground, fontWeight: '800', marginBottom: 12, opacity: 0.8 },
   editInputWrap: { 
