@@ -50,7 +50,7 @@ export const deleteFlow = async (id) => {
 export const addFlow = async (flow) => {
   try {
     const flows = await getFlows();
-    const updatedFlows = [...(Array.isArray(flows) ? flows : []), flow];
+    const updatedFlows = [flow, ...(Array.isArray(flows) ? flows : [])];
     await saveFlows(updatedFlows);
     return updatedFlows;
   } catch (e) {

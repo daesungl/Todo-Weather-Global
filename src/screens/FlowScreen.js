@@ -351,7 +351,7 @@ const FlowScreen = ({ navigation }) => {
       Alert.alert("Activity Required", "Please enter what you are doing.");
       return;
     }
-    if (!editTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+    if (editTime && !editTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
       Alert.alert("Invalid Time", "Please use HH:mm format");
       return;
     }
@@ -422,13 +422,15 @@ const FlowScreen = ({ navigation }) => {
   const groupStepsByDate = (steps) => {
     if (!steps) return {};
     return steps.reduce((acc, step) => {
-      if (!acc[step.date]) acc[step.date] = [];
-      acc[step.date].push(step);
+      const dateKey = step.date || 'Unscheduled';
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push(step);
       return acc;
     }, {});
   };
 
   const formatDateLabel = (dateStr) => {
+    if (!dateStr || dateStr === 'Unscheduled') return 'Upcoming Plans';
     try {
       const d = new Date(dateStr);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
@@ -595,7 +597,11 @@ const FlowScreen = ({ navigation }) => {
   );
 
   const groupedSteps = groupStepsByDate(selectedFlow?.steps);
-  const sortedDates = Object.keys(groupedSteps).sort();
+  const sortedDates = Object.keys(groupedSteps).sort((a, b) => {
+    if (a === 'Unscheduled') return 1;
+    if (b === 'Unscheduled') return -1;
+    return a.localeCompare(b);
+  });
 
   const renderTimelineDetail = () => (
     <View style={styles.detailContainer}>
@@ -658,14 +664,24 @@ const FlowScreen = ({ navigation }) => {
 
         {sortedDates.length > 0 ? sortedDates.map((date, dateIdx) => (
           <View key={date} style={styles.dayGroup}>
-            <View style={styles.dayHeader}>
-              <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>DAY {dateIdx + 1}</Text></View>
-              <Text style={styles.dayDateText}>{formatDateLabel(date)}</Text>
-            </View>
+            {date !== 'Unscheduled' ? (
+              <View style={styles.dayHeader}>
+                <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>DAY {dateIdx + 1}</Text></View>
+                <Text style={styles.dayDateText}>{formatDateLabel(date)}</Text>
+              </View>
+            ) : (
+              <View style={[styles.dayHeader, { marginTop: 8 }]}>
+                <Text style={styles.dayDateText}>Unscheduled</Text>
+              </View>
+            )}
             {groupedSteps[date].map((step, index) => (
               <View key={step.id} style={styles.stepRow}>
                 <View style={styles.timeCol}>
-                  <GHButton onPress={() => openEditStep(step)} hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}><Text style={styles.timeText}>{step.time}</Text></GHButton>
+                  {step.time ? (
+                    <GHButton onPress={() => openEditStep(step)} hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}>
+                      <Text style={styles.timeText}>{step.time}</Text>
+                    </GHButton>
+                  ) : null}
                   {step.status === 'current' && <View style={styles.currentIndicator}><Navigation2 size={12} color="white" fill="white" style={{ transform: [{ rotate: '45deg' }] }} /></View>}
                 </View>
                 <View style={styles.timelineCol}>
@@ -803,8 +819,19 @@ const FlowScreen = ({ navigation }) => {
                       </View>
                     </ScaleDecorator>
                   )}
-                  ListHeaderComponent={<View style={styles.listHeader}><Text style={styles.screenTitle}>My Flows</Text><Text style={styles.screenSubtitle}>Curated journeys (Long press to reorder)</Text></View>}
-                  ListFooterComponent={<GHButton style={styles.addFlowBtn} onPress={() => openFlowModal()}><Plus size={24} color={Colors.primary} /><Text style={styles.addFlowText}>Create New Flow</Text></GHButton>}
+                  ListHeaderComponent={
+                    <View style={styles.listHeader}>
+                      <View style={styles.headerTopRow}>
+                        <View>
+                          <Text style={styles.screenTitle}>My Flows</Text>
+                          <Text style={styles.screenSubtitle}>Curated journeys</Text>
+                        </View>
+                        <GHButton style={styles.headerAddBtn} onPress={() => openFlowModal()}>
+                          <Plus size={24} color="white" />
+                        </GHButton>
+                      </View>
+                    </View>
+                  }
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
                 />
@@ -934,8 +961,45 @@ const FlowScreen = ({ navigation }) => {
                       </View>
 
                       <View style={styles.rowInputs}>
-                        <View style={[styles.inputGroup, { flex: 1.5, marginRight: 12 }]}><Text style={styles.inputLabel}>Date</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowDatePicker(!showDatePicker); setShowTimePicker(false); }}><Calendar size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editDate}</Text></Pressable></View>
-                        <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.inputLabel}>Time</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowTimePicker(!showTimePicker); setShowDatePicker(false); }}><Clock size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editTime}</Text></Pressable></View>
+                        <View style={[styles.inputGroup, { flex: 1.3, marginRight: 10 }]}>
+                          <View style={styles.labelRow}>
+                            <Text style={styles.inputLabel}>Date</Text>
+                            {editDate ? (
+                              <Pressable onPress={() => setEditDate('')} hitSlop={10}>
+                                <Text style={styles.resetText}>Reset</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
+                          <Pressable 
+                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} 
+                            onPress={() => { setShowDatePicker(!showDatePicker); setShowTimePicker(false); }}
+                          >
+                            <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                            <Text style={[styles.editInputText, !editDate && { color: Colors.outline }]} numberOfLines={1}>
+                              {editDate || '--/--'}
+                            </Text>
+                          </Pressable>
+                        </View>
+
+                        <View style={[styles.inputGroup, { flex: 1 }]}>
+                          <View style={styles.labelRow}>
+                            <Text style={styles.inputLabel}>Time</Text>
+                            {editTime ? (
+                              <Pressable onPress={() => setEditTime('')} hitSlop={10}>
+                                <Text style={styles.resetText}>Reset</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
+                          <Pressable 
+                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} 
+                            onPress={() => { setShowTimePicker(!showTimePicker); setShowDatePicker(false); }}
+                          >
+                            <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                            <Text style={[styles.editInputText, !editTime && { color: Colors.outline }]} numberOfLines={1}>
+                              {editTime || '--:--'}
+                            </Text>
+                          </Pressable>
+                        </View>
                       </View>
 
                       {showDatePicker && (
@@ -943,9 +1007,10 @@ const FlowScreen = ({ navigation }) => {
                           <DateTimePicker
                             value={new Date(editDate || Date.now())}
                             mode="date"
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            display="inline"
                             onChange={onDateChange}
                             minimumDate={new Date(2020, 0, 1)}
+                            accentColor={Colors.primary}
                           />
                         </View>
                       )}
@@ -1029,12 +1094,12 @@ const styles = StyleSheet.create({
   progressBar: { height: '100%', backgroundColor: 'white', borderRadius: 2 },
   weatherSummary: { flexDirection: 'row', alignItems: 'center' },
   weatherText: { color: 'white', fontSize: 13, fontWeight: '600', flex: 1 },
-  addFlowBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: Spacing.xl, borderRadius: 32, backgroundColor: Colors.surfaceContainerLow,
-    marginTop: Spacing.sm, gap: 12,
+  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 4 },
+  headerAddBtn: {
+    width: 52, height: 52, borderRadius: 26, backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }, android: { elevation: 4 } })
   },
-  addFlowText: { ...Typography.body, fontWeight: '700', color: Colors.primary },
   detailContainer: { flex: 1, backgroundColor: Colors.background, paddingTop: Platform.OS === 'ios' ? 44 : 0 },
   detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.sm, height: 50 },
   detailHeaderTitle: { ...Typography.h3, fontSize: 18, flex: 1, textAlign: 'center' },
@@ -1058,18 +1123,21 @@ const styles = StyleSheet.create({
   stepRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8 },
   timeCol: { width: 45, alignItems: 'flex-end', paddingTop: 8 },
   timeText: { ...Typography.labelMedium, fontWeight: '800', color: Colors.onBackground },
-  timelineCol: { width: 30, alignItems: 'center' },
-  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.outlineVariant, marginTop: 12 },
-  timelineLine: { width: 2, flex: 1, backgroundColor: Colors.outlineVariant, marginVertical: 2 },
+  timelineCol: { width: 32, alignItems: 'center' },
+  timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.outlineVariant, marginTop: 14, borderWidth: 2, borderColor: 'white' },
+  dotCurrent: { backgroundColor: Colors.primary, width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: 'rgba(0, 102, 138, 0.2)' },
+  dotCompleted: { backgroundColor: Colors.secondary },
+  timelineLine: { width: 1.5, flex: 1, backgroundColor: Colors.outlineVariant, opacity: 0.3, marginVertical: 4 },
   stepInfoCard: {
-    flex: 1, backgroundColor: Colors.surfaceContainerLow, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 12, marginLeft: 12, marginBottom: Spacing.sm, minHeight: 64, justifyContent: 'center',
-    ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 }, android: { elevation: 1 } })
+    flex: 1, backgroundColor: 'white', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 14, marginLeft: 12, marginBottom: Spacing.sm, minHeight: 68, justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)',
+    ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 8 }, android: { elevation: 2 } })
   },
-  activeStepCard: { backgroundColor: 'white', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 15 }, android: { elevation: 4 } }) },
-  warningStepCard: { borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.2)' },
-  stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  stepActivity: { ...Typography.h3, fontSize: 15, marginRight: 8, flexShrink: 1 },
-  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 2 },
+  activeStepCard: { borderColor: 'rgba(0, 102, 138, 0.15)', ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20 }, android: { elevation: 6 } }) },
+  warningStepCard: { borderWidth: 1.5, borderColor: 'rgba(239, 68, 68, 0.2)' },
+  stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  stepActivity: { ...Typography.h3, fontSize: 16, color: Colors.onBackground, fontWeight: '700', letterSpacing: -0.3 },
+  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 4, lineHeight: 16 },
   stepRegionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   stepRegionLabel: { fontSize: 11, color: Colors.outline, fontWeight: '600', maxWidth: 120 },
   warningBadge: { backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: 10, borderRadius: 12, marginTop: 12 },
@@ -1077,13 +1145,14 @@ const styles = StyleSheet.create({
   centerButtonWrap: { alignItems: 'center', marginTop: Spacing.xl },
   addStepDetail: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 16, paddingHorizontal: 24, borderRadius: 24,
-    borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed',
-    backgroundColor: 'rgba(0, 191, 255, 0.02)', gap: 8,
+    paddingVertical: 18, paddingHorizontal: 32, borderRadius: 20,
+    borderWidth: 1.5, borderColor: 'rgba(0, 102, 138, 0.15)', borderStyle: 'dashed',
+    backgroundColor: 'rgba(0, 102, 138, 0.03)', gap: 10,
   },
-  addStepText: { ...Typography.body, fontWeight: '700', color: Colors.primary },
+  addStepText: { ...Typography.body, fontWeight: '800', color: Colors.primary, letterSpacing: -0.5 },
   emptyFlow: { alignItems: 'center', padding: 60, gap: 16 },
   emptyFlowText: { ...Typography.bodySmall, color: Colors.outline },
+  rowInputs: { flexDirection: 'row', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.lg },
   searchInputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceContainerLow, borderRadius: 20, paddingHorizontal: 16, height: 56, gap: 10 },
@@ -1112,9 +1181,11 @@ const styles = StyleSheet.create({
   requiredAsterisk: { color: Colors.error, fontWeight: '700' },
   compactInputRowRequired: { borderColor: 'rgba(255,59,48,0.35)', borderWidth: 1.5 },
   inputGroup: { marginBottom: Spacing.xl },
-  inputLabel: { ...Typography.bodySmall, color: Colors.onBackground, fontWeight: '800', marginBottom: 12, opacity: 0.8 },
+  inputLabel: { ...Typography.bodySmall, color: Colors.onBackground, fontWeight: '800', opacity: 0.8 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, height: 20 },
+  resetText: { fontSize: 12, color: Colors.primary, fontWeight: '700' },
   editInputWrap: { 
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderRadius: 20, paddingHorizontal: 20, height: 64, borderWidth: 1.5, borderColor: Colors.surfaceContainerLow,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderRadius: 16, paddingHorizontal: 16, height: 60, borderWidth: 1.5, borderColor: Colors.surfaceContainerLow,
     ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 }, android: { elevation: 2 } })
   },
   editInput: { flex: 1, ...Typography.body, fontSize: 16, color: Colors.onBackground, fontWeight: '600' },
@@ -1131,9 +1202,18 @@ const styles = StyleSheet.create({
     ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 15 }, android: { elevation: 6 } })
   },
   premiumSubmitText: { color: 'white', fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  editInputText: { ...Typography.body, fontSize: 16, color: Colors.onBackground, fontWeight: '600' },
+  editInputText: { ...Typography.body, fontSize: 14.5, color: Colors.onBackground, fontWeight: '600' },
+  inputClearBtn: { padding: 8, marginLeft: 4, backgroundColor: Colors.surfaceContainer, borderRadius: 10 },
   pickerContainer: { backgroundColor: Colors.surfaceContainerLowest, borderRadius: 24, marginTop: 8, marginBottom: 20, overflow: 'hidden', paddingBottom: 8 },
-  modalFooter: { flexDirection: 'row', gap: 12, marginTop: 20, alignItems: 'center' },
+  modalFooter: { flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 20, alignItems: 'center' },
+  // Picker Sheet Styles
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  pickerSheet: { backgroundColor: 'white', borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingBottom: 40, overflow: 'hidden' },
+  pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: Colors.surfaceContainerLow },
+  pickerTitle: { ...Typography.h3, fontSize: 18, color: Colors.onBackground },
+  pickerDoneBtn: { paddingVertical: 8, paddingHorizontal: 16, backgroundColor: Colors.primaryContainer, borderRadius: 12 },
+  pickerDoneText: { color: Colors.primary, fontWeight: '700', fontSize: 15 },
+  pickerContent: { paddingVertical: 10, alignItems: 'center' },
   deleteAction: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#FFE5E5', justifyContent: 'center', alignItems: 'center' },
   saveAction: { flex: 1, height: 56, borderRadius: 16, overflow: 'hidden', backgroundColor: Colors.primary },
   saveGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
