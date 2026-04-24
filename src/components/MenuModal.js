@@ -21,31 +21,76 @@ const MenuModal = ({ visible, onClose, onReset }) => {
 
   const handleMenuItemPress = async (id) => {
     if (id === 'reset') {
+      // Show multiple reset options
       Alert.alert(
-        t('menu.reset') || '초기화',
-        t('menu.reset_confirm_msg') || '모든 권역의 날씨 캐시 데이터를 초기화하시겠습니까?',
+        t('menu.reset') || 'Data Management',
+        t('menu.reset_sub') || 'Select the data you want to reset',
         [
-          { text: t('common.cancel') || '취소', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           { 
-            text: t('common.confirm') || '확인', 
+            text: t('menu.reset_weather') || 'Weather Reset', 
             onPress: async () => {
-              try {
-                const keys = await AsyncStorage.getAllKeys();
-                const weatherKeys = keys.filter(k => k.startsWith('@weather_cache_'));
-                if (weatherKeys.length > 0) {
-                  await AsyncStorage.multiRemove(weatherKeys);
-                }
-                onClose();
-                onReset?.();
-              } catch (e) {
-                console.error('Reset Error:', e);
-              }
+              const keys = await AsyncStorage.getAllKeys();
+              const weatherCacheKeys = keys.filter(k => k.startsWith('@weather_cache_'));
+              if (weatherCacheKeys.length > 0) await AsyncStorage.multiRemove(weatherCacheKeys);
+              Alert.alert(t('common.info'), t('menu.reset_success_msg'));
+              onClose();
+              onReset?.();
+            } 
+          },
+          { 
+            text: t('menu.reset_todo') || 'Todo Reset', 
+            onPress: async () => {
+              const todoKeys = ['@tasks_v1', '@user_holiday_countries'];
+              await AsyncStorage.multiRemove(todoKeys);
+              Alert.alert(t('common.info'), t('menu.reset_success_msg'));
+              onClose();
+              onReset?.();
+            } 
+          },
+          { 
+            text: t('menu.reset_flow') || 'Flow Reset', 
+            onPress: async () => {
+              await AsyncStorage.removeItem('@todo_weather_flows');
+              Alert.alert(t('common.info'), t('menu.reset_success_msg'));
+              onClose();
+              onReset?.();
+            } 
+          },
+          { 
+            text: t('menu.reset_all') || 'Reset All', 
+            style: 'destructive',
+            onPress: async () => {
+              Alert.alert(
+                t('menu.reset_all'),
+                t('menu.reset_all_msg'),
+                [
+                  { text: t('common.cancel'), style: 'cancel' },
+                  { 
+                    text: t('common.confirm'), 
+                    style: 'destructive',
+                    onPress: async () => {
+                      const keys = await AsyncStorage.getAllKeys();
+                      const appKeys = keys.filter(k => 
+                        k.startsWith('@weather_cache_') || 
+                        k === '@tasks_v1' || 
+                        k === '@todo_weather_flows' ||
+                        k === '@save_wBookmark' ||
+                        k === '@user_holiday_countries'
+                      );
+                      if (appKeys.length > 0) await AsyncStorage.multiRemove(appKeys);
+                      Alert.alert(t('common.info'), t('menu.reset_success_msg'));
+                      onClose();
+                      onReset?.();
+                    }
+                  }
+                ]
+              );
             } 
           }
         ]
       );
     } else {
-      // Other menu items can be handled here later
       onClose();
     }
   };

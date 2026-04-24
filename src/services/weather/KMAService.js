@@ -187,8 +187,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     const midTime = getMidBaseTime();
     const { taCode, landCode, stnId } = findMidRegionCodes(addressObj);
 
-    const baseUrl = 'http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0';
-    const midUrl = 'http://apis.data.go.kr/1360000/MidFcstInfoService';
+    const baseUrl = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0';
+    const midUrl = 'https://apis.data.go.kr/1360000/MidFcstInfoService';
     // Use raw key in URL to prevent Axios double encoding issues
     const serviceKey = process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '';
 

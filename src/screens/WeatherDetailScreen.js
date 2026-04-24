@@ -85,7 +85,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       return data; // 보정 불가
     }
     const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
-    const isDay = localHour >= 6 && localHour < 18;
+    const isDay = localHour >= 6 && localHour < 20;
     let condKey = data.condKey;
     if (!isDay && (condKey === 'sunny' || condKey === 'clear' || condKey === 'mostly_sunny')) {
       condKey = 'clear_night';

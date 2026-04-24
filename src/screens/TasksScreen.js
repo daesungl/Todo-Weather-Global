@@ -21,11 +21,12 @@ import {
   Pressable,
   TouchableOpacity,
 } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, TouchableOpacity as GHButton } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Plus, MapPin, Clock, Calendar, ChevronLeft, ChevronRight,
   CheckCircle2, Circle, Search, X, Sun, CloudRain, Cloud,
@@ -496,15 +497,11 @@ const TasksScreen = ({ navigation }) => {
       return;
     }
     
-    Animated.timing(modalAddY, {
-      toValue: height,
-      duration: 260,
-      useNativeDriver: true,
-    }).start(() => {
-      setIsAdding(false);
-      if (onAfterClose) onAfterClose();
-    });
-  }, [modalAddY, isMemoEditing]);
+    setIsAdding(false);
+    if (typeof onAfterClose === 'function') {
+      onAfterClose();
+    }
+  }, [isMemoEditing]);
 
   const closeTaskListModal = useCallback(() => {
     Animated.timing(listModalTranslateY, {
@@ -681,11 +678,13 @@ const TasksScreen = ({ navigation }) => {
     });
   }, [allCountries, isKorean]);
 
-  useEffect(() => {
-    loadData();
-    loadPreferences();
-    loadHolidays();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+      loadPreferences();
+      loadHolidays();
+    }, [])
+  );
 
   const loadHolidays = async () => {
     const saved = await loadSavedCountries();
@@ -836,8 +835,11 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const openAddModal = () => {
-    console.log('[FAB] openAddModal called, isAdding will be set to true');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    console.log('[FAB] openAddModal called');
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    } catch (e) {}
+    
     setEditingTask(null);
     setNewTitle('');
     setTaskDate(new Date(selectedDate));
@@ -848,7 +850,6 @@ const TasksScreen = ({ navigation }) => {
     setNewMemo('');
     setNewLocName('');
     setNewWeatherRegion(null);
-    modalAddY.setValue(height);
     setIsAdding(true);
   };
 
@@ -1053,7 +1054,7 @@ const TasksScreen = ({ navigation }) => {
 
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
       <MainHeader onMenuPress={() => setMenuVisible(true)} />
       <ScrollView
@@ -1490,31 +1491,16 @@ const TasksScreen = ({ navigation }) => {
 
       <Modal
         visible={isAdding}
-        animationType="none"
-        transparent={true}
-        statusBarTranslucent={true}
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={closeAddModal}
         onShow={() => {
           modalScrollRef.current?.scrollTo({ y: 0, animated: false });
           setTimeout(() => titleInputRef.current?.focus(), 300);
         }}
       >
-        <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={styles.modalBg}>
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              { 
-                backgroundColor: 'black',
-                opacity: modalAddY.interpolate({
-                  inputRange: [0, height],
-                  outputRange: [0.5, 0],
-                  extrapolate: 'clamp'
-                })
-              }
-            ]} 
-          />
-          <Animated.View style={[styles.modalContent, { transform: [{ translateY: modalAddY }] }]}>
+        <View style={[styles.modalBg, { flex: 1 }]}>
+          <View style={styles.modalContent}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={{ flex: 1 }}
@@ -1711,7 +1697,7 @@ const TasksScreen = ({ navigation }) => {
                 </>
               )}
             </KeyboardAvoidingView>
-          </Animated.View>
+          </View>
 
           {/* Color Picker Overlay */}
           {showColorPicker && (
@@ -1863,7 +1849,6 @@ const TasksScreen = ({ navigation }) => {
           )}
           {renderToast('isAdding')}
         </View>
-        </GestureHandlerRootView>
       </Modal>
 
       <Modal
@@ -1993,26 +1978,29 @@ const TasksScreen = ({ navigation }) => {
         onReset={() => loadData()} 
       />
 
-      {/* FAB: 터치 영역을 넉넉하게 확보 (hitSlop) 하여 사용자 경험 개선 */}
-      <TouchableOpacity
-        activeOpacity={0.7}
-        style={[
-          styles.fab,
-          { 
-            bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16, 
-            zIndex: 10001,
-            elevation: 11
-          }
-        ]}
-        onPress={openAddModal}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <View pointerEvents="none">
-          <Plus size={32} color="white" strokeWidth={3} />
-        </View>
-      </TouchableOpacity>
     </View>
-    </>
+    <Pressable
+      style={{
+        position: 'absolute',
+        bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16 - 2.5, // Center the 60px circle in 65px area
+        right: 30 - 2.5, // Center the 60px circle in 65px area
+        width: 65,
+        height: 65,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 999999,
+      }}
+      onPress={() => {
+        console.log('[FAB] Press detected');
+        openAddModal();
+      }}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <View style={styles.fabCircle}>
+        <Plus size={32} color="white" strokeWidth={3} />
+      </View>
+    </Pressable>
+    </GestureHandlerRootView>
   );
 };
 
@@ -2087,7 +2075,19 @@ const styles = StyleSheet.create({
 
   emptyState: { alignItems: 'center', marginTop: 40 },
   emptyText: { fontSize: 15, fontWeight: '600', color: Colors.textSecondary },
-  fab: { position: 'absolute', bottom: 100, right: 30, width: 60, height: 60, borderRadius: 30, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center', elevation: 10, zIndex: 999 },
+  fabCircle: { 
+    width: 60, 
+    height: 60, 
+    borderRadius: 30, 
+    backgroundColor: '#111827', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+  },
 
   pickerBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   pickerContent: { width: width * 0.9, backgroundColor: 'white', borderRadius: 32, padding: Spacing.xl },
@@ -2134,12 +2134,12 @@ const styles = StyleSheet.create({
   confirmBtn: { flex: 1.5, height: 52, borderRadius: 16, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center' },
   confirmBtnText: { fontSize: 15, fontWeight: '700', color: 'white' },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalBg: { flex: 1, justifyContent: 'flex-end' },
   modalContent: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: height * 0.9, paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl },
   modalForm: { flex: 1 },
 
   // TimeTree Style
-  timeTreeTitle: { fontSize: 26, fontWeight: '800', color: Colors.text, paddingVertical: 12, borderBottomWidth: 1.5, borderBottomColor: '#F1F5F9', marginBottom: 12 },
+  timeTreeTitle: { fontSize: 20, fontWeight: '700', color: Colors.text, paddingVertical: 12, borderBottomWidth: 1.5, borderBottomColor: '#F1F5F9', marginBottom: 12 },
   timeTreeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
   rowLead: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   rowTail: { flexDirection: 'row', alignItems: 'center' },
