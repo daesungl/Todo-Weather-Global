@@ -450,6 +450,25 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
 
     console.log(`[KMA] Success! Returning accurate weather data for ${addressObj.address || 'Korea'}`);
 
+    const condKey = mapKMAtoCondKey(liveWeather.sky, liveWeather.pty, nowKST.getUTCHours() >= 6 && nowKST.getUTCHours() < 18);
+    const getConditionText = (key) => {
+      const map = {
+        sunny: '맑음',
+        clear_night: '맑음(밤)',
+        partly_cloudy: '구름많음',
+        mostly_clear_night: '구름조금(밤)',
+        cloudy: '흐림',
+        overcast: '흐림',
+        light_rain: '약한 비',
+        rainy: '비',
+        moderate_rain: '소나기',
+        snow: '눈',
+        snow_rain: '진눈깨비',
+        thunderstorm: '뇌우'
+      };
+      return map[key] || '맑음';
+    };
+
     return {
       source: 'KOREA METEOROLOGICAL ADMINISTRATION & AIR KOREA',
       temp: `${liveWeather.temp || Math.round(highLimit)}°`,
@@ -457,7 +476,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       lowTemp: `${Math.round(lowLimit)}°`,
       humidity: `${liveWeather.humidity || '--'}%`,
       feelsLike: liveWeather.temp ? `${Math.round(liveWeather.temp)}°` : '--°',
-      condKey: mapKMAtoCondKey(liveWeather.sky, liveWeather.pty, nowKST.getUTCHours() >= 6 && nowKST.getUTCHours() < 18),
+      condKey,
+      conditionText: getConditionText(condKey),
       dailyForecast,
       hourlyForecast,
       wfSv: wfSv,

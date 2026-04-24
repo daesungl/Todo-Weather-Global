@@ -1263,14 +1263,9 @@ const TasksScreen = ({ navigation }) => {
                     <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
                       <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                     </TouchableOpacity>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity onPress={() => setIsDetailMenuVisible(true)} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                        <MoreHorizontal size={24} color={Colors.text} pointerEvents="none" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={closeTaskListModal} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                        <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
-                      </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity onPress={() => setIsDetailMenuVisible(true)} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                      <MoreHorizontal size={24} color={Colors.text} pointerEvents="none" />
+                    </TouchableOpacity>
                   </View>
                 </View>
 

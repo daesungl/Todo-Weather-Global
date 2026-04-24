@@ -32,10 +32,9 @@ import {
   AlertTriangle,
   Edit3,
   ChevronDown,
-  ChevronRight,
-  AlignLeft,
   FileText,
-  Keyboard as KeyboardIcon
+  Keyboard as KeyboardIcon,
+  Flag
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Typography } from '../theme';
@@ -77,17 +76,18 @@ const FlowScreen = ({ navigation }) => {
   const [flowModalVisible, setFlowModalVisible] = useState(false);
   const [editingFlow, setEditingFlow] = useState(null);
   const [flowTitle, setFlowTitle] = useState('');
+  const [flowDescription, setFlowDescription] = useState('');
+  const [flowPeriod, setFlowPeriod] = useState('');
   const [flowLocation, setFlowLocation] = useState('');
   const [flowAddress, setFlowAddress] = useState('');
   const [flowLat, setFlowLat] = useState(null);
   const [flowLon, setFlowLon] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [memoModalVisible, setMemoModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [heroWeather, setHeroWeather] = useState(null);
   const panY = useRef(new Animated.Value(0)).current;
-  const modalAnim = useRef(new Animated.Value(0)).current;
+  const flowPanY = useRef(new Animated.Value(0)).current;
 
   // --- Initialization ---
   useFocusEffect(
@@ -111,56 +111,75 @@ const FlowScreen = ({ navigation }) => {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
       onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          panY.setValue(gestureState.dy);
-        }
+        if (gestureState.dy > 0) panY.setValue(gestureState.dy);
       },
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          closeEditModal();
+          Animated.timing(panY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+            closeEditModal();
+          });
         } else {
-          Animated.spring(panY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 8,
-          }).start();
+          Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+        }
+      },
+    })
+  ).current;
+
+  const flowPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) flowPanY.setValue(gestureState.dy);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          Animated.timing(flowPanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+            closeFlowModal();
+          });
+        } else {
+          Animated.spring(flowPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
         }
       },
     })
   ).current;
 
   const openEditModal = () => {
+    panY.setValue(height);
     setEditModalVisible(true);
-    Animated.timing(modalAnim, {
-      toValue: 1,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
 
   const closeEditModal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Animated.timing(modalAnim, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      setEditModalVisible(false);
-      setEditingStep(null);
-      setEditActivity('');
-      setEditMemo('');
-      setEditDate(new Date().toISOString().split('T')[0]);
-      setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
-      setSelectedRegion(null);
-      setMemoModalVisible(false);
-      setShowDatePicker(false);
-      setShowTimePicker(false);
-    });
+    setEditModalVisible(false);
+    setEditingStep(null);
+    setEditActivity('');
+    setEditMemo('');
+    setEditDate(new Date().toISOString().split('T')[0]);
+    setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    setSelectedRegion(null);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+  };
+
+  const closeFlowModal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setFlowModalVisible(false);
+    setEditingFlow(null);
+    setFlowTitle('');
+    setFlowLocation('');
+    setFlowAddress('');
+    setFlowLat(null);
+    setFlowLon(null);
+    setFlowDescription('');
+    setFlowPeriod('');
   };
 
   const loadInitialData = async () => {
     setIsLoading(true);
     const savedFlows = await getFlows();
+    let currentFlows = [];
     if (savedFlows.length === 0) {
       const today = new Date().toISOString().split('T')[0];
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -173,6 +192,8 @@ const FlowScreen = ({ navigation }) => {
         progress: 0.3,
         gradient: ['#6366f1', '#a855f7'],
         weatherSummary: 'Curated multi-day planning',
+        weatherCondKey: 'sunny',
+        weatherIsDay: true,
         lat: 37.5665,
         lon: 126.9780,
         steps: [
@@ -181,11 +202,48 @@ const FlowScreen = ({ navigation }) => {
           { id: 's3', date: tomorrow, time: '09:00', activity: 'City Tour Start', status: 'upcoming' }
         ]
       };
-      setFlows([sample]);
+      currentFlows = [sample];
+      setFlows(currentFlows);
     } else {
-      setFlows(savedFlows);
+      currentFlows = savedFlows;
+      setFlows(currentFlows);
     }
     setIsLoading(false);
+
+    // Background weather refresh
+    refreshFlowWeather(currentFlows);
+  };
+
+  const refreshFlowWeather = async (targetFlows) => {
+    let hasChanges = false;
+    const updatedFlows = await Promise.all(targetFlows.map(async (flow) => {
+      if (flow.lat && flow.lon) {
+        try {
+          const weather = await WeatherService.getWeather(flow.lat, flow.lon, true, flow.location, flow.location);
+          if (weather) {
+            const tempText = weather.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
+            const condText = weather.conditionText || 'Sunny';
+            const newSummary = `Currently ${tempText}, ${condText}`;
+            
+            if (flow.weatherSummary !== newSummary || flow.weatherCondKey !== weather.condKey) {
+              hasChanges = true;
+              return { 
+                ...flow, 
+                weatherSummary: newSummary, 
+                weatherCondKey: weather.condKey, 
+                weatherIsDay: weather.isDay !== false 
+              };
+            }
+          }
+        } catch (e) { console.warn('[Flow] Refresh failed for', flow.location); }
+      }
+      return flow;
+    }));
+
+    if (hasChanges) {
+      setFlows(updatedFlows);
+      saveFlows(updatedFlows);
+    }
   };
 
   // --- Search Logic ---
@@ -247,24 +305,31 @@ const FlowScreen = ({ navigation }) => {
     setIsSaving(true);
     try {
       let weatherSummary = 'Weather not set';
+      let weatherCondKey = null;
+      let weatherIsDay = true;
       if (flowLat && flowLon) {
         const weather = await WeatherService.getWeather(flowLat, flowLon, false, flowLocation, flowLocation);
         const tempText = weather?.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
         const condText = weather?.conditionText || 'Cloudy';
+        weatherCondKey = weather?.condKey || 'cloudy';
+        weatherIsDay = weather?.isDay !== false;
         weatherSummary = `Currently ${tempText}, ${condText}`;
       }
 
-      const updatedFlows = editingFlow 
-        ? flows.map(f => f.id === editingFlow.id ? { ...f, title: flowTitle, location: flowLocation, address: flowAddress, lat: flowLat, lon: flowLon, weatherSummary } : f)
+      const updatedFlows = editingFlow
+        ? flows.map(f => f.id === editingFlow.id ? { ...f, title: flowTitle, description: flowDescription, period: flowPeriod, location: flowLocation, address: flowAddress, lat: flowLat, lon: flowLon, weatherSummary, weatherCondKey, weatherIsDay } : f)
         : await addFlow({
             id: Date.now().toString(),
             title: flowTitle,
-            period: 'Multi-day Planning',
+            description: flowDescription,
+            period: flowPeriod || 'Multi-day Planning',
             location: flowLocation || 'No Region',
             address: flowAddress || '',
             progress: 0,
-            gradient: getFlowGradient(flows.length),
+            gradient: getFlowGradient(flows),
             weatherSummary: weatherSummary,
+            weatherCondKey,
+            weatherIsDay,
             lat: flowLat,
             lon: flowLon,
             steps: []
@@ -372,13 +437,17 @@ const FlowScreen = ({ navigation }) => {
   const closeSearch = () => { setSearchModalVisible(false); setSearchQuery(''); setSearchResults([]); };
 
   const openFlowModal = (flow = null) => {
+    flowPanY.setValue(height);
     setEditingFlow(flow);
     setFlowTitle(flow ? flow.title : '');
+    setFlowDescription(flow ? (flow.description || '') : '');
+    setFlowPeriod(flow ? (flow.period || '') : '');
     setFlowLocation(flow ? flow.location : '');
     setFlowAddress(flow ? (flow.address || '') : '');
     setFlowLat(flow ? flow.lat : null);
     setFlowLon(flow ? flow.lon : null);
     setFlowModalVisible(true);
+    Animated.spring(flowPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
 
   const openEditStep = (step) => {
@@ -407,34 +476,60 @@ const FlowScreen = ({ navigation }) => {
     ]);
   };
 
-  const getFlowGradient = (index) => {
-    const palette = [
+  const getFlowGradient = (existingFlows = []) => {
+    // 1. 프리미엄 큐레이션 팔레트 (기본 선호 색상들)
+    const curatedPalette = [
+      ['#6366f1', '#a855f7'], // Indigo Purple
       ['#FF6B6B', '#FF8E8E'], // Coral
       ['#4ECDC4', '#55efc4'], // Teal
       ['#45B7D1', '#74b9ff'], // Sky
-      ['#96CEB4', '#81ecec'], // Sage
-      ['#FFEEAD', '#fab1a0'], // Cream/Peach
-      ['#D4A5A5', '#ff7675'], // Rose
       ['#9B59B6', '#a29bfe'], // Lavender
-      ['#3498DB', '#0984e3'], // Blue
       ['#E67E22', '#e17055'], // Orange
       ['#2ECC71', '#00b894'], // Green
+      ['#f59e0b', '#d97706'], // Amber
+      ['#ec4899', '#f43f5e'], // Pink Rose
+      ['#06b6d4', '#3b82f6'], // Cyan Blue
     ];
-    const idx = index !== undefined ? (index % palette.length) : Math.floor(Math.random() * palette.length);
-    return palette[idx];
+
+    // 2. 이미 사용 중인 색상 확인 (시작 색상 기준)
+    const usedColors = new Set(existingFlows.map(f => f.gradient?.[0]?.toLowerCase()));
+    const unusedCurated = curatedPalette.filter(g => !usedColors.has(g[0].toLowerCase()));
+
+    // 3. 큐레이션된 색상이 남았다면 그 중에서 랜덤 선택
+    if (unusedCurated.length > 0) {
+      return unusedCurated[Math.floor(Math.random() * unusedCurated.length)];
+    }
+
+    // 4. 큐레이션 색상을 다 썼다면, 지능형 HSL 랜덤 생성 (무한 확장)
+    // 항상 활기차고(Vibrant) 가독성 좋은 범위를 유지합니다.
+    const h = Math.floor(Math.random() * 360); // 0-359도 (색상)
+    const s = 65 + Math.floor(Math.random() * 20); // 65-85% (채도 - 선명하게)
+    const l = 55 + Math.floor(Math.random() * 10); // 55-65% (명도 - 밝게)
+    
+    // 시작 색상 (HSL -> String)
+    const color1 = `hsl(${h}, ${s}%, ${l}%)`;
+    // 끝 색상 (색상을 30도 정도 회전시키고 명도를 살짝 조절하여 조화로운 그라디언트 생성)
+    const color2 = `hsl(${(h + 30) % 360}, ${s}%, ${l - 10}%)`;
+    
+    return [color1, color2];
   };
 
   const renderWeatherIcon = (key, size = 20, color = Colors.primary, isDay = true) => {
-    const moonColor = "#A1C9FF";
+    const moonColor = color === 'white' ? 'white' : "#A1C9FF";
+    const sunColor = color === 'white' ? 'white' : "#f59e0b";
+    const rainColor = color === 'white' ? 'white' : "#3b82f6";
+    const snowColor = color === 'white' ? 'white' : "#94a3b8";
+    const thunderColor = color === 'white' ? 'white' : "#E53935";
+
     switch (key) {
-      case 'sunny': case 'clear': return isDay ? <Sun size={size} color="#f59e0b" /> : <Moon size={size} color={moonColor} />;
+      case 'sunny': case 'clear': return isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />;
       case 'clear_night': return <Moon size={size} color={moonColor} />;
-      case 'partly_cloudy': case 'mostly_sunny': return isDay ? <CloudSun size={size} color={color} /> : <View><Moon size={size * 0.8} color={moonColor} /><Cloud size={size * 0.9} color="#94a3b8" style={{ position: 'absolute', bottom: -2, right: -2 }} /></View>;
+      case 'partly_cloudy': case 'mostly_sunny': return isDay ? <CloudSun size={size} color={color} /> : <View><Moon size={size * 0.8} color={moonColor} /><Cloud size={size * 0.9} color={color} style={{ position: 'absolute', bottom: -2, right: -2 }} /></View>;
       case 'cloudy': case 'overcast': return <Cloud size={size} color={color} />;
-      case 'rainy': case 'rain': return <CloudRain size={size} color="#3b82f6" />;
-      case 'snowy': case 'snow': return <CloudSnow size={size} color="#94a3b8" />;
-      case 'thunderstorm': case 'lightning': return <CloudLightning size={size} color="#E53935" />;
-      default: return isDay ? <Sun size={size} color="#f59e0b" /> : <Moon size={size} color={moonColor} />;
+      case 'rainy': case 'rain': return <CloudRain size={size} color={rainColor} />;
+      case 'snowy': case 'snow': return <CloudSnow size={size} color={snowColor} />;
+      case 'thunderstorm': case 'lightning': return <CloudLightning size={size} color={thunderColor} />;
+      default: return isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />;
     }
   };
 
@@ -502,7 +597,7 @@ const FlowScreen = ({ navigation }) => {
   const sortedDates = Object.keys(groupedSteps).sort();
 
   const renderTimelineDetail = () => (
-    <View style={[styles.detailContainer, { paddingTop: Platform.OS === 'ios' ? 50 : 10 }]}>
+    <View style={styles.detailContainer}>
       <View style={styles.detailHeader}>
         <BorderlessButton 
           onPress={() => {
@@ -635,222 +730,263 @@ const FlowScreen = ({ navigation }) => {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
-      {!selectedFlow && <MainHeader onMenuPress={() => setMenuVisible(true)} />}
-      
-      {!selectedFlow && (
-        <View style={{ flex: 1 }}>
-          {isLoading ? (
-            <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />
-          ) : (
-            <DraggableFlatList
-              data={flows || []}
-              keyExtractor={(item) => item.id}
-              onDragEnd={({ data }) => { setFlows(data); saveFlows(data); }}
-              activationDistance={20}
-              renderItem={({ item: flow, drag, isActive }) => (
-                <ScaleDecorator>
-                  <View style={styles.flowCardContainer}>
-                    <GHButton
-                      onLongPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        drag();
-                      }}
-                      onPress={() => setSelectedFlow(flow)}
-                      style={[isActive && { opacity: 0.8, transform: [{ scale: 1.02 }] }]}
-                      activeOpacity={0.9}
-                      delayLongPress={250}
-                    >
-                      <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
-                        <View style={styles.cardTop}>
-                          <View style={styles.tagContainer}><Text style={styles.tagText}>{flow.location}</Text></View>
-                          <BorderlessButton
-                            onPress={() => {
-                              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                              handleDeleteFlow(flow.id);
-                            }}
-                            hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-                            style={styles.deleteBtn}
-                          >
-                            <Trash2 size={18} color="rgba(255,255,255,0.8)" />
-                          </BorderlessButton>
+        {!selectedFlow && (
+          <>
+            <MainHeader onMenuPress={() => setMenuVisible(true)} />
+            <View style={{ flex: 1 }}>
+              {isLoading ? (
+                <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />
+              ) : (
+                <DraggableFlatList
+                  data={flows || []}
+                  keyExtractor={(item) => item.id}
+                  onDragEnd={({ data }) => { setFlows(data); saveFlows(data); }}
+                  activationDistance={20}
+                  renderItem={({ item: flow, drag, isActive }) => (
+                    <ScaleDecorator>
+                      <View style={styles.flowCardContainer}>
+                        <GHButton
+                          onLongPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            drag();
+                          }}
+                          onPress={() => setSelectedFlow(flow)}
+                          style={[isActive && { opacity: 0.8, transform: [{ scale: 1.02 }] }]}
+                          activeOpacity={0.9}
+                          delayLongPress={250}
+                        >
+                          <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
+                            <BorderlessButton
+                              onPress={() => {
+                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                                handleDeleteFlow(flow.id);
+                              }}
+                              hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                              style={styles.deleteBtnAbsolute}
+                            >
+                              <Trash2 size={18} color="rgba(255,255,255,0.8)" />
+                            </BorderlessButton>
 
-                        </View>
-                        <View style={styles.cardMiddle}>
-                          <Text style={styles.cardTitle}>{flow.title}</Text>
-                          <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{flow.period}</Text></View>
-                        </View>
-                        <View style={styles.cardBottom}>
-                          <View style={styles.progressContainer}><View style={[styles.progressBar, { width: `${(flow.progress || 0) * 100}%` }]} /></View>
-                          <View style={styles.weatherSummary}><CloudRain size={16} color="white" style={{ marginRight: 6 }} /><Text style={styles.weatherText} numberOfLines={1}>{flow.weatherSummary}</Text></View>
-                        </View>
-                      </LinearGradient>
-                    </GHButton>
-                  </View>
-                </ScaleDecorator>
-              )}
-              ListHeaderComponent={<View style={styles.listHeader}><Text style={styles.screenTitle}>My Flows</Text><Text style={styles.screenSubtitle}>Curated journeys (Long press to reorder)</Text></View>}
-              ListFooterComponent={<GHButton style={styles.addFlowBtn} onPress={() => openFlowModal()}><Plus size={24} color={Colors.primary} /><Text style={styles.addFlowText}>Create New Flow</Text></GHButton>}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-        </View>
-      )}
-
-      {selectedFlow && renderTimelineDetail()}
-
-      {/* --- Flow Modal --- */}
-      <Modal 
-        visible={flowModalVisible} 
-        transparent={true} 
-        animationType="slide" 
-
-        onRequestClose={() => setFlowModalVisible(false)}
-      >
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <View style={[styles.modalBg, { flex: 1 }]}>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ justifyContent: 'flex-end', flex: 1 }}>
-              <View style={styles.editModalContent}>
-                <View style={styles.editHeader}>
-                  <Pressable onPress={() => setFlowModalVisible(false)} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></Pressable>
-                  <Text style={styles.editTitle}>{editingFlow ? 'Edit Journey' : 'New Journey'}</Text>
-                  <Pressable 
-                    onPress={isKeyboardVisible ? Keyboard.dismiss : saveFlow} 
-                    style={styles.headerActionBtn}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <ActivityIndicator size="small" color={Colors.primary} />
-                    ) : isKeyboardVisible ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
-                    ) : (
-                      <Text style={styles.headerSaveText}>{editingFlow ? 'Save' : 'Add'}</Text>
-                    )}
-                  </Pressable>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Journey Title</Text>
-                  <View style={styles.editInputWrap}>
-                    <TextInput style={styles.editInput} value={flowTitle} onChangeText={setFlowTitle} placeholder="e.g. My Healing Trip" placeholderTextColor={Colors.outline} />
-                  </View>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Weather Region (Optional)</Text>
-                  <Pressable style={({ pressed }) => [styles.regionSelector, flowLocation && styles.regionSelectorActive, pressed && { opacity: 0.7 }]} onPress={() => openSearch('flow')}>
-                    <View style={[styles.regionIconWrap, flowLocation && styles.regionIconWrapActive]}><MapPin size={20} color={flowLocation ? 'white' : Colors.outline} /></View>
-                    <View style={styles.regionInfo}>
-                      <Text style={[styles.regionMainText, !flowLocation && styles.regionPlaceholder]}>{flowLocation || 'Where to check weather?'}</Text>
-                      <Text style={styles.regionSubText}>{flowLocation ? 'Weather forecast linked' : 'Tap to search'}</Text>
-                    </View>
-                    <ChevronRight size={18} color={Colors.outline} />
-                  </Pressable>
-                </View>
-
-                <Pressable onPress={saveFlow} style={({ pressed }) => [{ marginTop: Spacing.md }, pressed && { opacity: 0.9 }]}>
-                  <LinearGradient colors={Colors.primaryGradient || [Colors.primary, '#4f46e5']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.premiumSubmitBtn}>
-                    <Check size={20} color="white" strokeWidth={3} /><Text style={styles.premiumSubmitText}>{editingFlow ? 'Save Changes' : 'Confirm Journey'}</Text>
-                  </LinearGradient>
-                </Pressable>
-
-                {searchModalVisible && searchMode === 'flow' && renderSearchLayer()}
-              </View>
-            </KeyboardAvoidingView>
-          </View>
-        </GestureHandlerRootView>
-      </Modal>
-
-      {/* --- Step Modal --- */}
-      <Modal 
-        visible={editModalVisible} 
-        transparent={true} 
-        animationType="slide" 
-
-        onRequestClose={closeEditModal}
-      >
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <View style={[styles.modalBg, { flex: 1 }]}>
-            <View style={styles.editModalContent}>
-              <View style={styles.modalHandle} />
-              <View style={styles.editHeader}>
-                <Pressable onPress={closeEditModal} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></Pressable>
-                <Text style={styles.editTitle}>{editingStep ? 'Edit Schedule' : 'New Schedule'}</Text>
-                <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveStep} style={styles.headerActionBtn}>
-                  {isKeyboardVisible ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
-                  ) : (
-                    <Text style={styles.headerSaveText}>Save</Text>
+                            <View style={styles.cardMainArea}>
+                              <Text style={styles.cardTitle}>{flow.title}</Text>
+                              <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{flow.period}</Text></View>
+                            </View>
+                            <View style={styles.cardBottom}>
+                              <View style={styles.progressContainer}><View style={[styles.progressBar, { width: `${(flow.progress || 0) * 100}%` }]} /></View>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                <MapPin size={12} color="rgba(255,255,255,0.9)" />
+                                <Text style={styles.tagText} numberOfLines={1}>{flow.location}</Text>
+                              </View>
+                              <View style={styles.weatherSummary}>
+                                <View style={{ marginRight: 6 }}>
+                                  {renderWeatherIcon(
+                                    (() => {
+                                      if (flow.weatherCondKey) return flow.weatherCondKey;
+                                      const s = (flow.weatherSummary || '').toLowerCase();
+                                      if (s.includes('rain') || s.includes('drizzle')) return 'rainy';
+                                      if (s.includes('snow')) return 'snowy';
+                                      if (s.includes('thunder') || s.includes('storm')) return 'thunderstorm';
+                                      if (s.includes('sunny') || s.includes('clear')) return 'sunny';
+                                      if (s.includes('cloud') || s.includes('overcast') || s.includes('mist') || s.includes('fog')) return 'cloudy';
+                                      return 'cloudy';
+                                    })(),
+                                    16, "white", flow.weatherIsDay !== false
+                                  )}
+                                </View>
+                                <Text style={styles.weatherText} numberOfLines={1}>{flow.weatherSummary}</Text>
+                              </View>
+                            </View>
+                          </LinearGradient>
+                        </GHButton>
+                      </View>
+                    </ScaleDecorator>
                   )}
-                </Pressable>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-                <View style={styles.modalContentPadding}>
-                  <Text style={styles.inputLabel}>Activity</Text>
-                  <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder="What are you doing?" placeholderTextColor={Colors.outline} /></View>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <View style={styles.labelRow}><Text style={styles.inputLabel}>Weather Region</Text><Pressable onPress={() => openSearch('step')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
-                  <View style={styles.regionDisplay}><MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} /><Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]}>{selectedRegion ? selectedRegion.name : 'No region selected'}</Text>{selectedRegion && <Pressable onPress={() => setSelectedRegion(null)}><X size={16} color={Colors.outline} /></Pressable>}</View>
-                </View>
-
-                <View style={styles.rowInputs}>
-                  <View style={[styles.inputGroup, { flex: 1.5, marginRight: 12 }]}><Text style={styles.inputLabel}>Date</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowDatePicker(!showDatePicker); setShowTimePicker(false); }}><Calendar size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editDate}</Text></Pressable></View>
-                  <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.inputLabel}>Time</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowTimePicker(!showTimePicker); setShowDatePicker(false); }}><Clock size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editTime}</Text></Pressable></View>
-                </View>
-
-                {showDatePicker && (
-                  <View style={styles.pickerContainer}>
-                    <DateTimePicker
-                      value={new Date(editDate || Date.now())}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={onDateChange}
-                      minimumDate={new Date(2020, 0, 1)}
-                    />
-                  </View>
-                )}
-
-                {showTimePicker && (
-                  <View style={styles.pickerContainer}>
-                    <DateTimePicker
-                      value={(() => {
-                        const [h, m] = (editTime || '00:00').split(':');
-                        const d = new Date();
-                        d.setHours(parseInt(h), parseInt(m));
-                        return d;
-                      })()}
-                      mode="time"
-                      is24Hour={true}
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={onTimeChange}
-                    />
-                  </View>
-                )}
-
-                <View style={styles.inputGroup}>
-                  <View style={styles.labelRow}><Text style={styles.inputLabel}>Memo</Text></View>
-                  <TextInput style={styles.memoInput} value={editMemo} onChangeText={setEditMemo} placeholder="Notes, addresses, or tips..." placeholderTextColor={Colors.outline} multiline numberOfLines={4} />
-                </View>
-
-                {editingStep && (
-                  <Pressable style={({ pressed }) => [styles.deleteFullBtn, { marginTop: 10, marginBottom: 40 }, pressed && { opacity: 0.7 }]} onPress={deleteStep}>
-                    <Trash2 size={18} color={Colors.error} /><Text style={styles.deleteFullText}>Delete Schedule</Text>
-                  </Pressable>
-                )}
-                
-                <View style={{ height: 100 }} />
-              </ScrollView>
-              
-              {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
+                  ListHeaderComponent={<View style={styles.listHeader}><Text style={styles.screenTitle}>My Flows</Text><Text style={styles.screenSubtitle}>Curated journeys (Long press to reorder)</Text></View>}
+                  ListFooterComponent={<GHButton style={styles.addFlowBtn} onPress={() => openFlowModal()}><Plus size={24} color={Colors.primary} /><Text style={styles.addFlowText}>Create New Flow</Text></GHButton>}
+                  contentContainerStyle={styles.listContent}
+                  showsVerticalScrollIndicator={false}
+                />
+              )}
             </View>
-          </View>
-        </GestureHandlerRootView>
-      </Modal>
+          </>
+        )}
 
-      <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { loadInitialData(); }} />
+        {selectedFlow && renderTimelineDetail()}
+
+        {/* --- Flow Modal --- */}
+        <Modal
+          visible={flowModalVisible}
+          transparent={true}
+          animationType="none"
+          onRequestClose={closeFlowModal}
+        >
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeFlowModal} />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'flex-end' }}
+              pointerEvents="box-none"
+            >
+              <Animated.View style={[styles.editModalContent, { transform: [{ translateY: flowPanY }] }]}>
+                    <View {...flowPanResponder.panHandlers} style={styles.handleArea}>
+                      <View style={styles.modalHandle} />
+                    </View>
+                    <View style={styles.editHeader}>
+                      <View style={{ width: 40 }} />
+                      <Text style={styles.editTitle}>{editingFlow ? 'Edit Flow' : 'New Flow'}</Text>
+                      <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveFlow} style={styles.headerActionBtn}>
+                        {isKeyboardVisible ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
+                        ) : (
+                          <Text style={styles.headerSaveText}>Save</Text>
+                        )}
+                      </Pressable>
+                    </View>
+
+                    <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                      <View style={styles.modalContentPadding}>
+                        <Text style={styles.inputLabel}>Flow Title</Text>
+                        <View style={styles.compactInputRow}><Flag size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder="e.g. Hawaii Trip, Morning Routine" placeholderTextColor={Colors.outline} /></View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <View style={styles.labelRow}><Text style={styles.inputLabel}>Base Region (Optional)</Text><Pressable onPress={() => openSearch('flow')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
+                        <View style={styles.regionDisplay}>
+                          <MapPin size={18} color={flowLocation ? Colors.primary : Colors.outline} />
+                          <Text style={[styles.regionDisplayText, !flowLocation && { color: Colors.outline }]}>
+                            {flowLocation || 'Not set (Global)'}
+                          </Text>
+                          {flowLocation && (
+                            <Pressable onPress={() => { setFlowLocation(''); setFlowLat(null); setFlowLon(null); }}>
+                              <X size={16} color={Colors.outline} />
+                            </Pressable>
+                          )}
+                        </View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Description</Text>
+                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder="What is this flow about?" placeholderTextColor={Colors.outline} /></View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Period</Text>
+                        <View style={styles.compactInputRow}><Calendar size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowPeriod} onChangeText={setFlowPeriod} placeholder="e.g. 2024.05.10 - 05.15" placeholderTextColor={Colors.outline} /></View>
+                      </View>
+
+                      <View style={{ height: 100 }} />
+                    </ScrollView>
+                    
+                    {searchModalVisible && searchMode === 'flow' && renderSearchLayer()}
+              </Animated.View>
+            </KeyboardAvoidingView>
+          </GestureHandlerRootView>
+        </Modal>
+
+        {/* --- Step Modal --- */}
+        <Modal
+          visible={editModalVisible}
+          transparent={true}
+          animationType="none"
+          onRequestClose={closeEditModal}
+        >
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeEditModal} />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'flex-end' }}
+              pointerEvents="box-none"
+            >
+              <Animated.View style={[styles.editModalContent, { transform: [{ translateY: panY }] }]}>
+                    <View {...panResponder.panHandlers} style={styles.handleArea}>
+                      <View style={styles.modalHandle} />
+                    </View>
+                    <View style={styles.editHeader}>
+                      <Pressable onPress={closeEditModal} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}><X size={22} color={Colors.onBackground} /></Pressable>
+                      <Text style={styles.editTitle}>{editingStep ? 'Edit Schedule' : 'New Schedule'}</Text>
+                      <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveStep} style={styles.headerActionBtn}>
+                        {isKeyboardVisible ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
+                        ) : (
+                          <Text style={styles.headerSaveText}>Save</Text>
+                        )}
+                      </Pressable>
+                    </View>
+
+                    <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                      <View style={styles.modalContentPadding}>
+                        <Text style={styles.inputLabel}>Activity</Text>
+                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder="What are you doing?" placeholderTextColor={Colors.outline} /></View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <View style={styles.labelRow}><Text style={styles.inputLabel}>Weather Region</Text><Pressable onPress={() => openSearch('step')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
+                        <View style={styles.regionDisplay}><MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} /><Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]}>{selectedRegion ? selectedRegion.name : 'No region selected'}</Text>{selectedRegion && <Pressable onPress={() => setSelectedRegion(null)}><X size={16} color={Colors.outline} /></Pressable>}</View>
+                      </View>
+
+                      <View style={styles.rowInputs}>
+                        <View style={[styles.inputGroup, { flex: 1.5, marginRight: 12 }]}><Text style={styles.inputLabel}>Date</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowDatePicker(!showDatePicker); setShowTimePicker(false); }}><Calendar size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editDate}</Text></Pressable></View>
+                        <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.inputLabel}>Time</Text><Pressable style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} onPress={() => { setShowTimePicker(!showTimePicker); setShowDatePicker(false); }}><Clock size={20} color={Colors.primary} style={{ marginRight: 12 }} /><Text style={styles.editInputText}>{editTime}</Text></Pressable></View>
+                      </View>
+
+                      {showDatePicker && (
+                        <View style={styles.pickerContainer}>
+                          <DateTimePicker
+                            value={new Date(editDate || Date.now())}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={onDateChange}
+                            minimumDate={new Date(2020, 0, 1)}
+                          />
+                        </View>
+                      )}
+
+                      {showTimePicker && (
+                        <View style={styles.pickerContainer}>
+                          <DateTimePicker
+                            value={(() => {
+                              const [h, m] = (editTime || '00:00').split(':');
+                              const d = new Date();
+                              d.setHours(parseInt(h), parseInt(m));
+                              return d;
+                            })()}
+                            mode="time"
+                            is24Hour={true}
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={onTimeChange}
+                          />
+                        </View>
+                      )}
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Memo</Text>
+                        <TextInput
+                          style={styles.memoInlineInput}
+                          value={editMemo}
+                          onChangeText={setEditMemo}
+                          placeholder="Add detailed notes or addresses..."
+                          placeholderTextColor={Colors.outline}
+                          multiline
+                          textAlignVertical="top"
+                        />
+                      </View>
+
+                      {editingStep && (
+                        <Pressable style={({ pressed }) => [styles.deleteFullBtn, { marginTop: 10, marginBottom: 40 }, pressed && { opacity: 0.7 }]} onPress={deleteStep}>
+                          <Trash2 size={18} color={Colors.error} /><Text style={styles.deleteFullText}>Delete Schedule</Text>
+                        </Pressable>
+                      )}
+
+                      <View style={{ height: 60 }} />
+                    </ScrollView>
+
+                    {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
+              </Animated.View>
+            </KeyboardAvoidingView>
+          </GestureHandlerRootView>
+        </Modal>
+
+        <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { loadInitialData(); }} />
       </View>
     </GestureHandlerRootView>
   );
@@ -872,6 +1008,8 @@ const styles = StyleSheet.create({
   },
   flowCard: { padding: Spacing.xl, borderRadius: 32, height: 220, justifyContent: 'space-between' },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  deleteBtnAbsolute: { position: 'absolute', top: Spacing.lg, right: Spacing.lg, padding: 8, zIndex: 10 },
+  cardMainArea: { marginTop: Spacing.xs },
   tagContainer: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   tagText: { color: 'white', fontSize: 12, fontWeight: '700' },
   deleteBtn: { padding: 10 },
@@ -890,11 +1028,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm, gap: 12,
   },
   addFlowText: { ...Typography.body, fontWeight: '700', color: Colors.primary },
-  detailContainer: { flex: 1, backgroundColor: Colors.background },
-  detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.md, height: 60 },
+  detailContainer: { flex: 1, backgroundColor: Colors.background, paddingTop: Platform.OS === 'ios' ? 44 : 0 },
+  detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.sm, height: 50 },
   detailHeaderTitle: { ...Typography.h3, fontSize: 18, flex: 1, textAlign: 'center' },
   iconBtn: { padding: 8 },
-  detailContent: { padding: Spacing.lg, paddingBottom: 50 },
+  detailContent: { paddingHorizontal: Spacing.lg, paddingBottom: 50, paddingTop: Spacing.sm },
   heroSection: { marginBottom: Spacing.xl },
   heroDate: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
   heroLocationRow: { 
@@ -960,6 +1098,8 @@ const styles = StyleSheet.create({
   headerSaveText: { ...Typography.body, fontWeight: '800', color: Colors.primary },
   searchAccessoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0, 191, 255, 0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   searchAccessoryText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  modalContentPadding: { marginBottom: Spacing.xl },
+  handleArea: { alignItems: 'center', paddingTop: 4, paddingBottom: 12 },
   inputGroup: { marginBottom: Spacing.xl },
   inputLabel: { ...Typography.bodySmall, color: Colors.onBackground, fontWeight: '800', marginBottom: 12, opacity: 0.8 },
   editInputWrap: { 
@@ -995,18 +1135,14 @@ const styles = StyleSheet.create({
   compactInput: { flex: 1, ...Typography.body, fontSize: 16, color: Colors.onBackground, fontWeight: '600', paddingVertical: 0, textAlignVertical: 'center', lineHeight: undefined },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingRight: 4 },
   regionDisplay: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceContainerLow, padding: 12, borderRadius: 16, gap: 10, borderWidth: 1, borderColor: Colors.outlineVariant, opacity: 0.9 },
-  subModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  pickerModalContent: { backgroundColor: 'white', borderRadius: 32, padding: 20, zIndex: 1000, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20 }, android: { elevation: 12 } }) },
-  pickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingHorizontal: 4 },
-  pickerTitle: { ...Typography.h3, fontSize: 18, color: Colors.onBackground },
+  memoInlineInput: {
+    backgroundColor: 'white', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 14,
+    minHeight: 90, borderWidth: 1.5, borderColor: Colors.surfaceContainerLow,
+    ...Typography.body, fontSize: 15, color: Colors.onBackground, lineHeight: 22,
+    ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 }, android: { elevation: 2 } })
+  },
   pickerConfirmBtn: { backgroundColor: 'rgba(0, 191, 255, 0.1)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 },
   pickerConfirmText: { color: Colors.primary, fontWeight: '800', fontSize: 14 },
-  absolutePopupOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', padding: 20, zIndex: 9999 },
-  absolutePopupBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
-  memoModalContent: { backgroundColor: 'white', borderRadius: 32, padding: 24, height: height * 0.45, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20 }, android: { elevation: 12 } }) },
-  subModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  subModalTitle: { ...Typography.h2, fontSize: 20, color: Colors.onBackground },
-  memoTextInput: { flex: 1, ...Typography.body, fontSize: 17, color: Colors.onBackground, textAlignVertical: 'top', lineHeight: 24, paddingVertical: 0 },
 });
 
 export default FlowScreen;
