@@ -688,17 +688,18 @@ const FlowScreen = ({ navigation }) => {
                   <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.status === 'current' && styles.dotCurrent]} />
                   {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
                 </View>
-                <Pressable 
-                  onPress={() => openEditStep(step)} 
-                  style={({ pressed }) => [
+                <View 
+                  style={[
                     styles.stepInfoCard, 
                     step.status === 'current' && styles.activeStepCard, 
                     step.warning && styles.warningStepCard,
-                    pressed && { opacity: 0.7 }
                   ]}
                 >
                   <View style={styles.stepHeader}>
-                    <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <Pressable 
+                      onPress={() => openEditStep(step)} 
+                      style={({ pressed }) => [{ flex: 1, justifyContent: 'center' }, pressed && { opacity: 0.7 }]}
+                    >
                       <Text style={styles.stepActivity} numberOfLines={1}>
                         {step.activity && step.activity.trim() !== '' ? step.activity : 'Untitled Schedule'}
                       </Text>
@@ -709,15 +710,27 @@ const FlowScreen = ({ navigation }) => {
                           <Text style={styles.stepRegionLabel} numberOfLines={1}>{step.region.name}</Text>
                         </View>
                       )}
-                    </View>
+                    </Pressable>
                     {step.weather && (
-                      <View style={{ marginLeft: 8 }}>
+                      <GHButton 
+                        onPress={() => {
+                          if (step.region) {
+                            navigation.navigate('WeatherDetail', { 
+                              region: step.region,
+                              locationName: step.region.name,
+                              regionId: step.region.id || step.region.place_id
+                            });
+                          }
+                        }}
+                        style={{ marginLeft: 8, padding: 8, marginRight: -8, marginTop: -4 }}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
                         {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                      </View>
+                      </GHButton>
                     )}
                   </View>
                   {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>Rain alert: Indoor backup recommended</Text></View>}
-                </Pressable>
+                </View>
               </View>
             ))}
           </View>
