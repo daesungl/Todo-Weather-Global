@@ -91,7 +91,7 @@
     "no_results": "No results found."
   },
   "tasks": {
-    "placeholder": "Title",
+    "placeholder": "Todo",
     "all_day": "All Day",
     "start": "Start",
     "end": "End",
@@ -101,7 +101,7 @@
     "edit_task": "Edit Task",
     "add_new": "Add Task",
     "select_color": "Select Label",
-    "enter_title": "Please enter a title",
+    "enter_title": "Please enter a todo",
     "empty": "No tasks scheduled.",
     "holiday_settings": "Holiday Settings",
     "holiday_guide": "Select countries to show public holidays",

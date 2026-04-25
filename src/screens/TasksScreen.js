@@ -460,6 +460,8 @@ const TasksScreen = ({ navigation }) => {
   const isScrollingRef = useRef(false);
   const sheetAnim = useRef(new Animated.Value(0)).current; // 0: list, 1: detail
   const [isDetailMenuVisible, setIsDetailMenuVisible] = useState(false);
+  const [isEditingInSheet, setIsEditingInSheet] = useState(false);
+  const editSheetX = useRef(new Animated.Value(width)).current;
   
   // Toast Stack State
   const [toasts, setToasts] = useState([]);
@@ -887,9 +889,51 @@ const TasksScreen = ({ navigation }) => {
     }).start();
   };
 
+  const openEditInSheet = (task) => {
+    setEditingTask(task);
+    setNewTitle(task.title);
+    setTaskDate(new Date(task.date));
+    setNewTime(task.time || '09:00');
+    setEndDate(new Date(task.endDate || task.date));
+    setEndTime(task.endTime || '10:00');
+    setIsAllDay(!!task.isAllDay);
+    setNewMemo(task.memo || '');
+    setNewLocName(task.locationName || '');
+    setNewWeatherRegion(task.weatherRegion || null);
+    setSelectedColor(task.color || Colors.primary);
+    editSheetX.setValue(width);
+    setIsEditingInSheet(true);
+    Animated.spring(editSheetX, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 4,
+      speed: 14,
+    }).start();
+  };
+
+  const closeEditInSheet = useCallback((onAfterClose) => {
+    Keyboard.dismiss();
+    setShowColorPicker(false);
+    setSearchMode(null);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+    setShowEndDatePicker(false);
+    setShowEndTimePicker(false);
+    setIsMemoEditing(false);
+    Animated.timing(editSheetX, {
+      toValue: width,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsEditingInSheet(false);
+      setEditingTask(null);
+      if (typeof onAfterClose === 'function') onAfterClose();
+    });
+  }, [editSheetX]);
+
   const handleSaveTask = async () => {
     if (!newTitle.trim()) {
-      Alert.alert(t('common.tip', 'Tip'), t('tasks.enter_title', 'Please enter a title'));
+      showToast(t('tasks.enter_title', '투두를 입력해주세요'));
       return;
     }
 
@@ -941,13 +985,11 @@ const TasksScreen = ({ navigation }) => {
     setTasks(updated);
     fetchTasksWeather(updated);
 
-    const afterClose = editingTask ? () => {
-      setTimeout(() => {
-        setIsTaskListVisible(true);
-        sheetAnim.setValue(1);
-      }, 50);
-    } : undefined;
-    closeAddModal(afterClose);
+    if (isEditingInSheet) {
+      closeEditInSheet();
+    } else {
+      closeAddModal();
+    }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     showToast(editingTask ? '일정이 수정되었습니다.' : '새 일정이 등록되었습니다.');
@@ -1386,7 +1428,7 @@ const TasksScreen = ({ navigation }) => {
 
                       <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
 
-                      <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); setIsTaskListVisible(false); handleEditTask(selectedTaskDetail); }}>
+                      <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); openEditInSheet(selectedTaskDetail); }}>
                         <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>편집</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.menuItem} onPress={() => {
@@ -1411,6 +1453,280 @@ const TasksScreen = ({ navigation }) => {
                 )}
               </View>
             </Animated.View>
+
+            {/* PAGE 3: Edit Panel (slides in from right within the same modal) */}
+            {isEditingInSheet && (
+              <Animated.View style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: 'white', paddingHorizontal: Spacing.xl, transform: [{ translateX: editSheetX }] }
+              ]}>
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                  style={{ flex: 1 }}
+                  keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                >
+                  {isMemoEditing ? (
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.modalHeader}>
+                        <View style={styles.modalHandle} />
+                        <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                          <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                            <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
+                          </TouchableOpacity>
+                          <View style={{ alignItems: 'center' }}>
+                            <Text style={styles.modalTitle}>Memo</Text>
+                            <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '600' }}>{newMemo.length} / 1000</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                            <Text style={styles.headerSaveText} pointerEvents="none">{t('common.done', 'Done')}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <View style={{ flex: 1, paddingBottom: Platform.OS === 'ios' ? 20 : 0 }}>
+                        <TextInput
+                          style={[styles.fullMemoInput, { flex: 1 }]}
+                          placeholder={t('tasks.memo_placeholder', 'Add notes...')}
+                          value={newMemo}
+                          onChangeText={setNewMemo}
+                          multiline
+                          autoFocus
+                          autoCapitalize="none"
+                          maxLength={1000}
+                          placeholderTextColor={Colors.outline}
+                          textAlignVertical="top"
+                        />
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.modalHeader}>
+                        <View style={styles.modalHandle} />
+                        <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                          <TouchableOpacity onPress={() => closeEditInSheet()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                            <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
+                          </TouchableOpacity>
+                          <Text style={styles.modalTitle}>{t('tasks.edit_task', 'Edit Task')}</Text>
+                          {isKeyboardVisible ? (
+                            <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
+                                <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
+                                <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
+                              </View>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity onPress={handleSaveTask} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                              <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                      <ScrollView
+                        ref={modalScrollRef}
+                        style={styles.modalForm}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        contentContainerStyle={{ paddingBottom: 250 }}
+                        automaticallyAdjustKeyboardInsets={true}
+                      >
+                        <TextInput
+                          ref={titleInputRef}
+                          style={styles.timeTreeTitle}
+                          placeholder={t('tasks.placeholder', '투두')}
+                          value={newTitle}
+                          onChangeText={setNewTitle}
+                          returnKeyType="done"
+                          autoCapitalize="none"
+                          onSubmitEditing={() => Keyboard.dismiss()}
+                        />
+                        <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setPendingColor(selectedColor); setShowColorPicker(true); }}>
+                          <View style={styles.rowLead}>
+                            <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
+                            <Text style={styles.timeTreeRowText}>{TASK_COLOR_LABELS.find(l => l.color === selectedColor)?.name || '라벨 선택'}</Text>
+                          </View>
+                          <ChevronRight size={20} color={Colors.outline} />
+                        </TouchableOpacity>
+                        <View style={styles.timeTreeDivider} />
+                        <View style={styles.timeTreeRow}>
+                          <View style={styles.rowLead}>
+                            <Compass size={22} color={isAllDay ? Colors.primary : Colors.textSecondary} />
+                            <Text style={styles.timeTreeRowText}>{t('tasks.all_day', 'All Day')}</Text>
+                          </View>
+                          <Switch value={isAllDay} onValueChange={setIsAllDay} trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }} thumbColor={isAllDay ? Colors.primary : '#F4F7FE'} />
+                        </View>
+                        <View style={styles.timeTreeDivider} />
+                        <View style={styles.timeTreeRow}>
+                          <View style={styles.rowLead}>
+                            <Calendar size={20} color={Colors.textSecondary} />
+                            <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
+                          </View>
+                          <View style={styles.rowTail}>
+                            <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
+                              <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
+                            </TouchableOpacity>
+                            {!isAllDay && (
+                              <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
+                                <Text style={styles.timeTreeTimeText}>{newTime}</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.timeTreeRow}>
+                          <View style={styles.rowLead}>
+                            <View style={{ width: 22 }} />
+                            <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
+                          </View>
+                          <View style={styles.rowTail}>
+                            <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
+                              <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
+                            </TouchableOpacity>
+                            {!isAllDay && (
+                              <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
+                                <Text style={styles.timeTreeTimeText}>{endTime}</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.timeTreeDivider} />
+                        <View style={styles.timeTreeRow}>
+                          <View style={styles.rowLead}>
+                            <MapPin size={22} color={Colors.textSecondary} />
+                            <TextInput
+                              style={styles.timeTreeInput}
+                              placeholder={t('tasks.loc_placeholder', 'Location')}
+                              value={newLocName}
+                              onChangeText={setNewLocName}
+                              autoCapitalize="none"
+                            />
+                          </View>
+                        </View>
+                        <View style={styles.timeTreeDivider} />
+                        <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
+                          <View style={styles.memoHeader}>
+                            <AlignLeft size={18} color={Colors.textSecondary} />
+                            <Text style={styles.memoLabel}>{t('tasks.memo', 'Memo')}</Text>
+                          </View>
+                          <View style={styles.memoPreviewBox}>
+                            <Text style={[styles.memoPreviewText, !newMemo && { color: Colors.outline }]} numberOfLines={10} ellipsizeMode="tail">
+                              {newMemo ? (newMemo.split('\n').length > 10 ? newMemo.split('\n').slice(0, 10).join('\n') + '...' : newMemo) : t('tasks.memo_placeholder', 'Add notes...')}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      </ScrollView>
+                    </>
+                  )}
+                </KeyboardAvoidingView>
+
+                {/* Date / Time Picker Overlay */}
+                {Platform.OS === 'ios' && (showDatePicker || showTimePicker || showEndDatePicker || showEndTimePicker) && (
+                  <View style={styles.iosPickerOverlay}>
+                    <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeAllPickers} />
+                    <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
+                      <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
+                      <View style={styles.iosPickerHeader}>
+                        <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
+                          <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>{t('common.cancel', '취소')}</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.iosPickerTitle}>
+                          {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
+                        </Text>
+                        <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
+                          <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {(showDatePicker || showEndDatePicker) ? (
+                        <DateTimePicker
+                          value={(() => {
+                            try {
+                              if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
+                              if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
+                            } catch (e) { return new Date(); }
+                            return new Date();
+                          })()}
+                          mode="date"
+                          display="inline"
+                          accentColor={Colors.primary}
+                          onChange={(event, date) => {
+                            if (showDatePicker) onDateChange(event, date);
+                            else if (showEndDatePicker) onEndDateChange(event, date);
+                          }}
+                          style={{ width: width - 32, height: 360, alignSelf: 'center' }}
+                        />
+                      ) : (
+                        <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+                          <DateTimePicker
+                            value={(() => {
+                              try {
+                                if (showTimePicker) {
+                                  const [h, m] = newTime.split(':').map(Number);
+                                  const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
+                                }
+                                if (showEndTimePicker) {
+                                  const [h, m] = endTime.split(':').map(Number);
+                                  const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
+                                }
+                              } catch (e) { return new Date(); }
+                              return new Date();
+                            })()}
+                            mode="time"
+                            display="spinner"
+                            is24Hour={true}
+                            textColor="black"
+                            onChange={(event, date) => {
+                              if (showTimePicker) onTimeChange(event, date);
+                              else if (showEndTimePicker) onEndTimeChange(event, date);
+                            }}
+                            style={{ height: 216, width: width - 32, alignSelf: 'center' }}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {/* Color Picker Overlay */}
+                {showColorPicker && (
+                  <View style={styles.innerSearchOverlay}>
+                    <View style={[styles.searchHeader, { alignItems: 'flex-start', flexDirection: 'column', gap: 12 }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                        <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', '라벨 선택')}</Text>
+                        <TouchableOpacity onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }} style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>선택</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, width: '100%' }}>
+                        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>{TASK_COLOR_LABELS.find(l => l.color === pendingColor)?.name ?? '라벨'}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>가나다 Task 샘플</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                    <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical: 8 }}>
+                      <View style={styles.colorGrid}>
+                        {TASK_COLOR_LABELS.map((item, idx) => {
+                          const isPending = pendingColor === item.color;
+                          return (
+                            <TouchableOpacity
+                              key={idx}
+                              style={[styles.colorGridCell, isPending && { borderColor: item.color, borderWidth: 2, backgroundColor: item.color + '18' }]}
+                              onPress={() => { if (isPending) { setSelectedColor(item.color); setShowColorPicker(false); } else { setPendingColor(item.color); } }}
+                              activeOpacity={0.7}
+                            >
+                              <View style={[styles.colorSwatch, { backgroundColor: item.color }, item.color.toUpperCase() === '#EBEBEB' || item.color.toUpperCase() === '#F4EFE6' || item.color.toUpperCase() === '#FEF9DB' || item.color.toUpperCase() === '#F0E7D6' ? { borderWidth: 1, borderColor: '#E2E8F0' } : {}]}>
+                                {isPending && <View style={{ position: 'absolute', inset: 0, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: 'white' }} /></View>}
+                              </View>
+                              <Text style={styles.colorLabel} numberOfLines={1}>{item.name}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+              </Animated.View>
+            )}
           </Animated.View>
           {renderToast('isTaskListVisible')}
         </View>
@@ -1577,6 +1893,7 @@ const TasksScreen = ({ navigation }) => {
                       onChangeText={setNewMemo}
                       multiline
                       autoFocus
+                      autoCapitalize="none"
                       maxLength={1000}
                       placeholderTextColor={Colors.outline}
                       textAlignVertical="top"
@@ -1605,8 +1922,7 @@ const TasksScreen = ({ navigation }) => {
                       ) : (
                         <TouchableOpacity 
                           onPress={handleSaveTask} 
-                          disabled={!newTitle.trim()} 
-                          style={[styles.headerSaveBtn, !newTitle.trim() && { opacity: 0.5 }]}
+                          style={styles.headerSaveBtn}
                           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                         >
                           <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
@@ -1625,10 +1941,11 @@ const TasksScreen = ({ navigation }) => {
                     <TextInput
                       ref={titleInputRef}
                       style={styles.timeTreeTitle}
-                      placeholder={t('tasks.placeholder', 'Title')}
+                      placeholder={t('tasks.placeholder', '투두')}
                       value={newTitle}
                       onChangeText={setNewTitle}
                       returnKeyType="done"
+                      autoCapitalize="none"
                       onSubmitEditing={() => Keyboard.dismiss()}
                     />
 
@@ -1708,6 +2025,7 @@ const TasksScreen = ({ navigation }) => {
                           placeholder={t('tasks.loc_placeholder', 'Location')}
                           value={newLocName}
                           onChangeText={setNewLocName}
+                          autoCapitalize="none"
                         />
                       </View>
                     </View>
@@ -1832,7 +2150,7 @@ const TasksScreen = ({ navigation }) => {
             <View style={styles.innerSearchOverlay}>
               <View style={styles.searchHeader}>
                 <Search size={20} color={Colors.outline} />
-                <TextInput style={styles.innerSearchPath} placeholder={t('search.placeholder')} autoFocus value={searchQuery} onChangeText={handleSearch} />
+                <TextInput style={styles.innerSearchPath} placeholder={t('search.placeholder')} autoFocus autoCapitalize="none" value={searchQuery} onChangeText={handleSearch} />
                 <TouchableOpacity 
                   onPress={() => setSearchMode(null)} 
                   hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
@@ -2035,11 +2353,12 @@ const TasksScreen = ({ navigation }) => {
 
             <View style={[styles.searchBox, { marginTop: 16, marginHorizontal: 0 }]}>
               <Search size={18} color={Colors.outline} style={{ marginRight: 8 }} />
-              <TextInput 
-                style={styles.searchField} 
-                placeholder={t('tasks.search_country_placeholder', 'Search country (e.g. Korea)')} 
+              <TextInput
+                style={styles.searchField}
+                placeholder={t('tasks.search_country_placeholder', 'Search country (e.g. Korea)')}
                 value={countrySearch}
                 onChangeText={setCountrySearch}
+                autoCapitalize="none"
               />
               {countrySearch.length > 0 && (
                 <TouchableOpacity onPress={() => setCountrySearch('')}>
