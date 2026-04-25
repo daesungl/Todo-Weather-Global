@@ -58,22 +58,30 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const ITEM_HEIGHT = 50;
 const TASK_COLOR_LABELS = [
-  { name: '세이지 그린', color: '#A8B89F' },
-  { name: '올리브 그린', color: '#574C00' },
-  { name: '테라코타', color: '#C66B3D' },
-  { name: '네이비 블루', color: '#10367D' },
-  { name: '차콜', color: '#2B2B2B' },
-  { name: '오렌지', color: '#EA2E00' },
-  { name: '크림슨 레드', color: '#B40023' },
-  { name: '다크 블루', color: '#2A234F' },
-  { name: '블러쉬 핑크', color: '#FFB3C3' },
-  { name: '머스타드', color: '#887114' },
-  { name: '포레스트 그린', color: '#06530B' },
-  { name: '파스텔 퍼플', color: '#BBBFEC' },
-  { name: '라벤더', color: '#EBEBEB' },
-  { name: '크림', color: '#F4EFE6' },
-  { name: '아이보리', color: '#FEF9DB' },
-  { name: '베이지', color: '#F0E7D6' },
+  { name: '다크 블루',   color: '#2A234F' }, // 13.7:1
+  { name: '차콜',        color: '#2B2B2B' }, // 13.4:1
+  { name: '네이비 블루', color: '#10367D' }, // 10.7:1
+  { name: '버건디',      color: '#7D2027' }, //  9.3:1
+  { name: '인디고',      color: '#3730A3' }, //  9.3:1
+  { name: '포레스트 그린', color: '#06530B' }, //  8.5:1
+  { name: '올리브 그린', color: '#574C00' }, //  7.7:1
+  { name: '크림슨 레드', color: '#B40023' }, //  6.8:1
+  { name: '슬레이트',    color: '#475569' }, //  6.8:1
+  { name: '피콕 블루',   color: '#006D77' }, //  5.5:1
+  { name: '바이올렛',    color: '#7C3AED' }, //  5.5:1
+  { name: '에메랄드',    color: '#047857' }, //  5.1:1
+  { name: '머스타드',    color: '#887114' }, //  4.3:1
+  { name: '오렌지',      color: '#EA2E00' }, //  4.2:1
+  { name: '코럴',        color: '#E05252' }, //  3.6:1
+  { name: '테라코타',    color: '#C66B3D' }, //  3.5:1
+  { name: '스카이 블루', color: '#2196F3' }, //  3.0:1
+  { name: '세이지 그린', color: '#A8B89F' }, //  2.0:1
+  { name: '블러쉬 핑크', color: '#FFB3C3' }, //  1.5:1
+  { name: '파스텔 퍼플', color: '#BBBFEC' }, //  1.5:1
+  { name: '라벤더',      color: '#EBEBEB' }, //  1.1:1
+  { name: '크림',        color: '#F4EFE6' }, //  1.1:1
+  { name: '아이보리',    color: '#FEF9DB' }, //  1.1:1
+  { name: '베이지',      color: '#F0E7D6' }, //  1.1:1
 ];
 
 const TASK_COLORS = TASK_COLOR_LABELS.map(l => l.color);
@@ -497,11 +505,18 @@ const TasksScreen = ({ navigation }) => {
       return;
     }
     
+    setShowColorPicker(false);
+    setSearchMode(null);
+    // 날짜/시간 피커가 열린 채 모달을 닫을 경우 피커 상태 초기화
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+    setShowEndDatePicker(false);
+    setShowEndTimePicker(false);
     setIsAdding(false);
     if (typeof onAfterClose === 'function') {
       onAfterClose();
     }
-  }, [isMemoEditing]);
+  }, [isMemoEditing, setShowColorPicker, setSearchMode]);
 
   const closeTaskListModal = useCallback(() => {
     Animated.timing(listModalTranslateY, {
@@ -591,6 +606,7 @@ const TasksScreen = ({ navigation }) => {
   const [isAllDay, setIsAllDay] = useState(false);
   const [newMemo, setNewMemo] = useState('');
   const [selectedColor, setSelectedColor] = useState(TASK_COLOR_LABELS[0].color);
+  const [pendingColor, setPendingColor] = useState(TASK_COLOR_LABELS[0].color);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [newLocName, setNewLocName] = useState('');
   const [newWeatherRegion, setNewWeatherRegion] = useState(null);
@@ -611,6 +627,8 @@ const TasksScreen = ({ navigation }) => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  // 취소 시 원복을 위한 백업 ref
+  const pickerBackupRef = useRef({ taskDate: null, endDate: null, newTime: null, endTime: null });
   const [showHolidaySettings, setShowHolidaySettings] = useState(false);
   const [allCountries, setAllCountries] = useState([]);
   const [countrySearch, setCountrySearch] = useState('');
@@ -771,6 +789,16 @@ const TasksScreen = ({ navigation }) => {
     setShowTimePicker(false);
     setShowEndDatePicker(false);
     setShowEndTimePicker(false);
+  };
+
+  // 취소: 피커를 열기 전 값으로 원복
+  const cancelPickers = () => {
+    const b = pickerBackupRef.current;
+    if (b.taskDate) setTaskDate(b.taskDate);
+    if (b.endDate) setEndDate(b.endDate);
+    if (b.newTime) setNewTime(b.newTime);
+    if (b.endTime) setEndTime(b.endTime);
+    closeAllPickers();
   };
 
   const onDateChange = (event, date) => {
@@ -1605,7 +1633,7 @@ const TasksScreen = ({ navigation }) => {
                     />
 
                     {/* Color Selection Row */}
-                    <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setShowColorPicker(true); }}>
+                    <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setPendingColor(selectedColor); setShowColorPicker(true); }}>
                       <View style={styles.rowLead}>
                         <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
                         <Text style={styles.timeTreeRowText}>
@@ -1640,11 +1668,11 @@ const TasksScreen = ({ navigation }) => {
                         <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
                       </View>
                       <View style={styles.rowTail}>
-                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowDatePicker(true); }}>
+                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
                           <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
                         </TouchableOpacity>
                         {!isAllDay && (
-                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); setShowTimePicker(true); }}>
+                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
                             <Text style={styles.timeTreeTimeText}>{newTime}</Text>
                           </TouchableOpacity>
                         )}
@@ -1658,11 +1686,11 @@ const TasksScreen = ({ navigation }) => {
                         <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
                       </View>
                       <View style={styles.rowTail}>
-                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowEndDatePicker(true); }}>
+                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
                           <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
                         </TouchableOpacity>
                         {!isAllDay && (
-                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); setShowEndTimePicker(true); }}>
+                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
                             <Text style={styles.timeTreeTimeText}>{endTime}</Text>
                           </TouchableOpacity>
                         )}
@@ -1718,24 +1746,84 @@ const TasksScreen = ({ navigation }) => {
           {/* Color Picker Overlay */}
           {showColorPicker && (
             <View style={styles.innerSearchOverlay}>
-              <View style={styles.searchHeader}>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', 'Select Label')}</Text>
-                <TouchableOpacity onPress={() => setShowColorPicker(false)}><X size={24} color={Colors.text} /></TouchableOpacity>
-              </View>
-              <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
-                {TASK_COLOR_LABELS.map((item, idx) => (
+              {/* 헤더: 프리뷰 + 선택 버튼 */}
+              <View style={[styles.searchHeader, { alignItems: 'flex-start', flexDirection: 'column', gap: 12 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', '라벨 선택')}</Text>
                   <TouchableOpacity
-                    key={idx}
-                    style={styles.labelItem}
-                    onPress={() => { setSelectedColor(item.color); setShowColorPicker(false); }}
+                    onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }}
+                    style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}
                   >
-                    <View style={[styles.labelMark, { backgroundColor: item.color }]} />
-                    <Text style={[styles.labelName, selectedColor === item.color && { color: Colors.primary, fontWeight: '800' }]}>
-                      {item.name}
-                    </Text>
-                    {selectedColor === item.color && <CheckCircle2 size={20} color={Colors.primary} />}
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>선택</Text>
                   </TouchableOpacity>
-                ))}
+                </View>
+                {/* 컬러 프리뷰 샘플 */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, width: '100%' }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>
+                      {TASK_COLOR_LABELS.find(l => l.color === pendingColor)?.name ?? '라벨'}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>가나다 Task 샘플</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* 컬러 그리드 — 그룹 없이 순서대로 */}
+              <ScrollView
+                style={{ flex: 1 }}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingVertical: 8 }}
+              >
+                <View style={styles.colorGrid}>
+                  {TASK_COLOR_LABELS.map((item, idx) => {
+                    const isPending = pendingColor === item.color;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[
+                          styles.colorGridCell,
+                          isPending && { borderColor: item.color, borderWidth: 2, backgroundColor: item.color + '18' }
+                        ]}
+                        onPress={() => {
+                          if (isPending) {
+                            // 이미 선택된 색 재탭 → 확정 후 닫기
+                            setSelectedColor(item.color);
+                            setShowColorPicker(false);
+                          } else {
+                            setPendingColor(item.color);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[
+                          styles.colorSwatch,
+                          { backgroundColor: item.color },
+                          item.color.toUpperCase() === '#EBEBEB' || item.color.toUpperCase() === '#F4EFE6' ||
+                          item.color.toUpperCase() === '#FEF9DB' || item.color.toUpperCase() === '#F0E7D6'
+                            ? { borderWidth: 1, borderColor: '#E2E8F0' } : {}
+                        ]}>
+                          {isPending && (
+                            <View style={styles.colorCheckOverlay}>
+                              <CheckCircle2 size={16} color="white" strokeWidth={3} />
+                            </View>
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            styles.colorCellName,
+                            isPending && { color: item.color === '#EBEBEB' || item.color === '#FEF9DB' ? Colors.primary : item.color, fontWeight: '800' }
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </ScrollView>
             </View>
           )}
@@ -1745,7 +1833,12 @@ const TasksScreen = ({ navigation }) => {
               <View style={styles.searchHeader}>
                 <Search size={20} color={Colors.outline} />
                 <TextInput style={styles.innerSearchPath} placeholder={t('search.placeholder')} autoFocus value={searchQuery} onChangeText={handleSearch} />
-                <TouchableOpacity onPress={() => setSearchMode(null)}><X size={24} color={Colors.text} /></TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => setSearchMode(null)} 
+                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                >
+                  <X size={24} color={Colors.text} pointerEvents="none" />
+                </TouchableOpacity>
               </View>
               <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
                 {isSearching ? <ActivityIndicator style={{ marginTop: 20 }} /> : null}
@@ -1819,47 +1912,68 @@ const TasksScreen = ({ navigation }) => {
                 activeOpacity={1}
                 onPress={closeAllPickers}
               />
-              <View style={styles.iosPickerCard}>
+              <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
+                {/* 핸들바 */}
+                <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
                 <View style={styles.iosPickerHeader}>
+                  <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>
+                      {t('common.cancel', '취소')}
+                    </Text>
+                  </TouchableOpacity>
                   <Text style={styles.iosPickerTitle}>
-                    {(showDatePicker || showEndDatePicker) ? t('tasks.date', 'Date') : t('tasks.time', 'Time')}
+                    {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
                   </Text>
-                  <TouchableOpacity onPress={closeAllPickers}>
-                    <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', 'Done')}</Text>
+                  <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
+                    <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+                {(showDatePicker || showEndDatePicker) ? (
                   <DateTimePicker
                     value={(() => {
                       try {
                         if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
                         if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
-                        if (showTimePicker) {
-                          const [h, m] = newTime.split(':').map(Number);
-                          const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
-                        }
-                        if (showEndTimePicker) {
-                          const [h, m] = endTime.split(':').map(Number);
-                          const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
-                        }
-                      } catch (e) {
-                        return new Date();
-                      }
+                      } catch (e) { return new Date(); }
                       return new Date();
                     })()}
-                    mode={(showDatePicker || showEndDatePicker) ? 'date' : 'time'}
-                    display="spinner"
-                    is24Hour={true}
-                    textColor="black"
+                    mode="date"
+                    display="inline"
+                    accentColor={Colors.primary}
                     onChange={(event, date) => {
                       if (showDatePicker) onDateChange(event, date);
                       else if (showEndDatePicker) onEndDateChange(event, date);
-                      else if (showTimePicker) onTimeChange(event, date);
-                      else if (showEndTimePicker) onEndTimeChange(event, date);
                     }}
-                    style={{ height: 216, width: width }}
+                    style={{ width: width - 32, height: 360, alignSelf: 'center' }}
                   />
-                </View>
+                ) : (
+                  <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+                    <DateTimePicker
+                      value={(() => {
+                        try {
+                          if (showTimePicker) {
+                            const [h, m] = newTime.split(':').map(Number);
+                            const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
+                          }
+                          if (showEndTimePicker) {
+                            const [h, m] = endTime.split(':').map(Number);
+                            const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
+                          }
+                        } catch (e) { return new Date(); }
+                        return new Date();
+                      })()}
+                      mode="time"
+                      display="spinner"
+                      is24Hour={true}
+                      textColor="black"
+                      onChange={(event, date) => {
+                        if (showTimePicker) onTimeChange(event, date);
+                        else if (showEndTimePicker) onEndTimeChange(event, date);
+                      }}
+                      style={{ height: 216, width: width - 32, alignSelf: 'center' }}
+                    />
+                  </View>
+                )}
               </View>
             </View>
           )}
@@ -2084,9 +2198,17 @@ const styles = StyleSheet.create({
   trashBtn: { padding: 6 },
 
   colorIndicator: { width: 14, height: 14, borderRadius: 4, marginRight: 0 },
-  labelItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  labelItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   labelMark: { width: 6, height: 20, borderRadius: 3, marginRight: 16 },
   labelName: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.textSecondary },
+
+  // 컬러 그리드 스타일
+  colorGroupLabel: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 10, marginTop: 4, paddingHorizontal: 2 },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  colorGridCell: { width: '22%', alignItems: 'center', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 4, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: '#F8FAFC' },
+  colorSwatch: { width: 40, height: 40, borderRadius: 20, marginBottom: 6, justifyContent: 'center', alignItems: 'center' },
+  colorCheckOverlay: { position: 'absolute', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.15)' },
+  colorCellName: { fontSize: 10, fontWeight: '600', color: Colors.textSecondary, textAlign: 'center' },
 
   emptyState: { alignItems: 'center', marginTop: 40 },
   emptyText: { fontSize: 15, fontWeight: '600', color: Colors.textSecondary },
@@ -2249,9 +2371,9 @@ const styles = StyleSheet.create({
   saveBtn: { backgroundColor: '#111827', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginTop: 40, marginBottom: 40 },
   saveBtnText: { color: 'white', fontSize: 17, fontWeight: '800' },
   innerSearchOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'white', zIndex: 100, padding: 20, paddingTop: Constants.statusBarHeight + 10 },
-  iosPickerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end', zIndex: 200 },
-  iosPickerCard: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40, height: 320 },
-  iosPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.surfaceContainer },
+  iosPickerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end', zIndex: 1000 },
+  iosPickerCard: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 16, paddingBottom: 40, height: 320 },
+  iosPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.surfaceContainer, width: '100%' },
   iosPickerTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
   iosPickerDone: { fontSize: 16, fontWeight: '800', color: Colors.primary },
   innerSearchPath: { flex: 1, height: 50, fontSize: 18, fontWeight: '700', color: Colors.text, marginLeft: 12 },
