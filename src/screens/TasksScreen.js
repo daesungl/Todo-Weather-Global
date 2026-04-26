@@ -1049,6 +1049,14 @@ const TasksScreen = ({ navigation }) => {
     return date.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   };
 
+  const formatDetailDate = (dateStr) => {
+    const date = new Date(dateStr);
+    const locale = isKorean ? 'ko-KR' : 'en-US';
+    const year = isKorean ? `${date.getFullYear()}년` : `${date.getFullYear()}`;
+    const main = date.toLocaleDateString(locale, { month: 'short', day: 'numeric', weekday: 'short' });
+    return { year, main };
+  };
+
   const handleToggle = async (id) => {
     const updated = await toggleTaskCompletion(id);
     const task = tasks.find(t => t.id === id);
@@ -1420,17 +1428,21 @@ const TasksScreen = ({ navigation }) => {
                       </View>
 
                       <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>
+                        {(() => { const { year, main } = formatDetailDate(selectedTaskDetail.date); return (
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={styles.detailDateYear}>{selectedTaskDetail.date.split('-')[0]}년</Text>
-                          <Text style={styles.detailDateMain}>{parseInt(selectedTaskDetail.date.split('-')[1])}월 {parseInt(selectedTaskDetail.date.split('-')[2])}일 ({['일','월','화','수','목','금','토'][new Date(selectedTaskDetail.date).getDay()]})</Text>
+                          <Text style={styles.detailDateYear}>{year}</Text>
+                          <Text style={styles.detailDateMain}>{main}</Text>
                           {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.time || '00:00'}</Text>}
                         </View>
+                        ); })()}
                         <ArrowRight size={24} color={Colors.primary} />
+                        {(() => { const { year, main } = formatDetailDate(selectedTaskDetail.endDate || selectedTaskDetail.date); return (
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={styles.detailDateYear}>{(selectedTaskDetail.endDate || selectedTaskDetail.date).split('-')[0]}년</Text>
-                          <Text style={styles.detailDateMain}>{parseInt((selectedTaskDetail.endDate || selectedTaskDetail.date).split('-')[1])}월 {parseInt((selectedTaskDetail.endDate || selectedTaskDetail.date).split('-')[2])}일 ({['일','월','화','수','목','금','토'][new Date(selectedTaskDetail.endDate || selectedTaskDetail.date).getDay()]})</Text>
+                          <Text style={styles.detailDateYear}>{year}</Text>
+                          <Text style={styles.detailDateMain}>{main}</Text>
                           {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.endTime || selectedTaskDetail.time || '00:00'}</Text>}
                         </View>
+                        ); })()}
                       </View>
 
                       <View style={styles.detailInfoList}>
@@ -1480,11 +1492,11 @@ const TasksScreen = ({ navigation }) => {
                         const newStatus = !selectedTaskDetail.isCompleted;
                         setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        showToast(newStatus ? '일정이 완료되었습니다.' : '일정이 미완료 상태로 변경되었습니다.');
+                        showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
                       }}>
                         <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
                         <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
-                          {selectedTaskDetail.isCompleted ? '미완료로 표시' : '완료로 표시'}
+                          {selectedTaskDetail.isCompleted ? t('tasks.mark_incomplete') : t('tasks.mark_complete')}
                         </Text>
                       </TouchableOpacity>
 
@@ -1492,32 +1504,32 @@ const TasksScreen = ({ navigation }) => {
                         setIsDetailMenuVisible(false);
                         const shareText = `[Todo] ${selectedTaskDetail.title}\nPeriod: ${selectedTaskDetail.date} ~ ${selectedTaskDetail.endDate || selectedTaskDetail.date}\nNotes: ${selectedTaskDetail.memo || ''}`;
                         await Clipboard.setStringAsync(shareText);
-                        showToast('일정 내용이 복사되었습니다.');
+                        showToast(t('tasks.copy_success'));
                       }}>
-                        <Share2 size={18} color={Colors.text} /><Text style={styles.menuText}>공유</Text>
+                        <Share2 size={18} color={Colors.text} /><Text style={styles.menuText}>{t('tasks.share')}</Text>
                       </TouchableOpacity>
 
                       <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
 
                       <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); openEditInSheet(selectedTaskDetail); }}>
-                        <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>편집</Text>
+                        <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>{t('common.edit')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.menuItem} onPress={() => {
                         setIsDetailMenuVisible(false);
                         const taskId = selectedTaskDetail.id;
                         isAlertActiveRef.current = true;
-                        Alert.alert('삭제', '이 일정을 삭제할까요?', [
-                          { text: '취소', style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
-                          { text: '삭제', style: 'destructive', onPress: async () => {
+                        Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
+                          { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
+                          { text: t('common.delete'), style: 'destructive', onPress: async () => {
                             isAlertActiveRef.current = false;
                             handleBackToList();
                             const updated = await deleteTask(taskId);
                             setTasks(updated);
-                            showToast('일정이 삭제되었습니다.');
+                            showToast(t('tasks.delete_success'));
                           } }
                         ], { cancelable: false });
                       }}>
-                        <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>삭제</Text>
+                        <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>{t('common.delete')}</Text>
                       </TouchableOpacity>
                     </View>
                   </>
@@ -2942,7 +2954,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 12,
     padding: 8,
-    width: 180,
+    minWidth: 200,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,

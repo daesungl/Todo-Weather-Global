@@ -45,7 +45,7 @@ const formatAlertTime = (tmFc) => {
 };
 
 const WeatherDetailScreen = ({ navigation, route }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { weatherData: initialData = {} } = route?.params || {};
 
   const defaultData = {
@@ -462,7 +462,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     }
   };
 
-  const [currentHourlyDay, setCurrentHourlyDay] = useState('오늘');
+  const [currentHourlyOffset, setCurrentHourlyOffset] = useState(0);
 
   const hourlyForecast = useMemo(() => {
     if (weatherData.hourlyForecast && weatherData.hourlyForecast.length > 0) {
@@ -481,10 +481,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
       let dayOffset = 0;
       const getDayLabel = (offset) => {
-        if (offset === 0) return '오늘';
-        if (offset === 1) return '내일';
-        if (offset === 2) return '모레';
-        return `${offset}일 후`;
+        if (offset === 0) return t('weather.today', '오늘');
+        if (offset === 1) return t('weather.tomorrow', '내일');
+        if (offset === 2) return t('weather.day_after_tomorrow', '모레');
+        return `+${offset}`;
       };
 
       // fullTime 필드 기준으로 현재 시간 이후 데이터만 필터링
@@ -506,24 +506,26 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         const isDay = isNow ? (weatherData.isDay !== undefined ? weatherData.isDay : h.isDay) : h.isDay;
         return {
           ...h,
-          time: isNow ? '지금' : h.time,
+          time: isNow ? t('weather.now', 'Now') : h.time,
           icon: renderHourlyIcon(condKey, isDay),
-          dayLabel: getDayLabel(dayOffset)
+          dayLabel: getDayLabel(dayOffset),
+          dayOffset,
         };
       });
     }
-    return [{ time: '지금', temp: '24°', icon: <Sun size={20} color={Colors.primary} />, pop: '10%', wind: '2m/s', windDeg: 135, hum: '45%' }];
+    return [{ time: t('weather.now', 'Now'), temp: '24°', icon: <Sun size={20} color={Colors.primary} />, pop: '10%', wind: '2m/s', windDeg: 135, hum: '45%' }];
   }, [weatherData]);
 
   const dailyForecast = useMemo(() => {
     if (weatherData.dailyForecast && Array.isArray(weatherData.dailyForecast) && weatherData.dailyForecast.length > 0) {
       return weatherData.dailyForecast.map((item, idx) => {
         let dayLabel = item.day;
-        if (dayLabel === 'Today') dayLabel = '오늘';
-        else if (dayLabel === 'Tomorrow') dayLabel = '내일';
+        if (dayLabel === 'Today') dayLabel = t('weather.today', 'Today');
+        else if (dayLabel === 'Tomorrow') dayLabel = t('weather.tomorrow', 'Tomorrow');
         else {
-          const engToKor = { 'Sun': '일요일', 'Mon': '월요일', 'Tue': '화요일', 'Wed': '수요일', 'Thu': '목요일', 'Fri': '금요일', 'Sat': '토요일' };
-          dayLabel = engToKor[item.day] || item.day;
+          const daysShort = t('common.days_short', { returnObjects: true, defaultValue: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] });
+          const engIdx = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(item.day);
+          dayLabel = engIdx >= 0 ? daysShort[engIdx] : item.day;
         }
 
         // Calculate Date String (MM.DD)
@@ -548,7 +550,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
     // Fallback Mock Data Generation
     const days = [];
-    const weekdays = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+    const daysShort = t('common.days_short', { returnObjects: true, defaultValue: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] });
     const now = new Date();
 
     for (let i = 0; i < 10; i++) {
@@ -556,9 +558,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       targetDate.setDate(now.getDate() + i);
 
       let dayLabel = '';
-      if (i === 0) dayLabel = '오늘';
-      else if (i === 1) dayLabel = '내일';
-      else dayLabel = weekdays[targetDate.getDay()];
+      if (i === 0) dayLabel = t('weather.today', 'Today');
+      else if (i === 1) dayLabel = t('weather.tomorrow', 'Tomorrow');
+      else dayLabel = daysShort[targetDate.getDay()];
 
       const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
       const dd = String(targetDate.getDate()).padStart(2, '0');
@@ -771,26 +773,25 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         <View style={styles.moduleCard}>
           <View style={styles.moduleHeader}>
             <Activity size={16} color={Colors.primary} />
-            <Text style={styles.moduleTitle}>시간별 예보 {currentHourlyDay !== '오늘' ? `- ${currentHourlyDay}` : ''}</Text>
+            <Text style={styles.moduleTitle}>{t('weather.hourly_forecast', '시간별 예보')} {currentHourlyOffset > 0 ? `- ${hourlyForecast.find(h => h.dayOffset === currentHourlyOffset)?.dayLabel ?? ''}` : ''}</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -Spacing.md }} contentContainerStyle={[styles.hourlyList, { paddingHorizontal: Spacing.md }]}
             onScroll={(event) => {
               const scrollPos = event.nativeEvent.contentOffset.x;
               const activeIndex = Math.max(0, Math.floor((scrollPos + 60) / 88));
-              if (hourlyForecast[activeIndex] && hourlyForecast[activeIndex].dayLabel !== currentHourlyDay) {
-                setCurrentHourlyDay(hourlyForecast[activeIndex].dayLabel);
-              }
+              const offset = hourlyForecast[activeIndex]?.dayOffset ?? 0;
+              if (offset !== currentHourlyOffset) setCurrentHourlyOffset(offset);
             }}
           >
             {hourlyForecast.map((item, index) => {
               let dayBadge = null;
-              if (item.time === '0시' || item.time === 'Midnight') dayBadge = item.dayLabel;
+              if (item.dayOffset > 0 && item.time === 'Midnight') dayBadge = item.dayLabel;
               let bgColor = Colors.surfaceContainerLow;
-              if (item.dayLabel === '내일') bgColor = '#EDF7FF';
-              else if (item.dayLabel === '모레') bgColor = '#F4EEFB';
+              if (item.dayOffset === 1) bgColor = '#EDF7FF';
+              else if (item.dayOffset === 2) bgColor = '#F4EEFB';
               return (
                 <View key={index} style={[styles.hourlyItem, { backgroundColor: bgColor }]}>
-                  {dayBadge ? <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>{dayBadge}</Text></View> : <Text style={styles.hourlyTime}>{item.time}</Text>}
+                  {dayBadge ? <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>{dayBadge}</Text></View> : <Text style={styles.hourlyTime}>{i18n.language.startsWith('ko') ? (item.time === 'Midnight' ? '0시' : item.time.replace(':00', '시')) : item.time}</Text>}
                   <View style={styles.hourlyIcon}>{item.icon}</View>
                   <Text style={styles.hourlyTemp}>{item.temp}</Text>
                   <View style={styles.hourlyMeta}>
@@ -838,7 +839,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                 ) : (
                   <>
                     <Text style={styles.aqiValue}>{weatherData.aqiValue} - </Text>
-                    <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{weatherData.airQuality}</Text>
+                    <Text style={[styles.aqiLabel, { color: weatherData.aqiColor }]}>{t('weather.' + weatherData.airQuality, weatherData.airQuality)}</Text>
                   </>
                 )}
                 {!loadingAir && weatherData.stationName && (
@@ -850,7 +851,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               {loadingAir ? (
                 <SkeletonBlock width="100%" height={16} borderRadius={8} style={{ marginTop: 8 }} />
               ) : (
-                <Text style={styles.aqiDesc}>{weatherData.aqiText}</Text>
+                <Text style={styles.aqiDesc}>{t('weather.' + weatherData.aqiText, weatherData.aqiText)}</Text>
               )}
               {!loadingAir && weatherData.aqiForecast ? (
                 <View style={styles.aqiForecastBox}>
@@ -874,13 +875,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                       { pm10: 'PM10', pm25: 'PM2.5', o3: 'O₃', no2: 'NO₂', co: 'CO', so2: 'SO₂' }[key] || key.toUpperCase()
                     }</Text>
                     <View style={styles.pollutantValueRow}><Text style={styles.pollutantValue}>{data.value}</Text><Text style={styles.pollutantUnit}>{data.unit}</Text></View>
-                    <View style={[styles.pollutantBadge, { backgroundColor: `${data.color}25` }]}><View style={[styles.pollutantDot, { backgroundColor: data.color }]} /><Text style={styles.pollutantStatus}>{data.label}</Text></View>
+                    <View style={[styles.pollutantBadge, { backgroundColor: `${data.color}25` }]}><View style={[styles.pollutantDot, { backgroundColor: data.color }]} /><Text style={styles.pollutantStatus}>{data.labelKey ? t('weather.' + data.labelKey, data.label) : data.label}</Text></View>
                   </View>
                 ))
               }
             </View>
           </View>
-          <View style={styles.metricCard}><View style={styles.metricHeader}><SunMedium size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.uv_index', 'UV Index')}</Text></View><Text style={styles.metricValue}>{weatherData.uvIndex}</Text></View>
+          <View style={styles.metricCard}><View style={styles.metricHeader}><SunMedium size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.uv_index', 'UV Index')}</Text></View><Text style={styles.metricValue}>{weatherData.uvLevelKey ? `${weatherData.uvIndex} (${t('weather.' + weatherData.uvLevelKey)})` : weatherData.uvIndex}</Text></View>
           <View style={styles.metricCard}><View style={styles.metricHeader}><Droplets size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.humidity', 'Humidity')}</Text></View><Text style={styles.metricValue}>{weatherData.humidity}</Text></View>
           <View style={styles.metricCard}><View style={styles.metricHeader}><Thermometer size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.feels_like', 'Feels Like')}</Text></View><Text style={styles.metricValue}>{weatherData.feelsLike}</Text></View>
           <View style={styles.metricCard}><View style={styles.metricHeader}><Eye size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.visibility', 'Visibility')}</Text></View><Text style={styles.metricValue}>{weatherData.visibility}</Text></View>

@@ -14,22 +14,22 @@ const mapConditionToKey = (conditionText, isDay = 1) => {
   return isDay ? 'sunny' : 'clear_night';
 };
 
-const mapUVLabel = (uv) => {
-  if (uv <= 2) return `${uv} (낮음)`;
-  if (uv <= 5) return `${uv} (보통)`;
-  if (uv <= 7) return `${uv} (높음)`;
-  if (uv <= 10) return `${uv} (매우 높음)`;
-  return `${uv} (위험)`;
+const getUVLevelKey = (uv) => {
+  if (uv <= 2) return 'uv_low';
+  if (uv <= 5) return 'uv_moderate';
+  if (uv <= 7) return 'uv_high';
+  if (uv <= 10) return 'uv_very_high';
+  return 'uv_extreme';
 };
 
 const mapAQI = (usAqiIndex) => {
   // US EPA Index: 1=Good, 2=Moderate, 3=Unhealthy for sensitive, 4=Unhealthy, 5=Very Unhealthy, 6=Hazardous
   switch(usAqiIndex) {
-    case 1: return { label: '좋음', text: '쾌적한 공기입니다. 야외 활동에 좋습니다.', color: '#4CAF50' };
-    case 2: return { label: '보통', text: '전반적으로 괜찮으나, 민감군은 주의하세요.', color: '#FFC107' };
-    case 3: return { label: '나쁨', text: '민감군은 장시간 야외 활동을 피하세요.', color: '#FF9800' };
-    case 4: return { label: '매우 나쁨', text: '모두의 건강에 해롭습니다. 야외 활동을 자제하세요.', color: '#F44336' };
-    default: return { label: '위험', text: '가급적 실내에 머무르세요.', color: '#9C27B0' };
+    case 1: return { labelKey: 'aqi_good', textKey: 'aqi_good_desc', color: '#4CAF50' };
+    case 2: return { labelKey: 'aqi_moderate', textKey: 'aqi_moderate_desc', color: '#FFC107' };
+    case 3: return { labelKey: 'aqi_bad', textKey: 'aqi_bad_desc', color: '#FF9800' };
+    case 4: return { labelKey: 'aqi_very_bad', textKey: 'aqi_very_bad_desc', color: '#F44336' };
+    default: return { labelKey: 'aqi_hazardous', textKey: 'aqi_hazardous_desc', color: '#9C27B0' };
   }
 };
 
@@ -45,10 +45,10 @@ const processPollutants = (aqData) => {
   return {
     pm10: { value: Math.round(aqData.pm10), unit: 'µg/m³', label: 'PM10', color: getSeverityColor(aqData.pm10, [30, 80, 150]) },
     pm25: { value: Math.round(aqData.pm2_5), unit: 'µg/m³', label: 'PM2.5', color: getSeverityColor(aqData.pm2_5, [15, 35, 75]) },
-    o3: { value: aqData.o3.toFixed(3), unit: 'μg', label: '오존', color: getSeverityColor(aqData.o3, [60, 120, 200]) },
-    no2: { value: aqData.no2.toFixed(3), unit: 'μg', label: '이산화질소', color: getSeverityColor(aqData.no2, [40, 100, 200]) },
-    co: { value: (aqData.co/1000).toFixed(2), unit: 'mg', label: '일산화탄소', color: getSeverityColor(aqData.co, [4000, 9000, 15000]) },
-    so2: { value: aqData.so2.toFixed(3), unit: 'μg', label: '아황산가스', color: getSeverityColor(aqData.so2, [50, 200, 400]) },
+    o3: { value: aqData.o3.toFixed(3), unit: 'μg', labelKey: 'pollutant_o3', color: getSeverityColor(aqData.o3, [60, 120, 200]) },
+    no2: { value: aqData.no2.toFixed(3), unit: 'μg', labelKey: 'pollutant_no2', color: getSeverityColor(aqData.no2, [40, 100, 200]) },
+    co: { value: (aqData.co/1000).toFixed(2), unit: 'mg', labelKey: 'pollutant_co', color: getSeverityColor(aqData.co, [4000, 9000, 15000]) },
+    so2: { value: aqData.so2.toFixed(3), unit: 'μg', labelKey: 'pollutant_so2', color: getSeverityColor(aqData.so2, [50, 200, 400]) },
   };
 };
 
@@ -93,7 +93,7 @@ export const fetchGlobalWeather = async (lat, lon) => {
       const condKey = mapConditionToKey(d.day.condition.text);
 
       return {
-        day: dateObj.toLocaleDateString('ko-KR', { weekday: 'short' }),
+        day: dateObj.toLocaleDateString('en-US', { weekday: 'short' }),
         date: `${mm}.${dd}`,
         high: `${Math.round(d.day.maxtemp_c)}°`,
         low: `${Math.round(d.day.mintemp_c)}°`,
@@ -116,7 +116,7 @@ export const fetchGlobalWeather = async (lat, lon) => {
         const condKey = mapConditionToKey(h.condition.text, h.is_day);
         
         return {
-          time: `${localHour}시`,
+          time: localHour === 0 ? 'Midnight' : `${localHour}:00`,
           temp: `${Math.round(h.temp_c)}°`,
           condition: condKey,
           condKey: condKey,
@@ -131,6 +131,7 @@ export const fetchGlobalWeather = async (lat, lon) => {
       });
 
     // Air Quality processing
+    const uvLevelKey = getUVLevelKey(current.uv);
     const aqiData = mapAQI(current.air_quality['us-epa-index'] || 1);
     const pollutants = processPollutants(current.air_quality);
 
@@ -149,7 +150,8 @@ export const fetchGlobalWeather = async (lat, lon) => {
       conditionText: current.condition.text,
       feelsLike: `${Math.round(current.feelslike_c)}°`,
       visibility: `${current.vis_km}km`,
-      uvIndex: mapUVLabel(current.uv),
+      uvIndex: `${Math.round(current.uv)}`,
+      uvLevelKey,
       sunrise: today.astro.sunrise,
       sunset: today.astro.sunset,
       dailyForecast,
@@ -173,9 +175,9 @@ export const fetchGlobalWeather = async (lat, lon) => {
       nowKey: localNowKey, // Provide local now key
       
       // Air Quality specific
-      airQuality: aqiData.label,
+      airQuality: aqiData.labelKey,
       aqiValue: Math.round(current.air_quality.pm10 || 10).toString(),
-      aqiText: aqiData.text,
+      aqiText: aqiData.textKey,
       aqiColor: aqiData.color,
       aqiIndex: (current.air_quality['us-epa-index'] || 1) / 6,
       pollutants,
@@ -205,9 +207,9 @@ export const fetchExtraMetrics = async (lat, lon) => {
        const aqiData = mapAQI(current.air_quality['us-epa-index'] || 1);
        const pollutants = processPollutants(current.air_quality);
        airQuality = {
-         airQuality: aqiData.label,
+         airQuality: aqiData.labelKey,
          aqiValue: Math.round(current.air_quality.pm10 || 10).toString(),
-         aqiText: aqiData.text,
+         aqiText: aqiData.textKey,
          aqiColor: aqiData.color,
          aqiIndex: (current.air_quality['us-epa-index'] || 1) / 6,
          pollutants,
@@ -217,7 +219,8 @@ export const fetchExtraMetrics = async (lat, lon) => {
 
     return {
       visibility: `${current.vis_km}km`,
-      uvIndex: mapUVLabel(current.uv),
+      uvIndex: `${Math.round(current.uv)}`,
+      uvLevelKey: getUVLevelKey(current.uv),
       feelsLike: `${Math.round(current.feelslike_c)}°`,
       ...(airQuality || {})
     };

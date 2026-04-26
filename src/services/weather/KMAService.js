@@ -281,7 +281,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       .slice(0, 120)
       .map(h => {
         const hour = parseInt(h.time.slice(0, 2));
-        const hourLabel = hour === 0 ? '0시' : (hour === 12 ? '12시' : `${hour}시`);
+        const hourLabel = hour === 0 ? 'Midnight' : `${hour}:00`;
         let pcpVal = h.pcp;
         if (!pcpVal || pcpVal === '강수없음' || pcpVal === '0') pcpVal = '0mm';
         else if (pcpVal === '1mm 미만') pcpVal = '~1mm';
@@ -315,7 +315,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     });
 
     const dailyForecast = [];
-    const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const now = new Date();
 
     const midBaseYear = parseInt(midTime.baseDate.substring(0, 4));
@@ -365,7 +365,7 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       const targetDate = new Date(now.getTime() + (i * 24 * 60 * 60 * 1000));
       const kstTarget = getKSTDate(targetDate);
       const dStr = getKSTDateString(targetDate);
-      const dayLabel = i === 0 ? '오늘' : (i === 1 ? '내일' : weekdays[kstTarget.getUTCDay()]);
+      const dayLabel = i === 0 ? 'Today' : (i === 1 ? 'Tomorrow' : weekdays[kstTarget.getUTCDay()]);
 
       let amPop = '0', pmPop = '0';
       let amCond = 'sunny', pmCond = 'sunny';

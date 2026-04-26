@@ -227,16 +227,13 @@ const FlowScreen = ({ navigation }) => {
           const weather = await WeatherService.getWeather(flow.lat, flow.lon, true, flow.location, flow.location);
           if (weather) {
             const tempText = weather.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
-            const condText = weather.conditionText || 'Sunny';
-            const newSummary = `${t('weather.currently', 'Currently')} ${tempText}, ${condText}`;
-            
-            if (flow.weatherSummary !== newSummary || flow.weatherCondKey !== weather.condKey) {
+            if (flow.weatherTemp !== tempText || flow.weatherCondKey !== weather.condKey) {
               hasChanges = true;
-              return { 
-                ...flow, 
-                weatherSummary: newSummary, 
-                weatherCondKey: weather.condKey, 
-                weatherIsDay: weather.isDay !== false 
+              return {
+                ...flow,
+                weatherTemp: tempText,
+                weatherCondKey: weather.condKey,
+                weatherIsDay: weather.isDay !== false,
               };
             }
           }
@@ -308,16 +305,14 @@ const FlowScreen = ({ navigation }) => {
     
     setIsSaving(true);
     try {
-      let weatherSummary = 'Weather not set';
+      let weatherTemp = null;
       let weatherCondKey = null;
       let weatherIsDay = true;
       if (flowLat && flowLon) {
         const weather = await WeatherService.getWeather(flowLat, flowLon, false, flowLocation, flowLocation);
-        const tempText = weather?.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
-        const condText = weather?.conditionText || 'Cloudy';
+        weatherTemp = weather?.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
         weatherCondKey = weather?.condKey || 'cloudy';
         weatherIsDay = weather?.isDay !== false;
-        weatherSummary = `${t('weather.currently', 'Currently')} ${tempText}, ${condText}`;
       }
 
       const now = new Date().toISOString();
@@ -328,10 +323,10 @@ const FlowScreen = ({ navigation }) => {
             description: flowDescription, 
             location: flowLocation, 
             address: flowAddress, 
-            lat: flowLat, 
-            lon: flowLon, 
-            weatherSummary, 
-            weatherCondKey, 
+            lat: flowLat,
+            lon: flowLon,
+            weatherTemp,
+            weatherCondKey,
             weatherIsDay,
             updatedAt: now
           } : f)
@@ -340,11 +335,11 @@ const FlowScreen = ({ navigation }) => {
             title: flowTitle,
             description: flowDescription,
             period: t('flow.multi_day_planning', 'Multi-day Planning'),
-            location: flowLocation || 'No Region',
+            location: flowLocation || '',
             address: flowAddress || '',
             progress: 0,
             gradient: getFlowGradient(flows),
-            weatherSummary: weatherSummary,
+            weatherTemp,
             weatherCondKey,
             weatherIsDay,
             lat: flowLat,
@@ -921,10 +916,12 @@ const FlowScreen = ({ navigation }) => {
                             </View>
                             <View style={styles.cardBottom}>
                               <View style={styles.progressContainer}><View style={[styles.progressBar, { width: `${(flow.progress || 0) * 100}%` }]} /></View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                <MapPin size={12} color="rgba(255,255,255,0.9)" />
-                                <Text style={styles.tagText} numberOfLines={1}>{flow.location}</Text>
-                              </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                  <MapPin size={12} color="rgba(255,255,255,0.9)" />
+                                  <Text style={styles.tagText} numberOfLines={1}>
+                                    {(!flow.location || flow.location === 'No Region') ? t('flow.no_region', 'No Region') : flow.location}
+                                  </Text>
+                                </View>
                               <View style={styles.weatherSummary}>
                                 <View style={{ marginRight: 6 }}>
                                   {renderWeatherIcon(
@@ -941,7 +938,13 @@ const FlowScreen = ({ navigation }) => {
                                     16, "white", flow.weatherIsDay !== false
                                   )}
                                 </View>
-                                <Text style={styles.weatherText} numberOfLines={1}>{flow.weatherSummary}</Text>
+                                <Text style={styles.weatherText} numberOfLines={1}>
+                                  {flow.weatherTemp && flow.weatherCondKey
+                                    ? `${t('weather.currently', 'Currently')} ${flow.weatherTemp}, ${t(`weather.${flow.weatherCondKey}`, flow.weatherCondKey)}`
+                                    : flow.weatherSummary && flow.weatherSummary !== 'Weather not set'
+                                      ? flow.weatherSummary
+                                      : t('flow.weather_not_set', 'Weather not set')}
+                                </Text>
                               </View>
                             </View>
                           </LinearGradient>
@@ -1014,15 +1017,16 @@ const FlowScreen = ({ navigation }) => {
                       <View style={styles.inputGroup}>
                         <View style={styles.labelRow}><Text style={styles.inputLabel}>{t('flow.base_region', 'Base Region')}</Text><Pressable onPress={() => openSearch('flow')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>{t('common.find', 'Find')}</Text></Pressable></View>
                         <View style={styles.regionDisplay}>
-                          <MapPin size={18} color={flowLocation ? Colors.primary : Colors.outline} />
-                          <Text style={[styles.regionDisplayText, !flowLocation && { color: Colors.outline }]}>
-                            {flowLocation || t('flow.not_set_global', 'Not set (Global)')}
+                          {(() => { const hasLocation = flowLocation && flowLocation !== 'No Region'; return (<>
+                          <MapPin size={18} color={hasLocation ? Colors.primary : Colors.outline} />
+                          <Text style={[styles.regionDisplayText, !hasLocation && { color: Colors.outline }]}>
+                            {hasLocation ? flowLocation : t('flow.not_set_global', 'Not set (Global)')}
                           </Text>
-                          {flowLocation && (
+                          {hasLocation && (
                             <Pressable onPress={() => { setFlowLocation(''); setFlowLat(null); setFlowLon(null); }}>
                               <X size={16} color={Colors.outline} />
                             </Pressable>
-                          )}
+                          )}</>); })()}
                         </View>
                       </View>
 
