@@ -273,7 +273,6 @@ const FlowScreen = ({ navigation }) => {
       setFlowLon(item.lon);
       if (!flowTitle) setFlowTitle(`${item.name} Trip`);
     } else {
-      setEditActivity(item.name);
       setSelectedRegion(item);
     }
     setSearchModalVisible(false);
@@ -961,20 +960,34 @@ const FlowScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.editHeader}>
                       {editingStep ? (
-                        <Pressable onPress={deleteStep} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.headerDeleteBtn}>
-                          <Trash2 size={20} color={Colors.error} />
-                        </Pressable>
+                        <GHButton 
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            deleteStep();
+                          }} 
+                          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} 
+                          style={styles.headerDeleteBtn}
+                        >
+                          <Trash2 size={22} color={Colors.error} />
+                        </GHButton>
                       ) : (
-                        <View style={{ width: 40 }} />
+                        <View style={{ width: 44 }} />
                       )}
                       <Text style={styles.editTitle}>{editingStep ? 'Edit Schedule' : 'New Schedule'}</Text>
-                      <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveStep} style={styles.headerActionBtn}>
+                      <GHButton 
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          isKeyboardVisible ? Keyboard.dismiss() : saveStep();
+                        }} 
+                        style={styles.headerActionBtn}
+                        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                      >
                         {isKeyboardVisible ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
                         ) : (
                           <Text style={styles.headerSaveText}>Save</Text>
                         )}
-                      </Pressable>
+                      </GHButton>
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
@@ -1151,7 +1164,7 @@ const styles = StyleSheet.create({
   detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.sm, height: 50 },
   detailHeaderTitle: { ...Typography.h3, fontSize: 18, flex: 1, textAlign: 'center' },
   iconBtn: { padding: 8 },
-  detailContent: { paddingHorizontal: Spacing.lg, paddingBottom: 50, paddingTop: Spacing.sm },
+  detailContent: { paddingHorizontal: Spacing.lg, paddingBottom: 200, paddingTop: Spacing.sm },
   heroSection: { marginBottom: Spacing.xl },
   heroDate: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
   heroLocationRow: { 
@@ -1224,7 +1237,7 @@ const styles = StyleSheet.create({
   modalContentPadding: { marginBottom: Spacing.xl },
   handleArea: { alignItems: 'center', paddingTop: 4, paddingBottom: 12 },
   charCount: { fontSize: 12, color: Colors.outline, fontWeight: '500' },
-  headerDeleteBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,59,48,0.08)', alignItems: 'center', justifyContent: 'center' },
+  headerDeleteBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,59,48,0.08)', alignItems: 'center', justifyContent: 'center' },
   requiredAsterisk: { color: Colors.error, fontWeight: '700' },
   compactInputRowRequired: { borderColor: 'rgba(255,59,48,0.35)', borderWidth: 1.5 },
   inputGroup: { marginBottom: Spacing.xl },
