@@ -99,7 +99,21 @@
     "reset_weather_msg": "날씨 캐시 데이터를 초기화하시겠습니까?",
     "reset_todo_msg": "모든 할 일 데이터를 초기화하시겠습니까?",
     "reset_flow_msg": "모든 플로우 데이터를 초기화하시겠습니까?",
-    "reset_all_msg": "모든 데이터를 초기화하시겠습니까?\n이 작업은 취소할 수 없습니다."
+    "reset_all_msg": "모든 데이터를 초기화하시겠습니까?\n이 작업은 취소할 수 없습니다.",
+    "pref_title": "환경 설정",
+    "pref_desc": "기온 및 풍속의 단위를 설정하세요.",
+    "pref_temp": "기온 단위",
+    "pref_celsius": "섭씨 (°C)",
+    "pref_celsius_desc": "미터법 표준",
+    "pref_fahrenheit": "화씨 (°F)",
+    "pref_fahrenheit_desc": "미국에서 사용",
+    "pref_wind": "풍속 단위",
+    "pref_wind_ms": "m/s",
+    "pref_wind_ms_desc": "기상 표준",
+    "pref_wind_kmh": "km/h",
+    "pref_wind_kmh_desc": "유럽 및 한국에서 주로 사용",
+    "pref_wind_mph": "mph",
+    "pref_wind_mph_desc": "미국, 영국에서 사용"
   },
   "weather": {
     "sunny": "맑음",

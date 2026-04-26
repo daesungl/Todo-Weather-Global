@@ -42,6 +42,7 @@ import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import { Colors, Spacing, Typography } from '../theme';
+import { useUnits } from '../contexts/UnitContext';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
@@ -53,6 +54,7 @@ const { width, height } = Dimensions.get('window');
 
 const FlowScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
+  const { formatTemp } = useUnits();
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [isSharingImage, setIsSharingImage] = useState(false);
@@ -759,7 +761,7 @@ const FlowScreen = ({ navigation }) => {
                   {heroWeather && (
                     <View style={styles.heroWeather}>
                       {renderWeatherIcon(heroWeather.condKey, 20, Colors.primary, heroWeather.isDay !== false)}
-                      <Text style={styles.heroTemp}>{Math.round(parseFloat(heroWeather.temp) || 0)}°</Text>
+                      <Text style={styles.heroTemp}>{formatTemp(heroWeather.temp)}</Text>
                     </View>
                   )}
                 </GHButton>
@@ -940,7 +942,7 @@ const FlowScreen = ({ navigation }) => {
                                 </View>
                                 <Text style={styles.weatherText} numberOfLines={1}>
                                   {flow.weatherTemp && flow.weatherCondKey
-                                    ? `${t('weather.currently', 'Currently')} ${flow.weatherTemp}, ${t(`weather.${flow.weatherCondKey}`, flow.weatherCondKey)}`
+                                    ? `${t('weather.currently', 'Currently')} ${formatTemp(flow.weatherTemp)}, ${t(`weather.${flow.weatherCondKey}`, flow.weatherCondKey)}`
                                     : flow.weatherSummary && flow.weatherSummary !== 'Weather not set'
                                       ? flow.weatherSummary
                                       : t('flow.weather_not_set', 'Weather not set')}

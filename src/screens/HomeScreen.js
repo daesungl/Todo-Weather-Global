@@ -5,6 +5,7 @@ import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-h
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
+import { useUnits } from '../contexts/UnitContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Sun, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Trash2, Search, X, Navigation, AlertTriangle, CloudSun, CloudMoon, Moon, Umbrella } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
@@ -19,6 +20,7 @@ const { width, height } = Dimensions.get('window');
 
 const HomeScreen = ({ navigation }) => {
   const { t } = useTranslation();
+  const { formatTemp, formatWind } = useUnits();
   const [menuVisible, setMenuVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const currentPageRef = useRef(1);
@@ -358,7 +360,7 @@ const HomeScreen = ({ navigation }) => {
                   </View>
 
                   <View style={styles.tempMainRow}>
-                    <Text style={styles.heroTempBig}>{parseInt(currentWeather?.temp) || '--'}°</Text>
+                    <Text style={styles.heroTempBig}>{formatTemp(currentWeather?.temp)}</Text>
                     <View style={styles.heroVisualWrap}>
                       {renderWeatherIcon(liveCondKey(currentWeather), 100, "white", currentWeather?.isDay !== false)}
                     </View>
@@ -371,7 +373,7 @@ const HomeScreen = ({ navigation }) => {
                       </Text>
                     </View>
                     <Text style={styles.highLowText}>
-                      {t('common.high')} {currentWeather?.highTemp || '--'} · {t('common.low')} {currentWeather?.lowTemp || '--'}
+                      {t('common.high')} {currentWeather?.highTemp != null ? formatTemp(currentWeather.highTemp) : '--'} · {t('common.low')} {currentWeather?.lowTemp != null ? formatTemp(currentWeather.lowTemp) : '--'}
                     </Text>
                   </View>
                 </>
@@ -426,7 +428,7 @@ const HomeScreen = ({ navigation }) => {
                         ) : (
                           <ActivityIndicator size="small" color={Colors.outline} />
                         )}
-                        <Text style={styles.regionTempText}>{parseFloat(weather?.temp) || '--'}°</Text>
+                        <Text style={styles.regionTempText}>{formatTemp(weather?.temp)}</Text>
                       </View>
 
                       <View style={styles.metricsContainer}>
@@ -450,7 +452,7 @@ const HomeScreen = ({ navigation }) => {
                             <Navigation size={14} color={Colors.outline} />
                           </View>
                           <Text style={styles.metricLabelText}>
-                            {weather?.windSpeed || '0m/s'}
+                            {weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}
                           </Text>
                         </View>
                         {/* 4. Humidity % */}

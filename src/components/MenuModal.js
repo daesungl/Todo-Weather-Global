@@ -3,15 +3,17 @@ import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressa
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
-import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2 } from 'lucide-react-native';
+import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUnits } from '../contexts/UnitContext';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.82;
 
 const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const { t, i18n } = useTranslation();
+  const { tempUnit, windUnit, setTempUnit, setWindUnit } = useUnits();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   // Use internal state to keep modal alive during closing animation
@@ -27,6 +29,10 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
     }
     if (id === 'source') {
       setActiveSubMenu('source');
+      return;
+    }
+    if (id === 'settings') {
+      setActiveSubMenu('settings');
       return;
     }
     if (id === 'reset') {
@@ -185,7 +191,70 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
         ]}>
           <GestureHandlerRootView style={{ flex: 1 }}>
           <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
-            {activeSubMenu === 'source' ? (
+            {activeSubMenu === 'settings' ? (
+              <>
+                <View style={styles.header}>
+                  <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8, marginLeft: -8 }}>
+                    <ArrowLeft size={24} color={Colors.text} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                  <Text style={[Typography.h2, { marginBottom: 8 }]}>{t('menu.pref_title')}</Text>
+                  <Text style={[Typography.body, { color: Colors.textSecondary, marginBottom: 24 }]}>{t('menu.pref_desc')}</Text>
+
+                  <View style={styles.prefSection}>
+                    <View style={styles.prefSectionHeader}>
+                      <Thermometer size={16} color={Colors.primary} />
+                      <Text style={styles.prefSectionTitle}>{t('menu.pref_temp')}</Text>
+                    </View>
+                    <View style={styles.menuList}>
+                      {[
+                        { key: 'C', label: t('menu.pref_celsius'), desc: t('menu.pref_celsius_desc') },
+                        { key: 'F', label: t('menu.pref_fahrenheit'), desc: t('menu.pref_fahrenheit_desc') },
+                      ].map(opt => (
+                        <TouchableOpacity
+                          key={opt.key}
+                          style={[styles.menuItem, tempUnit === opt.key && { borderColor: Colors.primary, borderWidth: 1 }]}
+                          onPress={() => setTempUnit(opt.key)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[Typography.body, { fontWeight: '700', color: tempUnit === opt.key ? Colors.primary : Colors.text }]}>{opt.label}</Text>
+                            <Text style={styles.subText}>{opt.desc}</Text>
+                          </View>
+                          {tempUnit === opt.key && <CheckCircle2 size={20} color={Colors.primary} />}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={[styles.prefSection, { marginTop: 24 }]}>
+                    <View style={styles.prefSectionHeader}>
+                      <Wind size={16} color={Colors.primary} />
+                      <Text style={styles.prefSectionTitle}>{t('menu.pref_wind')}</Text>
+                    </View>
+                    <View style={styles.menuList}>
+                      {[
+                        { key: 'ms', label: t('menu.pref_wind_ms'), desc: t('menu.pref_wind_ms_desc') },
+                        { key: 'kmh', label: t('menu.pref_wind_kmh'), desc: t('menu.pref_wind_kmh_desc') },
+                        { key: 'mph', label: t('menu.pref_wind_mph'), desc: t('menu.pref_wind_mph_desc') },
+                      ].map(opt => (
+                        <TouchableOpacity
+                          key={opt.key}
+                          style={[styles.menuItem, windUnit === opt.key && { borderColor: Colors.primary, borderWidth: 1 }]}
+                          onPress={() => setWindUnit(opt.key)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[Typography.body, { fontWeight: '700', color: windUnit === opt.key ? Colors.primary : Colors.text }]}>{opt.label}</Text>
+                            <Text style={styles.subText}>{opt.desc}</Text>
+                          </View>
+                          {windUnit === opt.key && <CheckCircle2 size={20} color={Colors.primary} />}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </ScrollView>
+              </>
+            ) : activeSubMenu === 'source' ? (
               <>
                 <View style={styles.header}>
                   <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8, marginLeft: -8 }}>
@@ -421,7 +490,23 @@ const styles = StyleSheet.create({
   },
   activeToggleText: {
     color: Colors.primary,
-  }
+  },
+  prefSection: {
+    gap: 8,
+  },
+  prefSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  prefSectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 });
 
 export default MenuModal;

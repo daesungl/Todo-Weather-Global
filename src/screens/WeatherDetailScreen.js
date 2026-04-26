@@ -8,6 +8,7 @@ import {
   Info, Umbrella, X, CloudSnow, RefreshCw
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import { useUnits } from '../contexts/UnitContext';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
@@ -46,6 +47,7 @@ const formatAlertTime = (tmFc) => {
 
 const WeatherDetailScreen = ({ navigation, route }) => {
   const { t, i18n } = useTranslation();
+  const { formatTemp, formatWind } = useUnits();
   const { weatherData: initialData = {} } = route?.params || {};
 
   const defaultData = {
@@ -739,7 +741,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           <View style={styles.heroMain}>
             {renderWeatherIcon(weatherData.condKey)}
             <Text style={styles.heroTemp}>
-              {weatherData.temp && String(weatherData.temp).includes('°') ? weatherData.temp : `${weatherData.temp || '--'}°`}
+              {formatTemp(weatherData.temp)}
             </Text>
             <Text style={styles.conditionSub}>
               {weatherData.isDay === false && (weatherData.condKey === 'sunny' || weatherData.condKey === 'clear')
@@ -748,7 +750,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             </Text>
             <View style={styles.heroHighLow}>
               <Text style={styles.heroHLText}>
-                {`${t('common.high')} ${String(weatherData.highTemp).includes('°') ? weatherData.highTemp : `${weatherData.highTemp || '--'}°`}  |  ${t('common.low')} ${String(weatherData.lowTemp).includes('°') ? weatherData.lowTemp : `${weatherData.lowTemp || '--'}°`}`}
+                {`${t('common.high')} ${formatTemp(weatherData.highTemp)}  |  ${t('common.low')} ${formatTemp(weatherData.lowTemp)}`}
               </Text>
             </View>
           </View>
@@ -793,11 +795,11 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                 <View key={index} style={[styles.hourlyItem, { backgroundColor: bgColor }]}>
                   {dayBadge ? <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>{dayBadge}</Text></View> : <Text style={styles.hourlyTime}>{i18n.language.startsWith('ko') ? (item.time === 'Midnight' ? '0시' : item.time.replace(':00', '시')) : item.time}</Text>}
                   <View style={styles.hourlyIcon}>{item.icon}</View>
-                  <Text style={styles.hourlyTemp}>{item.temp}</Text>
+                  <Text style={styles.hourlyTemp}>{formatTemp(item.temp)}</Text>
                   <View style={styles.hourlyMeta}>
                     <View style={styles.metaRow}><Umbrella size={12} color={Colors.primary} /><Text style={styles.metaText}>{item.pop}</Text></View>
                     <View style={styles.metaRow}><Umbrella size={12} color={item.pcp !== '0mm' ? Colors.primary : Colors.textSecondary} /><Text style={[styles.metaText, { color: item.pcp !== '0mm' ? Colors.primary : Colors.textSecondary }]}>{item.pcp}</Text></View>
-                    <View style={styles.metaRow}><View style={{ transform: [{ rotate: `${item.windDeg - 45}deg` }] }}><Navigation size={12} color={Colors.textSecondary} /></View><Text style={styles.metaText}>{item.wind}</Text></View>
+                    <View style={styles.metaRow}><View style={{ transform: [{ rotate: `${item.windDeg - 45}deg` }] }}><Navigation size={12} color={Colors.textSecondary} /></View><Text style={styles.metaText}>{formatWind(item.wind)}</Text></View>
                     <View style={styles.metaRow}><Droplets size={12} color={Colors.textSecondary} /><Text style={styles.metaText}>{item.hum}</Text></View>
                   </View>
                 </View>
@@ -817,7 +819,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               </View>
               <View style={styles.dayHalf}>{renderWeatherIcon(item.amCond, 24, 2.5, {}, true)}<Text style={styles.popText}>{item.amPop}</Text></View>
               <View style={styles.dayHalf}>{renderWeatherIcon(item.pmCond, 24, 2.5, {}, true)}<Text style={styles.popText}>{item.pmPop}</Text></View>
-              <View style={styles.rangeContainer}><Text style={styles.dailyLow}>{`${item.low}°`}</Text><TempRangeBar low={item.low} high={item.high} /><Text style={styles.dailyHigh}>{`${item.high}°`}</Text></View>
+              <View style={styles.rangeContainer}><Text style={styles.dailyLow}>{formatTemp(item.low)}</Text><TempRangeBar low={item.low} high={item.high} /><Text style={styles.dailyHigh}>{formatTemp(item.high)}</Text></View>
             </View>
           ))}
         </View>
@@ -883,7 +885,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </View>
           <View style={styles.metricCard}><View style={styles.metricHeader}><SunMedium size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.uv_index', 'UV Index')}</Text></View><Text style={styles.metricValue}>{weatherData.uvLevelKey ? `${weatherData.uvIndex} (${t('weather.' + weatherData.uvLevelKey)})` : weatherData.uvIndex}</Text></View>
           <View style={styles.metricCard}><View style={styles.metricHeader}><Droplets size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.humidity', 'Humidity')}</Text></View><Text style={styles.metricValue}>{weatherData.humidity}</Text></View>
-          <View style={styles.metricCard}><View style={styles.metricHeader}><Thermometer size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.feels_like', 'Feels Like')}</Text></View><Text style={styles.metricValue}>{weatherData.feelsLike}</Text></View>
+          <View style={styles.metricCard}><View style={styles.metricHeader}><Thermometer size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.feels_like', 'Feels Like')}</Text></View><Text style={styles.metricValue}>{formatTemp(weatherData.feelsLike)}</Text></View>
           <View style={styles.metricCard}><View style={styles.metricHeader}><Eye size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.visibility', 'Visibility')}</Text></View><Text style={styles.metricValue}>{weatherData.visibility}</Text></View>
         </View>
 
@@ -983,8 +985,8 @@ const styles = StyleSheet.create({
   dayHalf: { width: 45, alignItems: 'center' },
   popText: { fontSize: 10, fontWeight: '800', color: Colors.primary },
   rangeContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
-  dailyLow: { width: 30, textAlign: 'right', fontSize: 14, color: Colors.textSecondary },
-  dailyHigh: { width: 30, textAlign: 'left', fontSize: 14, fontWeight: '700', color: Colors.text },
+  dailyLow: { width: 42, textAlign: 'right', fontSize: 14, color: Colors.textSecondary },
+  dailyHigh: { width: 42, textAlign: 'left', fontSize: 14, fontWeight: '700', color: Colors.text },
   rangeBarBg: { flex: 1, height: 4, backgroundColor: Colors.surfaceContainer, marginHorizontal: 8, borderRadius: 2, overflow: 'hidden' },
   rangeBarActive: { position: 'absolute', height: 4, borderRadius: 2 },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.md, gap: 12, marginBottom: Spacing.md },

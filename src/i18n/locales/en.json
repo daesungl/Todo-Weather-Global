@@ -99,7 +99,21 @@
     "reset_weather_msg": "Reset all cached weather data?",
     "reset_todo_msg": "Reset all todo data?",
     "reset_flow_msg": "Reset all flow data?",
-    "reset_all_msg": "Reset all data? This cannot be undone."
+    "reset_all_msg": "Reset all data? This cannot be undone.",
+    "pref_title": "Preferences",
+    "pref_desc": "Customize units for temperature and wind speed.",
+    "pref_temp": "Temperature Unit",
+    "pref_celsius": "Celsius (°C)",
+    "pref_celsius_desc": "Metric standard",
+    "pref_fahrenheit": "Fahrenheit (°F)",
+    "pref_fahrenheit_desc": "Used in the United States",
+    "pref_wind": "Wind Speed Unit",
+    "pref_wind_ms": "m/s",
+    "pref_wind_ms_desc": "Meteorological standard",
+    "pref_wind_kmh": "km/h",
+    "pref_wind_kmh_desc": "Commonly used in Europe & Korea",
+    "pref_wind_mph": "mph",
+    "pref_wind_mph_desc": "Used in the US and UK"
   },
   "weather": {
     "sunny": "Sunny",
