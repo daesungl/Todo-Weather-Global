@@ -96,7 +96,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   };
 
   const [weatherData, setWeatherData] = useState({ ...defaultData, ...correctDayNight(initialData) });
-  
+
   // 전체 데이터 로딩 상태 (initialData가 없을 때 사용)
   const needsFullLoad = !initialData?.temp || initialData?.temp === '--°';
   const [loadingFull, setLoadingFull] = useState(needsFullLoad && (!!route.params?.region?.lat || !!initialData?.lat));
@@ -249,7 +249,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           }
           return updated;
         });
-        
+
         // 대기질 데이터 연동
         loadAsyncData(numLat, numLon, true);
       }
@@ -375,7 +375,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   };
 
   const goBack = () => navigation.goBack();
-  
+
   // Real-time swipe tracking for premium UX
   const swipeX = useRef(new Animated.Value(0)).current;
 
@@ -469,7 +469,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       // Use nowKey provided by service (especially for Global source which adds it in destination's local time)
       // Otherwise fallback to system time (KST) for KMA or old cache
       let nowKey = weatherData.nowKey;
-      
+
       if (!nowKey) {
         const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
         const y = nowKST.getUTCFullYear();
@@ -686,10 +686,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   }
 
   return (
-    <Animated.View 
+    <Animated.View
       style={[
-        styles.container, 
-        { 
+        styles.container,
+        {
           transform: [{ translateX: swipeX }],
           // Add a subtle shadow on the left edge when swiping
           shadowColor: '#000',
@@ -698,7 +698,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           shadowRadius: 20,
           backgroundColor: '#E6F7FF', // Ensure background is solid during swipe
         }
-      ]} 
+      ]}
       {...panResponder.panHandlers}
     >
       <View style={[styles.stickyHeader, { paddingTop: Constants.statusBarHeight }]}>
@@ -710,7 +710,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             {route.params?.isCurrentLocation
               ? t('weather.current_location')
               : (route.params?.region?.name || route.params?.locationName
-                  || (weatherData.locationName && weatherData.locationName !== '--' ? weatherData.locationName : '--'))}
+                || (weatherData.locationName && weatherData.locationName !== '--' ? weatherData.locationName : '--'))}
           </Text>
           {(() => {
             const isCurrentLoc = route.params?.isCurrentLocation;
@@ -759,7 +759,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                 <AlertTriangle size={20} color="white" />
               </Animated.View>
               <Text style={[styles.alertText, { flex: 1, fontWeight: '800', textAlign: 'center', fontSize: 13 }]} numberOfLines={1}>
-                {`${t('weather.alert_present', '기상특보 발효 중')} ${typeof weatherData.alert === 'object' && weatherData.alert.region ? `(${weatherData.alert.region})` : ''}`}
+                {`${t('weather.alert_present', '기상 안전 정보')} ${typeof weatherData.alert === 'object' && weatherData.alert.region ? `(${weatherData.alert.region})` : ''}`}
               </Text>
               <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' }}>
                 <Info size={12} color="white" />
@@ -908,7 +908,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                   <AlertTriangle size={24} color="white" />
                 </View>
                 <View style={{ flex: 1, alignItems: 'center' }}>
-                  <Text style={[styles.alertSheetTitle, { textAlign: 'center' }]}>{t('weather.alert_detail_title', '기상특보 상세정보')}</Text>
+                  <Text style={[styles.alertSheetTitle, { textAlign: 'center' }]}>{t('weather.alert_detail_title', '기상 안전 정보')}</Text>
                   {typeof weatherData.alert === 'object' && weatherData.alert.region && (
                     <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>({weatherData.alert.region})</Text>
                   )}

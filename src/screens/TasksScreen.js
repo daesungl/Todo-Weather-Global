@@ -38,6 +38,7 @@ import { getTasks, addTask, toggleTaskCompletion, deleteTask, updateTask } from 
 import { getWeather } from '../services/weather/WeatherService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
+import { getFlows } from '../services/FlowService';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -133,20 +134,40 @@ const getMonthDays = (baseDate) => {
   return days;
 };
 
-const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDayPress }) => {
+const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMap, onDayPress }) => {
   const baseDate = React.useMemo(() => getDateFromIndex(index), [index]);
   const days = React.useMemo(() => getMonthDays(baseDate), [baseDate]);
   
   const { monthTasks, taskSlots } = React.useMemo(() => {
+    const monthStart = dateStr(days[0].date);
+    const monthEnd = dateStr(days[days.length - 1].date);
+
     // 1. Filter user tasks
     const mTasksFromUser = (tasks || []).filter(t => {
       if (t.isCompleted) return false;
-      const monthStart = dateStr(days[0].date);
-      const monthEnd = dateStr(days[days.length - 1].date);
       return t.date <= monthEnd && (t.endDate || t.date) >= monthStart;
     });
 
-    // 2. Convert public holidays to tasks (Group consecutive days with same name)
+    // 2. Convert Flow steps to tasks
+    const fTasks = [];
+    (flows || []).forEach(flow => {
+      (flow.steps || []).forEach(step => {
+        if (step.date && step.date >= monthStart && step.date <= monthEnd) {
+          fTasks.push({
+            id: `flow_${flow.id}_${step.id}`,
+            title: `[${flow.title || '플로우'}] ${step.activity}`,
+            date: step.date,
+            endDate: step.date,
+            color: flow.color || (flow.gradient && flow.gradient[0]) || Colors.primary,
+            isFlowTask: true,
+            flowId: flow.id,
+            stepId: step.id
+          });
+        }
+      });
+    });
+
+    // 3. Convert public holidays to tasks
     const hTasks = [];
     let currentH = null;
     days.forEach(day => {
@@ -172,10 +193,10 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
       }
     });
 
-    // 3. Combine and sort
-    const combinedTasks = [...mTasksFromUser, ...hTasks].sort((a, b) => {
-      const pA = a.isHoliday ? 0 : 1;
-      const pB = b.isHoliday ? 0 : 1;
+    // 4. Combine and sort
+    const combinedTasks = [...mTasksFromUser, ...fTasks, ...hTasks].sort((a, b) => {
+      const pA = a.isHoliday ? 0 : (a.isFlowTask ? 1 : 2);
+      const pB = b.isHoliday ? 0 : (b.isFlowTask ? 1 : 2);
       if (pA !== pB) return pA - pB;
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       const durA = new Date(a.endDate || a.date) - new Date(a.date);
@@ -214,7 +235,7 @@ const MonthGrid = React.memo(({ index, tasks, selectedDateStr, holidaysMap, onDa
     });
     
     return { monthTasks: combinedTasks, taskSlots: slots };
-  }, [tasks, days, holidaysMap]);
+  }, [tasks, flows, days, holidaysMap]);
 
   const todayStr = React.useMemo(() => dateStr(new Date()), []);
 
@@ -428,6 +449,7 @@ const TasksScreen = ({ navigation }) => {
 
   // State
   const [tasks, setTasks] = useState([]);
+  const [flows, setFlows] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [menuVisible, setMenuVisible] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -715,7 +737,9 @@ const TasksScreen = ({ navigation }) => {
 
   const loadData = async () => {
     const data = await getTasks();
+    const flowsData = await getFlows();
     setTasks(data);
+    setFlows(flowsData);
     fetchTasksWeather(data);
     setLoading(false);
   };
@@ -752,12 +776,37 @@ const TasksScreen = ({ navigation }) => {
 
   const filteredTasks = useMemo(() => {
     const ds = dateStr(selectedDate);
-    return (tasks || []).filter(t => {
+    // 1. User tasks
+    const ut = (tasks || []).filter(t => {
       const start = t.date;
       const end = t.endDate || t.date;
       return ds >= start && ds <= end;
     });
-  }, [tasks, selectedDate]);
+    
+    // 2. Flow tasks
+    const ft = [];
+    (flows || []).forEach(flow => {
+      (flow.steps || []).forEach(step => {
+        if (step.date === ds) {
+          ft.push({
+            id: `flow_${flow.id}_${step.id}`,
+            title: `[${flow.title || '플로우'}] ${step.activity}`,
+            date: step.date,
+            endDate: step.date,
+            color: flow.color || (flow.gradient && flow.gradient[0]) || Colors.primary,
+            isFlowTask: true,
+            flowTitle: flow.title,
+            memo: step.memo,
+            region: step.region,
+            time: step.time,
+            flowId: flow.id
+          });
+        }
+      });
+    });
+
+    return [...ut, ...ft];
+  }, [tasks, flows, selectedDate]);
 
   // Open Picker
   const openPicker = () => {
@@ -1050,12 +1099,13 @@ const TasksScreen = ({ navigation }) => {
       <MonthGrid
         index={index}
         tasks={tasks}
+        flows={flows}
         selectedDateStr={dateStr(selectedDate)}
         holidaysMap={holidaysMap}
         onDayPress={handleDayPress}
       />
     );
-  }, [tasks, selectedDate, holidaysMap, handleDayPress]);
+  }, [tasks, flows, selectedDate, holidaysMap, handleDayPress]);
 
   const handleSearch = async (val) => {
     setSearchQuery(val);
@@ -1303,7 +1353,12 @@ const TasksScreen = ({ navigation }) => {
                               </Text>
                             </View>
 
-                            <TouchableOpacity onPress={() => handleToggle(task.id)} style={styles.listItemCheck} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                            <TouchableOpacity 
+                              onPress={task.isFlowTask ? null : () => handleToggle(task.id)} 
+                              style={[styles.listItemCheck, task.isFlowTask && { opacity: 0.3 }]} 
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                              disabled={task.isFlowTask}
+                            >
                               {task.isCompleted ? 
                                 <CheckCircle2 size={20} color={taskCol} pointerEvents="none" /> : 
                                 <Circle size={20} color={Colors.outlineVariant} pointerEvents="none" />
@@ -1333,7 +1388,12 @@ const TasksScreen = ({ navigation }) => {
                     <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
                       <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setIsDetailMenuVisible(true)} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                    <TouchableOpacity 
+                      onPress={selectedTaskDetail?.isFlowTask ? null : () => setIsDetailMenuVisible(true)} 
+                      style={[styles.detailHeaderBtn, selectedTaskDetail?.isFlowTask && { opacity: 0.3 }]} 
+                      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                      disabled={!selectedTaskDetail || selectedTaskDetail.isFlowTask}
+                    >
                       <MoreHorizontal size={24} color={Colors.text} pointerEvents="none" />
                     </TouchableOpacity>
                   </View>
@@ -1348,7 +1408,14 @@ const TasksScreen = ({ navigation }) => {
                     <View style={styles.detailBody}>
                       <View style={styles.detailTitleSection}>
                         <View style={[styles.detailColorBar, { backgroundColor: selectedTaskDetail.color || Colors.primary }]} />
-                        <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
+                          {selectedTaskDetail.isFlowTask && (
+                            <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' }}>
+                              * 이 일정은 플로우(Flow)에서 관리되는 읽기 전용 정보입니다.
+                            </Text>
+                          )}
+                        </View>
                       </View>
 
                       <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>

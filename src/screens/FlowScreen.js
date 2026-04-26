@@ -34,9 +34,13 @@ import {
   ChevronDown,
   FileText,
   Keyboard as KeyboardIcon,
-  Flag
+  Flag,
+  Share2
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import ViewShot from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
@@ -51,6 +55,8 @@ const FlowScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
+  const [isSharingImage, setIsSharingImage] = useState(false);
+  const viewShotRef = useRef();
   
   const [flows, setFlows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -314,8 +320,21 @@ const FlowScreen = ({ navigation }) => {
         weatherSummary = `Currently ${tempText}, ${condText}`;
       }
 
+      const now = new Date().toISOString();
       const updatedFlows = editingFlow
-        ? flows.map(f => f.id === editingFlow.id ? { ...f, title: flowTitle, description: flowDescription, location: flowLocation, address: flowAddress, lat: flowLat, lon: flowLon, weatherSummary, weatherCondKey, weatherIsDay } : f)
+        ? flows.map(f => f.id === editingFlow.id ? { 
+            ...f, 
+            title: flowTitle, 
+            description: flowDescription, 
+            location: flowLocation, 
+            address: flowAddress, 
+            lat: flowLat, 
+            lon: flowLon, 
+            weatherSummary, 
+            weatherCondKey, 
+            weatherIsDay,
+            updatedAt: now
+          } : f)
         : await addFlow({
             id: Date.now().toString(),
             title: flowTitle,
@@ -330,7 +349,9 @@ const FlowScreen = ({ navigation }) => {
             weatherIsDay,
             lat: flowLat,
             lon: flowLon,
-            steps: []
+            steps: [],
+            createdAt: now,
+            updatedAt: now
           });
 
       setFlows(updatedFlows);
@@ -360,6 +381,7 @@ const FlowScreen = ({ navigation }) => {
     try {
       let weatherData = null;
       let hasWarning = false;
+      const now = new Date().toISOString();
       
       const targetLat = selectedRegion ? selectedRegion.lat : null;
       const targetLon = selectedRegion ? selectedRegion.lon : null;
@@ -376,11 +398,11 @@ const FlowScreen = ({ navigation }) => {
       const updatedFlows = flows.map(f => {
         if (f.id === selectedFlow.id) {
           const updatedSteps = editingStep 
-            ? f.steps.map(s => s.id === editingStep.id ? { ...s, time: editTime, date: editDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon } : s)
-            : [...(f.steps || []), { id: Date.now().toString(), date: editDate, time: editTime, activity: editActivity, memo: editMemo, region: selectedRegion, status: 'upcoming', weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon }];
+            ? f.steps.map(s => s.id === editingStep.id ? { ...s, time: editTime, date: editDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now } : s)
+            : [...(f.steps || []), { id: Date.now().toString(), date: editDate, time: editTime, activity: editActivity, memo: editMemo, region: selectedRegion, status: 'upcoming', weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, createdAt: now, updatedAt: now }];
           
           const sorted = sortSteps(updatedSteps);
-          const updatedF = { ...f, steps: sorted };
+          const updatedF = { ...f, steps: sorted, updatedAt: now };
           setSelectedFlow(updatedF);
           return updatedF;
         }
@@ -398,10 +420,11 @@ const FlowScreen = ({ navigation }) => {
   };
 
   const deleteStep = async () => {
+    const now = new Date().toISOString();
     const updatedFlows = flows.map(f => {
       if (f.id === selectedFlow.id) {
         const updatedSteps = f.steps.filter(s => s.id !== editingStep.id);
-        const updatedF = { ...f, steps: updatedSteps };
+        const updatedF = { ...f, steps: updatedSteps, updatedAt: now };
         setSelectedFlow(updatedF);
         return updatedF;
       }
@@ -410,6 +433,35 @@ const FlowScreen = ({ navigation }) => {
     setFlows(updatedFlows);
     await saveFlows(updatedFlows);
     closeEditModal();
+  };
+
+  const handleShareFlowImage = async () => {
+    if (!viewShotRef.current) return;
+    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsSharingImage(true);
+    
+    try {
+      // 캡처 전에 잠시 대기 (UI 업데이트 보장)
+      const uri = await viewShotRef.current.capture();
+      if (uri) {
+        const isSharingAvailable = await Sharing.isAvailableAsync();
+        if (isSharingAvailable) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'image/png',
+            dialogTitle: `Share ${selectedFlow?.title || 'My Schedule'}`,
+            UTI: 'public.png',
+          });
+        } else {
+          Alert.alert("Sharing Not Available", "Sharing is not available on this device");
+        }
+      }
+    } catch (e) {
+      console.error("Capture failed", e);
+      Alert.alert("Share Failed", "An error occurred while generating the image.");
+    } finally {
+      setIsSharingImage(false);
+    }
   };
 
   const sortSteps = (steps) => {
@@ -620,160 +672,197 @@ const FlowScreen = ({ navigation }) => {
     return a.localeCompare(b);
   });
 
-  const renderTimelineDetail = () => (
-    <View style={styles.detailContainer}>
-      <View style={styles.detailHeader}>
-        <BorderlessButton 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setSelectedFlow(null);
-          }} 
-          style={styles.iconBtn}
-          hitSlop={{ top: 40, bottom: 40, left: 40, right: 40 }}
-        >
-          <ChevronLeft size={24} color={Colors.onBackground} />
-        </BorderlessButton>
-        <Text style={styles.detailHeaderTitle} numberOfLines={1}>{selectedFlow.title}</Text>
-        <BorderlessButton 
-          style={styles.iconBtn} 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            openFlowModal(selectedFlow);
-          }}
-          hitSlop={{ top: 30, bottom: 30, left: 30, right: 30 }}
-        >
-          <MoreVertical size={20} color={Colors.onBackground} />
-        </BorderlessButton>
-      </View>
+  const renderTimelineDetail = () => {
+    const groupedSteps = groupStepsByDate(selectedFlow.steps);
+    const sortedDates = Object.keys(groupedSteps).sort((a, b) => {
+      if (a === 'Unscheduled') return 1;
+      if (b === 'Unscheduled') return -1;
+      return a.localeCompare(b);
+    });
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
-        <View style={styles.heroSection}>
-          <Text style={styles.heroDate}>{selectedFlow.period}</Text>
-          {selectedFlow.location && selectedFlow.location !== 'No Region' && (
-            <GHButton 
-              style={styles.heroLocationRow}
+    return (
+      <View style={styles.detailContainer}>
+        <View style={styles.detailHeader}>
+          <View style={styles.headerLeft}>
+            <BorderlessButton 
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                navigation.navigate('WeatherDetail', { 
-                  region: { 
-                    name: selectedFlow.location, 
-                    address: selectedFlow.address || '',
-                    lat: parseFloat(selectedFlow.lat), 
-                    lon: parseFloat(selectedFlow.lon) 
-                  } 
-                });
-              }}
-              activeOpacity={0.7}
+                setSelectedFlow(null);
+              }} 
+              style={styles.iconBtn}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 10 }}
             >
-              <View style={styles.locationMain}>
-                <MapPin size={18} color={Colors.primary} />
-                <Text style={styles.detailLocationText} numberOfLines={1}>{selectedFlow.location}</Text>
-              </View>
-              {heroWeather && (
-                <View style={styles.heroWeather}>
-                  {renderWeatherIcon(heroWeather.condKey, 20, Colors.primary, heroWeather.isDay !== false)}
-                  <Text style={styles.heroTemp}>{Math.round(parseFloat(heroWeather.temp) || 0)}°</Text>
-                </View>
+              <ChevronLeft size={24} color={Colors.onBackground} />
+            </BorderlessButton>
+          </View>
+
+          <View style={styles.headerCenter}>
+            <Text style={styles.detailHeaderTitle} numberOfLines={1}>{selectedFlow.title}</Text>
+          </View>
+
+          <View style={styles.headerRight}>
+            <BorderlessButton 
+              onPress={handleShareFlowImage}
+              style={styles.iconBtn}
+              hitSlop={{ top: 20, bottom: 20, left: 10, right: 5 }}
+              disabled={isSharingImage}
+            >
+              {isSharingImage ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Share2 size={22} color={Colors.primary} />
               )}
-            </GHButton>
-          )}
+            </BorderlessButton>
+            <BorderlessButton 
+              style={styles.iconBtn} 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                openFlowModal(selectedFlow);
+              }}
+              hitSlop={{ top: 20, bottom: 20, left: 5, right: 20 }}
+            >
+              <MoreVertical size={20} color={Colors.onBackground} />
+            </BorderlessButton>
+          </View>
         </View>
 
-        {sortedDates.length > 0 ? sortedDates.map((date, dateIdx) => (
-          <View key={date} style={styles.dayGroup}>
-            {date !== 'Unscheduled' ? (
-              <View style={styles.dayHeader}>
-                <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>DAY {dateIdx + 1}</Text></View>
-                <Text style={styles.dayDateText}>{formatDateLabel(date)}</Text>
-              </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
+          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background }}>
+            <View style={styles.heroSection}>
+              <Text style={styles.heroDate}>{selectedFlow.period}</Text>
+              {selectedFlow.location && selectedFlow.location !== 'No Region' && (
+                <GHButton 
+                  style={styles.heroLocationRow}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    navigation.navigate('WeatherDetail', { 
+                      region: { 
+                        name: selectedFlow.location, 
+                        address: selectedFlow.address || '',
+                        lat: parseFloat(selectedFlow.lat), 
+                        lon: parseFloat(selectedFlow.lon) 
+                      } 
+                    });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.locationMain}>
+                    <MapPin size={18} color={Colors.primary} />
+                    <Text style={styles.detailLocationText} numberOfLines={1}>{selectedFlow.location}</Text>
+                  </View>
+                  {heroWeather && (
+                    <View style={styles.heroWeather}>
+                      {renderWeatherIcon(heroWeather.condKey, 20, Colors.primary, heroWeather.isDay !== false)}
+                      <Text style={styles.heroTemp}>{Math.round(parseFloat(heroWeather.temp) || 0)}°</Text>
+                    </View>
+                  )}
+                </GHButton>
+              )}
+            </View>
+
+            {sortedDates.length > 0 ? (
+              sortedDates.map((date, dateIdx) => (
+                <View key={date} style={styles.dayGroup}>
+                  {date !== 'Unscheduled' ? (
+                    <View style={styles.dayHeader}>
+                      <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>DAY {dateIdx + 1}</Text></View>
+                      <Text style={styles.dayDateText}>{formatDateLabel(date)}</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.dayHeader, { marginTop: 8 }]}>
+                      <Text style={styles.dayDateText}>Unscheduled</Text>
+                    </View>
+                  )}
+                  {groupedSteps[date].map((step, index) => (
+                    <View key={step.id} style={styles.stepRow}>
+                      <View style={styles.timeCol}>
+                        {step.time ? (
+                          <GHButton onPress={() => openEditStep(step)} hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}>
+                            <Text style={styles.timeText}>{step.time}</Text>
+                          </GHButton>
+                        ) : null}
+                        {step.status === 'current' && <View style={styles.currentIndicator}><Navigation2 size={12} color="white" fill="white" style={{ transform: [{ rotate: '45deg' }] }} /></View>}
+                      </View>
+                      <View style={styles.timelineCol}>
+                        <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.status === 'current' && styles.dotCurrent]} />
+                        {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
+                      </View>
+                      <View 
+                        style={[
+                          styles.stepInfoCard, 
+                          step.status === 'current' && styles.activeStepCard, 
+                          step.warning && styles.warningStepCard,
+                        ]}
+                      >
+                        <View style={styles.stepHeader}>
+                          <Pressable 
+                            onPress={() => openEditStep(step)} 
+                            style={({ pressed }) => [{ flex: 1, justifyContent: 'center' }, pressed && { opacity: 0.7 }]}
+                          >
+                            <Text style={styles.stepActivity} numberOfLines={1}>
+                              {step.activity && step.activity.trim() !== '' ? step.activity : 'Untitled Schedule'}
+                            </Text>
+                            {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
+                            {step.region && (
+                              <View style={styles.stepRegionRow}>
+                                <MapPin size={10} color={Colors.outline} />
+                                <Text style={styles.stepRegionLabel} numberOfLines={1}>{step.region.name}</Text>
+                              </View>
+                            )}
+                          </Pressable>
+                          {step.weather && (
+                            <GHButton 
+                              onPress={() => {
+                                if (step.region) {
+                                  navigation.navigate('WeatherDetail', { 
+                                    region: step.region,
+                                    locationName: step.region.name,
+                                    regionId: step.region.id || step.region.place_id
+                                  });
+                                }
+                              }}
+                              style={{ marginLeft: 8, padding: 8, marginRight: -8, marginTop: -4 }}
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                              {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
+                            </GHButton>
+                          )}
+                        </View>
+                        {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>Rain alert: Indoor backup recommended</Text></View>}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ))
             ) : (
-              <View style={[styles.dayHeader, { marginTop: 8 }]}>
-                <Text style={styles.dayDateText}>Unscheduled</Text>
+              <View style={styles.emptyFlow}>
+                <Navigation size={40} color={Colors.outlineVariant} strokeWidth={1} />
+                <Text style={styles.emptyFlowText}>No schedules added yet.</Text>
               </View>
             )}
-            {groupedSteps[date].map((step, index) => (
-              <View key={step.id} style={styles.stepRow}>
-                <View style={styles.timeCol}>
-                  {step.time ? (
-                    <GHButton onPress={() => openEditStep(step)} hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}>
-                      <Text style={styles.timeText}>{step.time}</Text>
-                    </GHButton>
-                  ) : null}
-                  {step.status === 'current' && <View style={styles.currentIndicator}><Navigation2 size={12} color="white" fill="white" style={{ transform: [{ rotate: '45deg' }] }} /></View>}
-                </View>
-                <View style={styles.timelineCol}>
-                  <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.status === 'current' && styles.dotCurrent]} />
-                  {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
-                </View>
-                <View 
-                  style={[
-                    styles.stepInfoCard, 
-                    step.status === 'current' && styles.activeStepCard, 
-                    step.warning && styles.warningStepCard,
-                  ]}
-                >
-                  <View style={styles.stepHeader}>
-                    <Pressable 
-                      onPress={() => openEditStep(step)} 
-                      style={({ pressed }) => [{ flex: 1, justifyContent: 'center' }, pressed && { opacity: 0.7 }]}
-                    >
-                      <Text style={styles.stepActivity} numberOfLines={1}>
-                        {step.activity && step.activity.trim() !== '' ? step.activity : 'Untitled Schedule'}
-                      </Text>
-                      {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
-                      {step.region && (
-                        <View style={styles.stepRegionRow}>
-                          <MapPin size={10} color={Colors.outline} />
-                          <Text style={styles.stepRegionLabel} numberOfLines={1}>{step.region.name}</Text>
-                        </View>
-                      )}
-                    </Pressable>
-                    {step.weather && (
-                      <GHButton 
-                        onPress={() => {
-                          if (step.region) {
-                            navigation.navigate('WeatherDetail', { 
-                              region: step.region,
-                              locationName: step.region.name,
-                              regionId: step.region.id || step.region.place_id
-                            });
-                          }
-                        }}
-                        style={{ marginLeft: 8, padding: 8, marginRight: -8, marginTop: -4 }}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                      </GHButton>
-                    )}
-                  </View>
-                  {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>Rain alert: Indoor backup recommended</Text></View>}
-                </View>
-              </View>
-            ))}
+          </ViewShot>
+
+          <View style={styles.centerButtonWrap}>
+            <GHButton 
+              style={styles.addStepDetail} 
+              onPress={() => {
+                setEditingStep(null);
+                setEditActivity('');
+                setEditMemo('');
+                setEditDate(new Date().toISOString().split('T')[0]);
+                setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+                setSelectedRegion(null);
+                openEditModal();
+              }}
+            >
+              <Plus size={20} color={Colors.primary} />
+              <Text style={styles.addStepText}>Add Schedule</Text>
+            </GHButton>
           </View>
-        )) : (
-          <View style={styles.emptyFlow}><Navigation size={40} color={Colors.outlineVariant} strokeWidth={1} /><Text style={styles.emptyFlowText}>No schedules added yet.</Text></View>
-        )}
-        <View style={styles.centerButtonWrap}>
-          <GHButton 
-            style={styles.addStepDetail} 
-            onPress={() => {
-              setEditingStep(null);
-              setEditActivity('');
-              setEditMemo('');
-              setEditDate(new Date().toISOString().split('T')[0]);
-              setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
-              setSelectedRegion(null);
-              openEditModal();
-            }}
-          >
-            <Plus size={20} color={Colors.primary} />
-            <Text style={styles.addStepText}>Add Schedule</Text>
-          </GHButton>
-        </View>
-      </ScrollView>
-    </View>
-  );
+        </ScrollView>
+      </View>
+    );
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -1161,8 +1250,11 @@ const styles = StyleSheet.create({
     ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }, android: { elevation: 4 } })
   },
   detailContainer: { flex: 1, backgroundColor: Colors.background, paddingTop: Platform.OS === 'ios' ? 44 : 0 },
-  detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.sm, height: 50 },
-  detailHeaderTitle: { ...Typography.h3, fontSize: 18, flex: 1, textAlign: 'center' },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, height: 60, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant + '20' },
+  headerLeft: { width: 50, alignItems: 'flex-start', justifyContent: 'center' },
+  headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  headerRight: { width: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  detailHeaderTitle: { ...Typography.h3, fontSize: 17, color: Colors.onBackground, textAlign: 'center' },
   iconBtn: { padding: 8 },
   detailContent: { paddingHorizontal: Spacing.lg, paddingBottom: 200, paddingTop: Spacing.sm },
   heroSection: { marginBottom: Spacing.xl },
