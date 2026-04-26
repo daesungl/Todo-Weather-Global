@@ -52,7 +52,7 @@ import { getFlows, saveFlows, addFlow, deleteFlow } from '../services/FlowServic
 const { width, height } = Dimensions.get('window');
 
 const FlowScreen = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [isSharingImage, setIsSharingImage] = useState(false);
@@ -228,7 +228,7 @@ const FlowScreen = ({ navigation }) => {
           if (weather) {
             const tempText = weather.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
             const condText = weather.conditionText || 'Sunny';
-            const newSummary = `Currently ${tempText}, ${condText}`;
+            const newSummary = `${t('weather.currently', 'Currently')} ${tempText}, ${condText}`;
             
             if (flow.weatherSummary !== newSummary || flow.weatherCondKey !== weather.condKey) {
               hasChanges = true;
@@ -302,7 +302,7 @@ const FlowScreen = ({ navigation }) => {
   const saveFlow = async () => {
     if (isSaving) return;
     if (!flowTitle.trim()) {
-      Alert.alert("Title Required", "Please enter a title for this journey.");
+      Alert.alert(t('flow.alert.title_required'), t('flow.alert.title_required_msg'));
       return;
     }
     
@@ -317,7 +317,7 @@ const FlowScreen = ({ navigation }) => {
         const condText = weather?.conditionText || 'Cloudy';
         weatherCondKey = weather?.condKey || 'cloudy';
         weatherIsDay = weather?.isDay !== false;
-        weatherSummary = `Currently ${tempText}, ${condText}`;
+        weatherSummary = `${t('weather.currently', 'Currently')} ${tempText}, ${condText}`;
       }
 
       const now = new Date().toISOString();
@@ -339,7 +339,7 @@ const FlowScreen = ({ navigation }) => {
             id: Date.now().toString(),
             title: flowTitle,
             description: flowDescription,
-            period: 'Multi-day Planning',
+            period: t('flow.multi_day_planning', 'Multi-day Planning'),
             location: flowLocation || 'No Region',
             address: flowAddress || '',
             progress: 0,
@@ -369,11 +369,11 @@ const FlowScreen = ({ navigation }) => {
 
   const saveStep = async () => {
     if (!editActivity.trim()) {
-      Alert.alert("Activity Required", "Please enter what you are doing.");
+      Alert.alert(t('flow.alert.activity_required'), t('flow.alert.activity_required_msg'));
       return;
     }
     if (editTime && !editTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
-      Alert.alert("Invalid Time", "Please use HH:mm format");
+      Alert.alert(t('flow.alert.invalid_time'), t('flow.alert.invalid_time_msg'));
       return;
     }
     
@@ -453,12 +453,12 @@ const FlowScreen = ({ navigation }) => {
             UTI: 'public.png',
           });
         } else {
-          Alert.alert("Sharing Not Available", "Sharing is not available on this device");
+          Alert.alert(t('flow.alert.sharing_not_available'), t('flow.alert.sharing_not_available_msg'));
         }
       }
     } catch (e) {
       console.error("Capture failed", e);
-      Alert.alert("Share Failed", "An error occurred while generating the image.");
+      Alert.alert(t('flow.alert.share_failed'), t('flow.alert.share_failed_msg'));
     } finally {
       setIsSharingImage(false);
     }
@@ -481,10 +481,21 @@ const FlowScreen = ({ navigation }) => {
     }, {});
   };
 
+  const getLocalizedPeriod = (period) => {
+    if (period === 'Multi-day Planning' || period === '일정 계획' || period === 'Multi-Day Planning') {
+      return t('flow.multi_day_planning', 'Multi-day Planning');
+    }
+    return period;
+  };
+
   const formatDateLabel = (dateStr) => {
-    if (!dateStr || dateStr === 'Unscheduled') return 'Upcoming Plans';
+    if (!dateStr || dateStr === 'Unscheduled') return t('flow.unscheduled', 'Unscheduled');
     try {
       const d = new Date(dateStr);
+      if (i18n.language.startsWith('ko')) {
+        const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+        return `${d.getMonth() + 1}월 ${d.getDate()}일 (${weekdays[d.getDay()]})`;
+      }
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
     } catch (e) { return dateStr; }
   };
@@ -519,9 +530,9 @@ const FlowScreen = ({ navigation }) => {
 
   const handleDeleteFlow = (id) => {
     console.log('[Flow] Deleting flow:', id);
-    Alert.alert("Delete Flow", "Delete this journey?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => {
+    Alert.alert(t('flow.alert.delete_flow'), t('flow.alert.delete_flow_msg'), [
+      { text: t('common.cancel'), style: "cancel" },
+      { text: t('common.delete'), style: "destructive", onPress: async () => {
           const updated = flows.filter(f => f.id !== id);
           setFlows(updated);
           if (selectedFlow?.id === id) setSelectedFlow(null);
@@ -630,7 +641,7 @@ const FlowScreen = ({ navigation }) => {
           <Search size={20} color={Colors.outline} />
           <TextInput 
             style={styles.modalInput} 
-            placeholder="Search region..." 
+            placeholder={t('common.search_placeholder', 'Search region...')} 
             placeholderTextColor={Colors.outline} 
             value={searchQuery} 
             onChangeText={setSearchQuery} 
@@ -644,7 +655,7 @@ const FlowScreen = ({ navigation }) => {
           )}
         </View>
         <GHButton onPress={closeSearch}>
-          <Text style={styles.cancelText}>Cancel</Text>
+          <Text style={styles.cancelText}>{t('common.cancel', 'Cancel')}</Text>
         </GHButton>
       </View>
       <ScrollView style={styles.searchResultsList}>
@@ -729,7 +740,7 @@ const FlowScreen = ({ navigation }) => {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
           <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background }}>
             <View style={styles.heroSection}>
-              <Text style={styles.heroDate}>{selectedFlow.period}</Text>
+              <Text style={styles.heroDate}>{getLocalizedPeriod(selectedFlow.period)}</Text>
               {selectedFlow.location && selectedFlow.location !== 'No Region' && (
                 <GHButton 
                   style={styles.heroLocationRow}
@@ -765,12 +776,12 @@ const FlowScreen = ({ navigation }) => {
                 <View key={date} style={styles.dayGroup}>
                   {date !== 'Unscheduled' ? (
                     <View style={styles.dayHeader}>
-                      <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>DAY {dateIdx + 1}</Text></View>
+                      <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>{t('flow.day_n', { n: dateIdx + 1 }, `DAY ${dateIdx + 1}`)}</Text></View>
                       <Text style={styles.dayDateText}>{formatDateLabel(date)}</Text>
                     </View>
                   ) : (
                     <View style={[styles.dayHeader, { marginTop: 8 }]}>
-                      <Text style={styles.dayDateText}>Unscheduled</Text>
+                      <Text style={styles.dayDateText}>{t('flow.unscheduled', 'Unscheduled')}</Text>
                     </View>
                   )}
                   {groupedSteps[date].map((step, index) => (
@@ -800,7 +811,7 @@ const FlowScreen = ({ navigation }) => {
                             style={({ pressed }) => [{ flex: 1, justifyContent: 'center' }, pressed && { opacity: 0.7 }]}
                           >
                             <Text style={styles.stepActivity} numberOfLines={1}>
-                              {step.activity && step.activity.trim() !== '' ? step.activity : 'Untitled Schedule'}
+                              {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
                             </Text>
                             {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
                             {step.region && (
@@ -828,7 +839,7 @@ const FlowScreen = ({ navigation }) => {
                             </GHButton>
                           )}
                         </View>
-                        {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>Rain alert: Indoor backup recommended</Text></View>}
+                        {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>{t('flow.rain_alert', 'Rain alert: Indoor backup recommended')}</Text></View>}
                       </View>
                     </View>
                   ))}
@@ -837,7 +848,7 @@ const FlowScreen = ({ navigation }) => {
             ) : (
               <View style={styles.emptyFlow}>
                 <Navigation size={40} color={Colors.outlineVariant} strokeWidth={1} />
-                <Text style={styles.emptyFlowText}>No schedules added yet.</Text>
+                <Text style={styles.emptyFlowText}>{t('flow.no_schedules', 'No schedules added yet.')}</Text>
               </View>
             )}
           </ViewShot>
@@ -856,7 +867,7 @@ const FlowScreen = ({ navigation }) => {
               }}
             >
               <Plus size={20} color={Colors.primary} />
-              <Text style={styles.addStepText}>Add Schedule</Text>
+              <Text style={styles.addStepText}>{t('flow.add_schedule', 'Add Schedule')}</Text>
             </GHButton>
           </View>
         </ScrollView>
@@ -906,7 +917,7 @@ const FlowScreen = ({ navigation }) => {
 
                             <View style={styles.cardMainArea}>
                               <Text style={styles.cardTitle}>{flow.title}</Text>
-                              <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{flow.period}</Text></View>
+                              <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{getLocalizedPeriod(flow.period)}</Text></View>
                             </View>
                             <View style={styles.cardBottom}>
                               <View style={styles.progressContainer}><View style={[styles.progressBar, { width: `${(flow.progress || 0) * 100}%` }]} /></View>
@@ -942,8 +953,8 @@ const FlowScreen = ({ navigation }) => {
                     <View style={styles.listHeader}>
                       <View style={styles.headerTopRow}>
                         <View>
-                          <Text style={styles.screenTitle}>My Flows</Text>
-                          <Text style={styles.screenSubtitle}>Curated journeys</Text>
+                          <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Flows')}</Text>
+                          <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Curated journeys')}</Text>
                         </View>
                         <GHButton style={styles.headerAddBtn} onPress={() => openFlowModal()}>
                           <Plus size={24} color="white" />
@@ -981,31 +992,31 @@ const FlowScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.editHeader}>
                       <View style={{ width: 40 }} />
-                      <Text style={styles.editTitle}>{editingFlow ? 'Edit Flow' : 'New Flow'}</Text>
+                      <Text style={styles.editTitle}>{editingFlow ? t('flow.edit_flow', 'Edit Flow') : t('flow.new_flow', 'New Flow')}</Text>
                       <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveFlow} style={styles.headerActionBtn}>
                         {isKeyboardVisible ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
                         ) : (
-                          <Text style={styles.headerSaveText}>Save</Text>
+                          <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
                         )}
                       </Pressable>
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                       <View style={styles.modalContentPadding}>
-                        <Text style={styles.inputLabel}>Flow Title <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        <Text style={styles.inputLabel}>{t('flow.flow_title', 'Flow Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !flowTitle && styles.compactInputRowRequired]}>
                           <Flag size={18} color={flowTitle ? Colors.primary : Colors.error} />
-                          <TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder="e.g. Hawaii Trip, Morning Routine" placeholderTextColor={Colors.outline} autoCapitalize="none" />
+                          <TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder={t('flow.flow_title_placeholder', 'e.g. Hawaii Trip, Morning Routine')} placeholderTextColor={Colors.outline} autoCapitalize="none" />
                         </View>
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}><Text style={styles.inputLabel}>Base Region</Text><Pressable onPress={() => openSearch('flow')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
+                        <View style={styles.labelRow}><Text style={styles.inputLabel}>{t('flow.base_region', 'Base Region')}</Text><Pressable onPress={() => openSearch('flow')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>{t('common.find', 'Find')}</Text></Pressable></View>
                         <View style={styles.regionDisplay}>
                           <MapPin size={18} color={flowLocation ? Colors.primary : Colors.outline} />
                           <Text style={[styles.regionDisplayText, !flowLocation && { color: Colors.outline }]}>
-                            {flowLocation || 'Not set (Global)'}
+                            {flowLocation || t('flow.not_set_global', 'Not set (Global)')}
                           </Text>
                           {flowLocation && (
                             <Pressable onPress={() => { setFlowLocation(''); setFlowLat(null); setFlowLon(null); }}>
@@ -1016,8 +1027,8 @@ const FlowScreen = ({ navigation }) => {
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Description</Text>
-                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder="What is this flow about?" placeholderTextColor={Colors.outline} autoCapitalize="none" /></View>
+                        <Text style={styles.inputLabel}>{t('flow.description', 'Description')}</Text>
+                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder={t('flow.description_placeholder', 'What is this flow about?')} placeholderTextColor={Colors.outline} autoCapitalize="none" /></View>
                       </View>
 
                       <View style={{ height: 100 }} />
@@ -1062,7 +1073,7 @@ const FlowScreen = ({ navigation }) => {
                       ) : (
                         <View style={{ width: 44 }} />
                       )}
-                      <Text style={styles.editTitle}>{editingStep ? 'Edit Schedule' : 'New Schedule'}</Text>
+                      <Text style={styles.editTitle}>{editingStep ? t('flow.edit_schedule', 'Edit Schedule') : t('flow.new_schedule', 'New Schedule')}</Text>
                       <GHButton 
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1074,32 +1085,32 @@ const FlowScreen = ({ navigation }) => {
                         {isKeyboardVisible ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
                         ) : (
-                          <Text style={styles.headerSaveText}>Save</Text>
+                          <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
                         )}
                       </GHButton>
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                       <View style={styles.modalContentPadding}>
-                        <Text style={styles.inputLabel}>Activity <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        <Text style={styles.inputLabel}>{t('flow.activity', 'Activity')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !editActivity && styles.compactInputRowRequired]}>
                           <Edit3 size={18} color={editActivity ? Colors.primary : Colors.error} />
-                          <TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder="What are you doing?" placeholderTextColor={Colors.outline} autoCapitalize="none" />
+                          <TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder={t('flow.activity_placeholder', 'What are you doing?')} placeholderTextColor={Colors.outline} autoCapitalize="none" />
                         </View>
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}><Text style={styles.inputLabel}>Weather Region</Text><Pressable onPress={() => openSearch('step')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>Find</Text></Pressable></View>
-                        <View style={styles.regionDisplay}><MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} /><Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]}>{selectedRegion ? selectedRegion.name : 'No region selected'}</Text>{selectedRegion && <Pressable onPress={() => setSelectedRegion(null)}><X size={16} color={Colors.outline} /></Pressable>}</View>
+                        <View style={styles.labelRow}><Text style={styles.inputLabel}>{t('flow.weather_region', 'Weather Region')}</Text><Pressable onPress={() => openSearch('step')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>{t('common.find', 'Find')}</Text></Pressable></View>
+                        <View style={styles.regionDisplay}><MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} /><Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]}>{selectedRegion ? selectedRegion.name : t('flow.no_region', 'No region selected')}</Text>{selectedRegion && <Pressable onPress={() => setSelectedRegion(null)}><X size={16} color={Colors.outline} /></Pressable>}</View>
                       </View>
 
                       <View style={styles.rowInputs}>
                         <View style={[styles.inputGroup, { flex: 1.3, marginRight: 10 }]}>
                           <View style={styles.labelRow}>
-                            <Text style={styles.inputLabel}>Date</Text>
+                            <Text style={styles.inputLabel}>{t('flow.date', 'Date')}</Text>
                             {editDate ? (
                               <Pressable onPress={() => setEditDate('')} hitSlop={10}>
-                                <Text style={styles.resetText}>Reset</Text>
+                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
                               </Pressable>
                             ) : null}
                           </View>
@@ -1116,10 +1127,10 @@ const FlowScreen = ({ navigation }) => {
 
                         <View style={[styles.inputGroup, { flex: 1 }]}>
                           <View style={styles.labelRow}>
-                            <Text style={styles.inputLabel}>Time</Text>
+                            <Text style={styles.inputLabel}>{t('common.time', 'Time')}</Text>
                             {editTime ? (
                               <Pressable onPress={() => setEditTime('')} hitSlop={10}>
-                                <Text style={styles.resetText}>Reset</Text>
+                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
                               </Pressable>
                             ) : null}
                           </View>
@@ -1137,14 +1148,14 @@ const FlowScreen = ({ navigation }) => {
 
                       <View style={styles.inputGroup}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                          <Text style={styles.inputLabel}>Memo</Text>
+                          <Text style={styles.inputLabel}>{t('common.memo', 'Memo')}</Text>
                           <Text style={styles.charCount}>{editMemo.length}/500</Text>
                         </View>
                         <TextInput
                           style={styles.memoInlineInput}
                           value={editMemo}
                           onChangeText={setEditMemo}
-                          placeholder="Add detailed notes or addresses..."
+                          placeholder={t('flow.memo_placeholder', 'Add detailed notes or addresses...')}
                           placeholderTextColor={Colors.outline}
                           multiline
                           textAlignVertical="top"
@@ -1168,11 +1179,11 @@ const FlowScreen = ({ navigation }) => {
                   <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
                   <View style={styles.pickerHeader}>
                     <Pressable onPress={() => { setEditDate(pickerBackupRef.current.editDate); setEditTime(pickerBackupRef.current.editTime); setShowDatePicker(false); setShowTimePicker(false); }} style={{ padding: 4 }}>
-                      <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>취소</Text>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>{t('common.cancel', 'Cancel')}</Text>
                     </Pressable>
-                    <Text style={styles.pickerTitle}>{showDatePicker ? '날짜' : '시간'}</Text>
+                    <Text style={styles.pickerTitle}>{showDatePicker ? t('flow.date', 'Date') : t('common.time', 'Time')}</Text>
                     <Pressable onPress={() => { setShowDatePicker(false); setShowTimePicker(false); }} style={styles.pickerDoneBtn}>
-                      <Text style={styles.pickerDoneText}>완료</Text>
+                      <Text style={styles.pickerDoneText}>{t('common.done', 'Done')}</Text>
                     </Pressable>
                   </View>
                   {showDatePicker ? (
@@ -1184,6 +1195,8 @@ const FlowScreen = ({ navigation }) => {
                       onChange={onDateChange}
                       minimumDate={new Date(2020, 0, 1)}
                       style={{ width: width - 32, height: 360, alignSelf: 'center' }}
+                      locale={i18n.language}
+                      key={`date-${i18n.language}`}
                     />
                   ) : (
                     <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
@@ -1198,6 +1211,8 @@ const FlowScreen = ({ navigation }) => {
                         textColor="black"
                         onChange={onTimeChange}
                         style={{ height: 216, width: width - 32, alignSelf: 'center' }}
+                        locale={i18n.language}
+                        key={`time-${i18n.language}`}
                       />
                     </View>
                   )}

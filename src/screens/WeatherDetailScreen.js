@@ -806,8 +806,8 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         </View>
 
         <View style={styles.moduleCard}>
-          <View style={styles.moduleHeader}><Calendar size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>10일 예보</Text></View>
-          <View style={styles.dailyTableHead}><Text style={[styles.headTxt, { width: 50 }]}>날짜</Text><Text style={styles.headTxt}>오전</Text><Text style={styles.headTxt}>오후</Text><Text style={[styles.headTxt, { flex: 1, textAlign: 'center' }]}>온도 추이</Text></View>
+          <View style={styles.moduleHeader}><Calendar size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>{t('weather.daily_forecast', '10-Day Forecast')}</Text></View>
+          <View style={styles.dailyTableHead}><Text style={[styles.headTxt, { width: 50 }]}>{t('weather.date', 'Date')}</Text><Text style={styles.headTxt}>{t('weather.am', 'AM')}</Text><Text style={styles.headTxt}>{t('weather.pm', 'PM')}</Text><Text style={[styles.headTxt, { flex: 1, textAlign: 'center' }]}>{t('weather.temp_trend', 'Temp Trend')}</Text></View>
           {dailyForecast.map((item, index) => (
             <View key={index} style={[styles.dailyRow, index === dailyForecast.length - 1 && { borderBottomWidth: 0 }]}>
               <View style={styles.dailyDayColumn}>
@@ -823,14 +823,14 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
         {weatherData.wfSv && (
           <View style={[styles.moduleCard, { backgroundColor: '#f0fbff' }]}>
-            <View style={styles.moduleHeader}><Info size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>기상 전망</Text></View>
+            <View style={styles.moduleHeader}><Info size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>{t('weather.forecast_outlook', 'Weather Outlook')}</Text></View>
             <View style={styles.summaryContainer}><Text style={styles.summaryText}>{weatherData.wfSv}</Text></View>
           </View>
         )}
 
         <View style={styles.metricsGrid}>
           <View style={styles.metricCardWide}>
-            <View style={styles.metricHeader}><Wind size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>대기 질</Text></View>
+            <View style={styles.metricHeader}><Wind size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.air_quality', 'Air Quality')}</Text></View>
             <View style={styles.aqiContent}>
               <View style={styles.aqiValueContainer}>
                 {loadingAir ? (
@@ -854,7 +854,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               )}
               {!loadingAir && weatherData.aqiForecast ? (
                 <View style={styles.aqiForecastBox}>
-                  <Text style={styles.aqiForecastLabel}>공식 예보 브리핑</Text>
+                  <Text style={styles.aqiForecastLabel}>{t('weather.official_briefing', 'Official Forecast Briefing')}</Text>
                   <Text style={styles.aqiForecastText}>{weatherData.aqiForecast}</Text>
                 </View>
               ) : null}
@@ -880,22 +880,22 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               }
             </View>
           </View>
-          <View style={styles.metricCard}><View style={styles.metricHeader}><SunMedium size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>자외선</Text></View><Text style={styles.metricValue}>{weatherData.uvIndex}</Text></View>
-          <View style={styles.metricCard}><View style={styles.metricHeader}><Droplets size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>전체 습도</Text></View><Text style={styles.metricValue}>{weatherData.humidity}</Text></View>
-          <View style={styles.metricCard}><View style={styles.metricHeader}><Thermometer size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>체감 온도</Text></View><Text style={styles.metricValue}>{weatherData.feelsLike}</Text></View>
-          <View style={styles.metricCard}><View style={styles.metricHeader}><Eye size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>가시거리</Text></View><Text style={styles.metricValue}>{weatherData.visibility}</Text></View>
+          <View style={styles.metricCard}><View style={styles.metricHeader}><SunMedium size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.uv_index', 'UV Index')}</Text></View><Text style={styles.metricValue}>{weatherData.uvIndex}</Text></View>
+          <View style={styles.metricCard}><View style={styles.metricHeader}><Droplets size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.humidity', 'Humidity')}</Text></View><Text style={styles.metricValue}>{weatherData.humidity}</Text></View>
+          <View style={styles.metricCard}><View style={styles.metricHeader}><Thermometer size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.feels_like', 'Feels Like')}</Text></View><Text style={styles.metricValue}>{weatherData.feelsLike}</Text></View>
+          <View style={styles.metricCard}><View style={styles.metricHeader}><Eye size={14} color={Colors.textSecondary} /><Text style={styles.metricLabel}>{t('weather.visibility', 'Visibility')}</Text></View><Text style={styles.metricValue}>{weatherData.visibility}</Text></View>
         </View>
 
         <View style={styles.moduleCard}>
-          <View style={styles.moduleHeader}><SunMedium size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>일출 및 일몰</Text></View>
+          <View style={styles.moduleHeader}><SunMedium size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>{t('weather.sunrise_sunset', 'Sunrise & Sunset')}</Text></View>
           <View style={styles.sunCycleRow}>
-            <View style={styles.sunSide}><Text style={styles.sunLabel}>일출</Text><Text style={styles.sunTime}>{weatherData.sunrise}</Text></View>
+            <View style={styles.sunSide}><Text style={styles.sunLabel}>{t('weather.sunrise', 'Sunrise')}</Text><Text style={styles.sunTime}>{weatherData.sunrise}</Text></View>
             <View style={styles.sunGraphic}><View style={styles.sunHorizon} /><View style={styles.sunArc} />{sunPos && <View style={[styles.sunPoint, { left: sunPos.left, bottom: sunPos.bottom, backgroundColor: '#FFB800' }]}><View style={styles.sunGlow} /></View>}</View>
-            <View style={styles.sunSide}><Text style={styles.sunLabel}>일몰</Text><Text style={styles.sunTime}>{weatherData.sunset}</Text></View>
+            <View style={styles.sunSide}><Text style={styles.sunLabel}>{t('weather.sunset', 'Sunset')}</Text><Text style={styles.sunTime}>{weatherData.sunset}</Text></View>
           </View>
         </View>
 
-        <View style={styles.attribution}><Text style={styles.attrLabel}>DATA PROVIDED BY</Text><Text style={styles.attrValue}>{weatherData.source}</Text></View>
+        <View style={styles.attribution}><Text style={styles.attrLabel}>{t('weather.data_provided_by', 'DATA PROVIDED BY')}</Text><Text style={styles.attrValue}>{weatherData.source}</Text></View>
       </ScrollView>
 
       {alertModalVisible && (

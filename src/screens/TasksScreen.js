@@ -59,30 +59,30 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const ITEM_HEIGHT = 50;
 const TASK_COLOR_LABELS = [
-  { name: '다크 블루',   color: '#2A234F' }, // 13.7:1
-  { name: '차콜',        color: '#2B2B2B' }, // 13.4:1
-  { name: '네이비 블루', color: '#10367D' }, // 10.7:1
-  { name: '버건디',      color: '#7D2027' }, //  9.3:1
-  { name: '인디고',      color: '#3730A3' }, //  9.3:1
-  { name: '포레스트 그린', color: '#06530B' }, //  8.5:1
-  { name: '올리브 그린', color: '#574C00' }, //  7.7:1
-  { name: '크림슨 레드', color: '#B40023' }, //  6.8:1
-  { name: '슬레이트',    color: '#475569' }, //  6.8:1
-  { name: '피콕 블루',   color: '#006D77' }, //  5.5:1
-  { name: '바이올렛',    color: '#7C3AED' }, //  5.5:1
-  { name: '에메랄드',    color: '#047857' }, //  5.1:1
-  { name: '머스타드',    color: '#887114' }, //  4.3:1
-  { name: '오렌지',      color: '#EA2E00' }, //  4.2:1
-  { name: '코럴',        color: '#E05252' }, //  3.6:1
-  { name: '테라코타',    color: '#C66B3D' }, //  3.5:1
-  { name: '스카이 블루', color: '#2196F3' }, //  3.0:1
-  { name: '세이지 그린', color: '#A8B89F' }, //  2.0:1
-  { name: '블러쉬 핑크', color: '#FFB3C3' }, //  1.5:1
-  { name: '파스텔 퍼플', color: '#BBBFEC' }, //  1.5:1
-  { name: '라벤더',      color: '#EBEBEB' }, //  1.1:1
-  { name: '크림',        color: '#F4EFE6' }, //  1.1:1
-  { name: '아이보리',    color: '#FEF9DB' }, //  1.1:1
-  { name: '베이지',      color: '#F0E7D6' }, //  1.1:1
+  { key: 'dark_blue',    name: '다크 블루',   color: '#2A234F' },
+  { key: 'charcoal',     name: '차콜',        color: '#2B2B2B' },
+  { key: 'navy_blue',    name: '네이비 블루', color: '#10367D' },
+  { key: 'burgundy',     name: '버건디',      color: '#7D2027' },
+  { key: 'indigo',       name: '인디고',      color: '#3730A3' },
+  { key: 'forest_green', name: '포레스트 그린', color: '#06530B' },
+  { key: 'olive_green',  name: '올리브 그린', color: '#574C00' },
+  { key: 'crimson_red',  name: '크림슨 레드', color: '#B40023' },
+  { key: 'slate',        name: '슬레이트',    color: '#475569' },
+  { key: 'peacock_blue', name: '피콕 블루',   color: '#006D77' },
+  { key: 'violet',       name: '바이올렛',    color: '#7C3AED' },
+  { key: 'emerald',      color: '#047857', name: '에메랄드' },
+  { key: 'mustard',      color: '#887114', name: '머스타드' },
+  { key: 'orange',       color: '#EA2E00', name: '오렌지' },
+  { key: 'coral',        color: '#E05252', name: '코럴' },
+  { key: 'terracotta',   color: '#C66B3D', name: '테라코타' },
+  { key: 'sky_blue',     color: '#2196F3', name: '스카이 블루' },
+  { key: 'sage_green',   color: '#A8B89F', name: '세이지 그린' },
+  { key: 'blush_pink',   color: '#FFB3C3', name: '블러쉬 핑크' },
+  { key: 'pastel_purple', color: '#BBBFEC', name: '파스텔 퍼플' },
+  { key: 'lavender',      color: '#EBEBEB', name: '라벤더' },
+  { key: 'cream',         color: '#F4EFE6', name: '크림' },
+  { key: 'ivory',         color: '#FEF9DB', name: '아이보리' },
+  { key: 'beige',         color: '#F0E7D6', name: '베이지' },
 ];
 
 const TASK_COLORS = TASK_COLOR_LABELS.map(l => l.color);
@@ -445,7 +445,7 @@ const SelectedCountryItem = React.memo(({ code, country, onRemove }) => (
 
 const TasksScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
-  const isKorean = i18n.language === 'ko';
+  const isKorean = i18n.language.startsWith('ko');
 
   // State
   const [tasks, setTasks] = useState([]);
@@ -1041,11 +1041,12 @@ const TasksScreen = ({ navigation }) => {
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    showToast(editingTask ? '일정이 수정되었습니다.' : '새 일정이 등록되었습니다.');
+    showToast(editingTask ? t('tasks.edit_success') : t('tasks.save_success'));
   };
 
   const formatDisplayDate = (date) => {
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+    const locale = isKorean ? 'ko-KR' : 'en-US';
+    return date.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   };
 
   const handleToggle = async (id) => {
@@ -1054,11 +1055,11 @@ const TasksScreen = ({ navigation }) => {
     const newStatus = !task?.isCompleted;
     setTasks(updated);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    showToast(newStatus ? '일정이 완료되었습니다.' : '일정이 미완료 상태로 변경되었습니다.');
+    showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
   };
 
   const handleDelete = (id) => {
-    Alert.alert(t('common.delete'), t('tasks.delete_confirm', '이 일정을 삭제할까요?'), [
+    Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('common.delete'), style: 'destructive', onPress: async () => {
@@ -1174,7 +1175,7 @@ const TasksScreen = ({ navigation }) => {
           <View style={styles.monthHeaderRow}>
             <TouchableOpacity style={styles.monthSelectBtn} onPress={openPicker}>
               <Text style={styles.monthText}>
-                {selectedDate.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+                {selectedDate.toLocaleString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', year: 'numeric' })}
               </Text>
               <Calendar size={20} color="#1B254B" style={{ marginLeft: 8 }} pointerEvents="none" />
             </TouchableOpacity>
@@ -1194,7 +1195,7 @@ const TasksScreen = ({ navigation }) => {
             >
               <MapPin size={14} color={Colors.primary} />
               <Text style={styles.holidayHeaderText} numberOfLines={1} ellipsizeMode="tail">
-                Holidays: {(holidayCountries || []).join(', ')}
+                {t('tasks.holidays_label')}{(holidayCountries || []).join(', ')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1202,7 +1203,7 @@ const TasksScreen = ({ navigation }) => {
 
         <View style={styles.calendarArea}>
           <View style={styles.weekdayLabels}>
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            {(t('common.days_short', { returnObjects: true }) || ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']).map(d => (
               <Text key={d} style={styles.weekdayText}>{d}</Text>
             ))}
           </View>
@@ -1290,8 +1291,8 @@ const TasksScreen = ({ navigation }) => {
                   <View style={styles.sheetTitleArea}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.sheetDateTitle}>{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일 {['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()]}요일</Text>
-                        <Text style={styles.sheetSubtitle}>Scheduled Tasks</Text>
+                        <Text style={styles.sheetDateTitle}>{formatDisplayDate(selectedDate)}</Text>
+                        <Text style={styles.sheetSubtitle}>{t('tasks.scheduled_tasks', 'Scheduled Tasks')}</Text>
                       </View>
                       <TouchableOpacity 
                         onPress={closeTaskListModal}
@@ -1412,7 +1413,7 @@ const TasksScreen = ({ navigation }) => {
                           <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
                           {selectedTaskDetail.isFlowTask && (
                             <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' }}>
-                              * 이 일정은 플로우(Flow)에서 관리되는 읽기 전용 정보입니다.
+                              {t('tasks.flowReadOnlyNotice', '* This task is read-only information managed in Flow.')}
                             </Text>
                           )}
                         </View>
@@ -1452,7 +1453,10 @@ const TasksScreen = ({ navigation }) => {
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                             <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: selectedTaskDetail.color || Colors.primary }} />
                             <Text style={styles.detailInfoText}>
-                              {TASK_COLOR_LABELS.find(l => l.color === (selectedTaskDetail.color || Colors.primary))?.name || '기본 색상'}
+                              {(() => {
+                                const label = TASK_COLOR_LABELS.find(l => l.color === (selectedTaskDetail.color || Colors.primary));
+                                return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.defaultColor', 'Default Color');
+                              })()}
                             </Text>
                           </View>
                         </View>
@@ -1608,7 +1612,12 @@ const TasksScreen = ({ navigation }) => {
                         <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setPendingColor(selectedColor); setShowColorPicker(true); }}>
                           <View style={styles.rowLead}>
                             <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
-                            <Text style={styles.timeTreeRowText}>{TASK_COLOR_LABELS.find(l => l.color === selectedColor)?.name || '라벨 선택'}</Text>
+                            <Text style={styles.timeTreeRowText}>
+                              {(() => {
+                                const label = TASK_COLOR_LABELS.find(l => l.color === selectedColor);
+                                return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.selectLabel', 'Select Label');
+                              })()}
+                            </Text>
                           </View>
                           <ChevronRight size={20} color={Colors.outline} />
                         </TouchableOpacity>
@@ -1702,6 +1711,7 @@ const TasksScreen = ({ navigation }) => {
                       </View>
                       {(showDatePicker || showEndDatePicker) ? (
                         <DateTimePicker
+                          key={i18n.language}
                           value={(() => {
                             try {
                               if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
@@ -1711,6 +1721,7 @@ const TasksScreen = ({ navigation }) => {
                           })()}
                           mode="date"
                           display="inline"
+                          locale={i18n.language}
                           accentColor={Colors.primary}
                           onChange={(event, date) => {
                             if (showDatePicker) onDateChange(event, date);
@@ -1721,6 +1732,7 @@ const TasksScreen = ({ navigation }) => {
                       ) : (
                         <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
                           <DateTimePicker
+                            key={i18n.language}
                             value={(() => {
                               try {
                                 if (showTimePicker) {
@@ -1736,6 +1748,7 @@ const TasksScreen = ({ navigation }) => {
                             })()}
                             mode="time"
                             display="spinner"
+                            locale={i18n.language}
                             is24Hour={true}
                             textColor="black"
                             onChange={(event, date) => {
@@ -1757,15 +1770,20 @@ const TasksScreen = ({ navigation }) => {
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                         <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', '라벨 선택')}</Text>
                         <TouchableOpacity onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }} style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>선택</Text>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>{t('common.select', 'Select')}</Text>
                         </TouchableOpacity>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, width: '100%' }}>
                         <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
                         <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>{TASK_COLOR_LABELS.find(l => l.color === pendingColor)?.name ?? '라벨'}</Text>
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>
+                            {(() => {
+                              const label = TASK_COLOR_LABELS.find(l => l.color === pendingColor);
+                              return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.label', 'Label');
+                            })()}
+                          </Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
-                            <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>가나다 Task 샘플</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{t('tasks.sample_task', 'Task Sample')}</Text>
                           </View>
                         </View>
                       </View>
@@ -1784,7 +1802,7 @@ const TasksScreen = ({ navigation }) => {
                               <View style={[styles.colorSwatch, { backgroundColor: item.color }, item.color.toUpperCase() === '#EBEBEB' || item.color.toUpperCase() === '#F4EFE6' || item.color.toUpperCase() === '#FEF9DB' || item.color.toUpperCase() === '#F0E7D6' ? { borderWidth: 1, borderColor: '#E2E8F0' } : {}]}>
                                 {isPending && <View style={{ position: 'absolute', inset: 0, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: 'white' }} /></View>}
                               </View>
-                              <Text style={styles.colorLabel} numberOfLines={1}>{item.name}</Text>
+                              <Text style={styles.colorLabel} numberOfLines={1}>{t(`tasks.colors.${item.key}`, item.name)}</Text>
                             </TouchableOpacity>
                           );
                         })}
@@ -1811,7 +1829,7 @@ const TasksScreen = ({ navigation }) => {
         <View style={styles.pickerBg}>
           <View style={styles.pickerContent}>
             <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>Select Date</Text>
+              <Text style={styles.pickerTitle}>{t('common.select_date', 'Select Date')}</Text>
               <TouchableOpacity onPress={() => setIsPickerVisible(false)} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
                 <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
               </TouchableOpacity>
@@ -1847,7 +1865,7 @@ const TasksScreen = ({ navigation }) => {
                     }}
                     renderItem={({ item: year }) => (
                       <View style={styles.wheelItem}>
-                        <Text style={[styles.wheelItemText, tempYear === year && styles.activeWheelText]}>{year}년</Text>
+                        <Text style={[styles.wheelItemText, tempYear === year && styles.activeWheelText]}>{year}{t('common.year_unit', '년')}</Text>
                       </View>
                     )}
                   />
@@ -1878,7 +1896,9 @@ const TasksScreen = ({ navigation }) => {
                     }}
                     renderItem={({ item: month }) => (
                       <View style={styles.wheelItem}>
-                        <Text style={[styles.wheelItemText, tempMonth === (month - 1) && styles.activeWheelText]}>{month}월</Text>
+                        <Text style={[styles.wheelItemText, tempMonth === (month - 1) && styles.activeWheelText]}>
+                          {t(`months.${month - 1}`)}{t('common.month_unit', '월')}
+                        </Text>
                       </View>
                     )}
                   />
@@ -1896,10 +1916,10 @@ const TasksScreen = ({ navigation }) => {
                 yearListRef.current?.scrollToIndex({ index: y - 1900, animated: true });
                 monthListRef.current?.scrollToIndex({ index: m, animated: true });
               }}>
-                <Text style={styles.todayBtnText}>Go to Today</Text>
+                <Text style={styles.todayBtnText}>{t('common.go_to_today', 'Go to Today')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.confirmBtn} onPress={applyPicker}>
-                <Text style={styles.confirmBtnText}>Done</Text>
+                <Text style={styles.confirmBtnText}>{t('common.done', 'Done')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1938,7 +1958,7 @@ const TasksScreen = ({ navigation }) => {
                         <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                       </TouchableOpacity>
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={styles.modalTitle}>Memo</Text>
+                        <Text style={styles.modalTitle}>{t('tasks.memo', 'Memo')}</Text>
                         <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '600' }}>
                           {newMemo.length} / 1000
                         </Text>
@@ -2008,7 +2028,7 @@ const TasksScreen = ({ navigation }) => {
                     <TextInput
                       ref={titleInputRef}
                       style={styles.timeTreeTitle}
-                      placeholder={t('tasks.placeholder', '투두')}
+                      placeholder={t('tasks.placeholder', 'Todo')}
                       value={newTitle}
                       onChangeText={setNewTitle}
                       returnKeyType="done"
@@ -2021,7 +2041,10 @@ const TasksScreen = ({ navigation }) => {
                       <View style={styles.rowLead}>
                         <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
                         <Text style={styles.timeTreeRowText}>
-                          {TASK_COLOR_LABELS.find(l => l.color === selectedColor)?.name || '라벨 선택'}
+                          {(() => {
+                            const label = TASK_COLOR_LABELS.find(l => l.color === selectedColor);
+                            return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.selectLabel', '라벨 선택');
+                          })()}
                         </Text>
                       </View>
                       <ChevronRight size={20} color={Colors.outline} />
@@ -2139,7 +2162,7 @@ const TasksScreen = ({ navigation }) => {
                     onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }}
                     style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}
                   >
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>선택</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>{t('common.select', 'Select')}</Text>
                   </TouchableOpacity>
                 </View>
                 {/* 컬러 프리뷰 샘플 */}
@@ -2147,10 +2170,13 @@ const TasksScreen = ({ navigation }) => {
                   <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>
-                      {TASK_COLOR_LABELS.find(l => l.color === pendingColor)?.name ?? '라벨'}
+                      {(() => {
+                        const label = TASK_COLOR_LABELS.find(l => l.color === pendingColor);
+                        return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.label', '라벨');
+                      })()}
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>가나다 Task 샘플</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{t('tasks.sample_task', 'Task Sample')}</Text>
                     </View>
                   </View>
                 </View>
@@ -2203,7 +2229,7 @@ const TasksScreen = ({ navigation }) => {
                           ]}
                           numberOfLines={1}
                         >
-                          {item.name}
+                          {t(`tasks.colors.${item.key}`, item.name)}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -2445,7 +2471,7 @@ const TasksScreen = ({ navigation }) => {
                   maxToRenderPerBatch={10}
                   windowSize={5}
                   getItemLayout={(data, index) => ({ length: 65, offset: 65 * index, index })}
-                  ListHeaderComponent={<Text style={styles.sectionSmallTitle}>Search Results</Text>}
+                  ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.search_results', 'Search Results')}</Text>}
                   renderItem={({ item }) => (
                     <CountryItem 
                       item={item} 
@@ -2469,7 +2495,7 @@ const TasksScreen = ({ navigation }) => {
                   showsVerticalScrollIndicator={false}
                   initialNumToRender={15}
                   getItemLayout={(data, index) => ({ length: 75, offset: 75 * index, index })}
-                  ListHeaderComponent={<Text style={styles.sectionSmallTitle}>Selected Countries</Text>}
+                  ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.selected_countries', 'Selected Countries')}</Text>}
                   renderItem={({ item: code }) => (
                     <SelectedCountryItem 
                       code={code} 

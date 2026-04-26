@@ -1,25 +1,34 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
-import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages } from 'lucide-react-native';
+import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2 } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.82;
 
-const MenuModal = ({ visible, onClose, onReset }) => {
+const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const { t, i18n } = useTranslation();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   // Use internal state to keep modal alive during closing animation
   const [isShowing, setIsShowing] = useState(visible);
+  const [activeSubMenu, setActiveSubMenu] = useState(null);
 
   const currentLang = i18n.language;
 
   const handleMenuItemPress = async (id) => {
+    if (id === 'privacy') {
+      Linking.openURL('https://pellongsoft.tistory.com/4');
+      return;
+    }
+    if (id === 'source') {
+      setActiveSubMenu('source');
+      return;
+    }
     if (id === 'reset') {
       // Show multiple reset options
       Alert.alert(
@@ -135,11 +144,10 @@ const MenuModal = ({ visible, onClose, onReset }) => {
   };
 
   const menuItems = [
-    { id: 'premium', icon: <CreditCard size={20} color={Colors.primary} />, label: t('menu.premium'), sub: t('menu.premium_sub') },
     { id: 'source', icon: <Globe size={20} color={Colors.primary} />, label: t('menu.source'), sub: t('menu.source_sub') },
     { id: 'settings', icon: <Settings size={20} color={Colors.primary} />, label: t('menu.preferences'), sub: t('menu.preferences_sub') },
+    { id: 'privacy', icon: <Shield size={20} color={Colors.primary} />, label: t('menu.privacy', 'Privacy Policy'), sub: t('menu.privacy_sub', 'Check our privacy policy') },
     { id: 'reset', icon: <RefreshCw size={20} color={Colors.error} />, label: t('menu.reset'), sub: t('menu.reset_sub') },
-    { id: 'privacy', icon: <Shield size={20} color={Colors.outline} />, label: t('menu.privacy') },
     { id: 'help', icon: <Info size={20} color={Colors.outline} />, label: t('menu.help') },
   ];
 
@@ -149,13 +157,22 @@ const MenuModal = ({ visible, onClose, onReset }) => {
     <Modal
       transparent={true}
       visible={isShowing}
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (activeSubMenu) {
+          setActiveSubMenu(null);
+        } else {
+          onClose();
+        }
+      }}
       animationType="none"
     >
       <View style={styles.overlay}>
         <Pressable
           style={styles.backdropPressable}
-          onPress={onClose}
+          onPress={() => {
+            setActiveSubMenu(null);
+            onClose();
+          }}
         >
           <Animated.View style={[
             styles.backdrop,
@@ -169,63 +186,103 @@ const MenuModal = ({ visible, onClose, onReset }) => {
         ]}>
           <GestureHandlerRootView style={{ flex: 1 }}>
           <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
-            {/* Header - Minimalist Editorial Style */}
-            <View style={styles.header}>
-              <View>
-                <Text style={Typography.h1}>{t('common.appName')}</Text>
-                <Text style={[Typography.bodySmall, { color: Colors.textSecondary, marginTop: 4, letterSpacing: 0.8 }]}>YOUR ATMOSPHERIC COMPANION</Text>
-              </View>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-              <View style={styles.menuList}>
-                {menuItems.map((item, index) => (
-                  <TouchableOpacity 
-                    key={item.id} 
-                    style={styles.menuItem}
-                    onPress={() => handleMenuItemPress(item.id)}
-                  >
-                    <View style={styles.iconWrap}>{item.icon}</View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[Typography.body, { fontWeight: '700' }]}>{item.label}</Text>
-                      {item.sub && <Text style={styles.subText}>{item.sub}</Text>}
-                    </View>
-                    <ChevronRight size={18} color={Colors.outlineVariant} />
+            {activeSubMenu === 'source' ? (
+              <>
+                <View style={styles.header}>
+                  <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8, marginLeft: -8 }}>
+                    <ArrowLeft size={24} color={Colors.text} />
                   </TouchableOpacity>
-                ))}
-
-                {/* Inline Language Selector - Same size as other items */}
-                <TouchableOpacity style={styles.menuItem} onPress={toggleLanguage}>
-                  <View style={styles.iconWrap}>
-                    <Languages size={20} color={Colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[Typography.body, { fontWeight: '700' }]}>{t('menu.language')}</Text>
-                    <Text style={styles.subText}>{currentLang.startsWith('ko') ? '한국어 (KR)' : 'English (EN)'}</Text>
-                  </View>
-                  <View style={styles.toggleTrack}>
-                    <View style={[styles.toggleChip, currentLang.startsWith('ko') && styles.activeChip]}>
-                      <Text style={[styles.toggleText, currentLang.startsWith('ko') && styles.activeToggleText]}>KR</Text>
-                    </View>
-                    <View style={[styles.toggleChip, !currentLang.startsWith('ko') && styles.activeChip]}>
-                      <Text style={[styles.toggleText, !currentLang.startsWith('ko') && styles.activeToggleText]}>EN</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {/* Identity Section */}
-              <View style={styles.footer}>
-                <View style={styles.profileBox}>
-                    <View style={styles.avatar} />
-                    <View style={{ flex: 1 }}>
-                        <Text style={[Typography.bodySmall, { fontWeight: '700' }]}>Curator Beta</Text>
-                        <Text style={styles.statusText}>Active Now • Global</Text>
-                    </View>
                 </View>
-                <Text style={styles.versionText}>{t('menu.version')}</Text>
-              </View>
-            </ScrollView>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                  <Text style={[Typography.h2, { marginBottom: 8 }]}>{t('menu.source_title', 'Weather Source Settings')}</Text>
+                  <Text style={[Typography.body, { color: Colors.textSecondary, marginBottom: 24 }]}>
+                    {t('menu.source_desc')}
+                  </Text>
+
+                  <View style={styles.menuList}>
+                    <TouchableOpacity style={[styles.menuItem, { borderColor: Colors.primary, borderWidth: 1 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[Typography.body, { fontWeight: '700', color: Colors.primary }]}>{t('menu.source_auto')}</Text>
+                        <Text style={styles.subText}>{t('menu.source_auto_desc')}</Text>
+                      </View>
+                      <CheckCircle2 size={20} color={Colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.menuItem, { opacity: 0.5 }]} disabled>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[Typography.body, { fontWeight: '700' }]}>{t('menu.source_kma')}</Text>
+                        <Text style={styles.subText}>{t('menu.source_kma_desc')}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.menuItem, { opacity: 0.5 }]} disabled>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[Typography.body, { fontWeight: '700' }]}>{t('menu.source_global')}</Text>
+                        <Text style={styles.subText}>{t('menu.source_global_desc')}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </>
+            ) : (
+              <>
+                {/* Header - Minimalist Editorial Style */}
+                <View style={styles.header}>
+                  <View>
+                    <Text style={Typography.h1}>{t('common.appName')}</Text>
+                    <Text style={[Typography.bodySmall, { color: Colors.textSecondary, marginTop: 4, letterSpacing: 0.8 }]}>{t('menu.companion_tag', 'YOUR ATMOSPHERIC COMPANION')}</Text>
+                  </View>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                  <View style={styles.menuList}>
+                    {menuItems.map((item, index) => (
+                      <TouchableOpacity 
+                        key={item.id} 
+                        style={styles.menuItem}
+                        onPress={() => handleMenuItemPress(item.id)}
+                      >
+                        <View style={styles.iconWrap}>{item.icon}</View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[Typography.body, { fontWeight: '700' }]}>{item.label}</Text>
+                          {item.sub && <Text style={styles.subText}>{item.sub}</Text>}
+                        </View>
+                        <ChevronRight size={18} color={Colors.outlineVariant} />
+                      </TouchableOpacity>
+                    ))}
+
+                    {/* Inline Language Selector - Same size as other items */}
+                    <TouchableOpacity style={styles.menuItem} onPress={toggleLanguage}>
+                      <View style={styles.iconWrap}>
+                        <Languages size={20} color={Colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[Typography.body, { fontWeight: '700' }]}>{t('menu.language')}</Text>
+                        <Text style={styles.subText}>{currentLang.startsWith('ko') ? '한국어 (KR)' : 'English (EN)'}</Text>
+                      </View>
+                      <View style={styles.toggleTrack}>
+                        <View style={[styles.toggleChip, currentLang.startsWith('ko') && styles.activeChip]}>
+                          <Text style={[styles.toggleText, currentLang.startsWith('ko') && styles.activeToggleText]}>KR</Text>
+                        </View>
+                        <View style={[styles.toggleChip, !currentLang.startsWith('ko') && styles.activeChip]}>
+                          <Text style={[styles.toggleText, !currentLang.startsWith('ko') && styles.activeToggleText]}>EN</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Identity Section */}
+                  <View style={styles.footer}>
+                    <View style={styles.profileBox}>
+                        <View style={styles.avatar} />
+                        <View style={{ flex: 1 }}>
+                            <Text style={[Typography.bodySmall, { fontWeight: '700' }]}>{t('menu.curator_beta', 'Curator Beta')}</Text>
+                            <Text style={styles.statusText}>{t('menu.active_global', 'Active Now • Global')}</Text>
+                        </View>
+                    </View>
+                    <Text style={styles.versionText}>{t('menu.version')}</Text>
+                  </View>
+                </ScrollView>
+              </>
+            )}
           </View>
           </GestureHandlerRootView>
         </Animated.View>

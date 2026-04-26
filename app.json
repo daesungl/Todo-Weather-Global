@@ -12,9 +12,17 @@
       "resizeMode": "contain",
       "backgroundColor": "#f7f9ff"
     },
+    "locales": {
+      "ko": "ko",
+      "en": "en"
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.page78.todoweather"
+      "bundleIdentifier": "com.page78.todoweather",
+      "infoPlist": {
+        "CFBundleLocalizations": ["ko", "en"],
+        "CFBundleAllowMixedLocalizations": true
+      }
     },
     "android": {
       "adaptiveIcon": {
