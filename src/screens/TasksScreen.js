@@ -205,35 +205,47 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
     });
 
     const slots = {};
-    const occ = Array.from({ length: days.length }, () => []);
+    const numWeeks = Math.ceil(days.length / 7);
 
-    combinedTasks.forEach(task => {
-      const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
-      const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
-      const effectiveStart = startIdx === -1 ? 0 : startIdx;
-      const effectiveEnd = endIdx === -1 ? days.length - 1 : endIdx;
+    for (let week = 0; week < numWeeks; week++) {
+      const weekStart = week * 7;
+      const weekEnd = Math.min(weekStart + 6, days.length - 1);
+      const occ = Array.from({ length: 7 }, () => []);
 
-      let slot = 0;
-      while (slot < 4) {
-        let available = true;
-        for (let i = effectiveStart; i <= effectiveEnd; i++) {
-          if (occ[i].includes(slot)) {
-            available = false;
-            break;
+      const weekTasks = combinedTasks.filter(task => {
+        const si = days.findIndex(d => dateStr(d.date) === task.date);
+        const ei = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
+        const es = si === -1 ? 0 : si;
+        const ee = ei === -1 ? days.length - 1 : ei;
+        return es <= weekEnd && ee >= weekStart;
+      });
+
+      weekTasks.forEach(task => {
+        const si = days.findIndex(d => dateStr(d.date) === task.date);
+        const ei = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
+        const es = si === -1 ? 0 : si;
+        const ee = ei === -1 ? days.length - 1 : ei;
+        const segStart = Math.max(es, weekStart) - weekStart;
+        const segEnd = Math.min(ee, weekEnd) - weekStart;
+
+        let slot = 0;
+        while (slot < 4) {
+          let available = true;
+          for (let i = segStart; i <= segEnd; i++) {
+            if (occ[i].includes(slot)) { available = false; break; }
           }
+          if (available) break;
+          slot++;
         }
-        if (available) break;
-        slot++;
-      }
-      
-      if (slot < 4) {
-        slots[task.id] = slot;
-        for (let i = effectiveStart; i <= effectiveEnd; i++) {
-          occ[i].push(slot);
+
+        const key = `${task.id}_${week}`;
+        if (slot < 4) {
+          slots[key] = slot;
+          for (let i = segStart; i <= segEnd; i++) occ[i].push(slot);
         }
-      }
-    });
-    
+      });
+    }
+
     return { monthTasks: combinedTasks, taskSlots: slots };
   }, [tasks, flows, days, holidaysMap]);
 
@@ -277,7 +289,8 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
             </View>
             <View style={styles.calendarSlotContainer}>
               {[0, 1, 2, 3].map(slotIdx => {
-                const task = dayTasks.find(t => taskSlots[t.id] === slotIdx);
+                const weekIndex = Math.floor(i / 7);
+                const task = dayTasks.find(t => taskSlots[`${t.id}_${weekIndex}`] === slotIdx);
                 if (!task) return <View key={slotIdx} style={styles.emptySlotRow} />;
                 
                 const isStart = ds === task.date;
@@ -353,11 +366,15 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                   </View>
                 );
               })}
-              {dayTasks.length > 4 && (
-                <View style={styles.moreTasksRow}>
-                  <Text style={[styles.moreTasksText, !day.current && { opacity: 0.5 }]}>+{dayTasks.length - 4}</Text>
-                </View>
-              )}
+              {(() => {
+                const wk = Math.floor(i / 7);
+                const hidden = dayTasks.filter(t => taskSlots[`${t.id}_${wk}`] === undefined).length;
+                return hidden > 0 ? (
+                  <View style={styles.moreTasksRow}>
+                    <Text style={[styles.moreTasksText, !day.current && { opacity: 0.5 }]}>+{hidden}</Text>
+                  </View>
+                ) : null;
+              })()}
             </View>
           </TouchableOpacity>
         );
@@ -1586,7 +1603,7 @@ const TasksScreen = ({ navigation }) => {
                     </View>
                   ) : (
                     <>
-                      <View style={styles.modalHeader}>
+                      <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
                         <View style={styles.modalHandle} />
                         <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
                           <TouchableOpacity onPress={() => closeEditInSheet()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>

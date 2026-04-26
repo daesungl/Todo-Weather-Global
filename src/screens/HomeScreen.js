@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
@@ -106,6 +106,36 @@ const HomeScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const modalPanY = useRef(new Animated.Value(height)).current;
+
+  const openSearchModal = () => {
+    setSearchModalVisible(true);
+    Animated.spring(modalPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+  };
+
+  const closeSearchModal = () => {
+    Animated.timing(modalPanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+      setSearchModalVisible(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      modalPanY.setValue(height);
+    });
+  };
+
+  const modalPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
+      onPanResponderMove: (_, g) => { if (g.dy > 0) modalPanY.setValue(g.dy); },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 100 || g.vy > 0.5) {
+          closeSearchModal();
+        } else {
+          Animated.spring(modalPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+        }
+      },
+    })
+  ).current;
 
   // 화면 포커스 시마다 날씨 재조회 (낮에 캐시된 데이터가 밤에도 그대로 남는 문제 방지)
   useFocusEffect(
@@ -469,7 +499,7 @@ const HomeScreen = ({ navigation }) => {
               })}
               
               {(regions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 && (
-                <TouchableOpacity style={styles.addSlotCard} onPress={() => setSearchModalVisible(true)}>
+                <TouchableOpacity style={styles.addSlotCard} onPress={openSearchModal}>
                    <View style={styles.addIconCircle}>
                       <Plus size={24} color={Colors.primary} strokeWidth={3} />
                    </View>
@@ -494,70 +524,74 @@ const HomeScreen = ({ navigation }) => {
 
       <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} />
       
-      <Modal animationType="slide" transparent={true} visible={searchModalVisible} onRequestClose={() => setSearchModalVisible(false)}>
+      <Modal animationType="none" transparent={true} visible={searchModalVisible} onRequestClose={closeSearchModal}>
         <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.searchHeader}>
-              <View style={styles.searchInputWrap}>
-                <Search size={20} color={Colors.outline} style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder={t('search.placeholder')}
-                  placeholderTextColor={Colors.outline}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoFocus
-                  autoCapitalize="none"
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchQuery('')}>
-                    <X size={20} color={Colors.outline} />
-                  </TouchableOpacity>
-                )}
+          <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={closeSearchModal} />
+          <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
+            <Animated.View style={[styles.modalContent, { transform: [{ translateY: modalPanY }] }]}>
+              <View {...modalPanResponder.panHandlers} style={styles.modalHandleArea}>
+                <View style={styles.modalHandle} />
               </View>
-              <TouchableOpacity onPress={() => setSearchModalVisible(false)}>
-                <Text style={styles.closeBtnText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.searchResultWrap}>
-               {isSearching ? (
-                 <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 20 }} />
-               ) : (
-                 <>
-                   {searchResults.length > 0 ? (
-                     searchResults.map((item) => (
-                       <TouchableOpacity key={item.id} style={styles.resultItem} onPress={() => handleAddRegion(item)}>
-                         <MapPin size={18} color={item.type === 'domestic' ? Colors.primary : Colors.outline} />
-                         <View style={styles.resultTextCol}>
-                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                             <Text style={styles.resultName}>{item.name}</Text>
-                             <View style={[styles.typeBadge, { backgroundColor: item.type === 'domestic' ? '#E3F2FD' : '#F5F5F5' }]}>
-                               <Text style={[styles.typeBadgeText, { color: item.type === 'domestic' ? '#1976D2' : '#666' }]}>
-                                 {t(item.category)}
-                               </Text>
-                             </View>
-                           </View>
-                           <Text style={styles.resultSub}>{item.address}</Text>
-                         </View>
-                       </TouchableOpacity>
-                     ))
-                   ) : searchQuery.length >= 2 ? (
-                     <View style={styles.emptySearch}>
+              <View style={styles.searchHeader}>
+                <View style={styles.searchInputWrap}>
+                  <Search size={20} color={Colors.outline} style={styles.searchIcon} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder={t('search.placeholder')}
+                    placeholderTextColor={Colors.outline}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoFocus
+                    autoCapitalize="none"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                      <X size={20} color={Colors.outline} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TouchableOpacity onPress={closeSearchModal}>
+                  <Text style={styles.closeBtnText}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.searchResultWrap} keyboardShouldPersistTaps="handled">
+                {isSearching ? (
+                  <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 20 }} />
+                ) : (
+                  <>
+                    {searchResults.length > 0 ? (
+                      searchResults.map((item) => (
+                        <TouchableOpacity key={item.id} style={styles.resultItem} onPress={() => handleAddRegion(item)}>
+                          <MapPin size={18} color={item.type === 'domestic' ? Colors.primary : Colors.outline} />
+                          <View style={styles.resultTextCol}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={styles.resultName}>{item.name}</Text>
+                              <View style={[styles.typeBadge, { backgroundColor: item.type === 'domestic' ? '#E3F2FD' : '#F5F5F5' }]}>
+                                <Text style={[styles.typeBadgeText, { color: item.type === 'domestic' ? '#1976D2' : '#666' }]}>
+                                  {t(item.category)}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={styles.resultSub}>{item.address}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))
+                    ) : searchQuery.length >= 2 ? (
+                      <View style={styles.emptySearch}>
                         <Text style={styles.emptyText}>{t('search.no_results')}</Text>
-                     </View>
-                   ) : (
+                      </View>
+                    ) : (
                       <View style={styles.emptySearch}>
                         <Search size={48} color="#EEE" />
                         <Text style={styles.emptyText}>{t('search.guide')}</Text>
                       </View>
-                   )}
-                 </>
-               )}
-            </ScrollView>
+                    )}
+                  </>
+                )}
+              </ScrollView>
+            </Animated.View>
           </View>
-        </View>
         </GestureHandlerRootView>
       </Modal>
     </View>
@@ -871,6 +905,8 @@ const styles = StyleSheet.create({
   
   // Modal Styles
   modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalHandleArea: { alignItems: 'center', paddingTop: 4, paddingBottom: 12 },
+  modalHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, opacity: 0.5 },
   modalContent: { 
     height: height * 0.8, 
     backgroundColor: Colors.background, 

@@ -18,10 +18,18 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.page78.todoweather",
+      "bundleIdentifier": "com.appswayd.todo-weather-global",
+      "buildNumber": "2",
       "infoPlist": {
-        "CFBundleLocalizations": ["ko", "en"],
-        "CFBundleAllowMixedLocalizations": true
+        "CFBundleLocalizations": [
+          "ko",
+          "en"
+        ],
+        "CFBundleAllowMixedLocalizations": true,
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다.",
+        "NSLocationAlwaysUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다."
       }
     },
     "android": {
@@ -30,7 +38,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.page78.todoweather"
+      "package": "com.appswayd.todo-weather-global"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,6 +46,11 @@
     "plugins": [
       "expo-localization",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "779e407f-a0d8-4c52-9a92-f43c59072fd8"
+      }
+    }
   }
 }

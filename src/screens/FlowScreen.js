@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
@@ -55,6 +56,7 @@ const { width, height } = Dimensions.get('window');
 const FlowScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
   const { formatTemp } = useUnits();
+  const insets = useSafeAreaInsets();
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [isSharingImage, setIsSharingImage] = useState(false);
@@ -92,10 +94,12 @@ const FlowScreen = ({ navigation }) => {
   const [flowLon, setFlowLon] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [heroWeather, setHeroWeather] = useState(null);
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
+  const searchPanY = useRef(new Animated.Value(0)).current;
 
   // --- Initialization ---
   useFocusEffect(
@@ -105,8 +109,14 @@ const FlowScreen = ({ navigation }) => {
   );
 
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    const showSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
+      setIsKeyboardVisible(true);
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
+      setIsKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
 
     return () => {
       showSubscription.remove();
@@ -147,6 +157,26 @@ const FlowScreen = ({ navigation }) => {
           });
         } else {
           Animated.spring(flowPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+        }
+      },
+    })
+  ).current;
+
+  const searchPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) searchPanY.setValue(gestureState.dy);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          Animated.timing(searchPanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+            closeSearch();
+            searchPanY.setValue(0);
+          });
+        } else {
+          Animated.spring(searchPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
         }
       },
     })
@@ -489,7 +519,7 @@ const FlowScreen = ({ navigation }) => {
     } catch (e) { return dateStr; }
   };
 
-  const openSearch = (mode) => { setSearchMode(mode); setSearchModalVisible(true); };
+  const openSearch = (mode) => { searchPanY.setValue(0); setSearchMode(mode); setSearchModalVisible(true); };
   const closeSearch = () => { setSearchModalVisible(false); setSearchQuery(''); setSearchResults([]); };
 
   const openFlowModal = (flow = null) => {
@@ -624,7 +654,10 @@ const FlowScreen = ({ navigation }) => {
   };
 
   const renderSearchLayer = () => (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.background, zIndex: 2000, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.lg }]}>
+    <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.background, zIndex: 2000, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg }, { transform: [{ translateY: searchPanY }] }]}>
+      <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 16 }} {...searchPanResponder.panHandlers}>
+        <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.outline, opacity: 0.4 }} />
+      </View>
       <View style={styles.modalHeader}>
         <View style={styles.searchInputContainer}>
           <Search size={20} color={Colors.outline} />
@@ -662,7 +695,7 @@ const FlowScreen = ({ navigation }) => {
           ))
         )}
       </ScrollView>
-    </View>
+    </Animated.View>
   );
 
   const groupedSteps = groupStepsByDate(selectedFlow?.steps);
@@ -811,9 +844,10 @@ const FlowScreen = ({ navigation }) => {
                             )}
                           </Pressable>
                           {step.weather && (
-                            <GHButton 
+                            <Pressable 
                               onPress={() => {
                                 if (step.region) {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                   navigation.navigate('WeatherDetail', { 
                                     region: step.region,
                                     locationName: step.region.name,
@@ -821,11 +855,11 @@ const FlowScreen = ({ navigation }) => {
                                   });
                                 }
                               }}
-                              style={{ marginLeft: 8, padding: 8, marginRight: -8, marginTop: -4 }}
+                              style={({ pressed }) => [{ marginLeft: 8, padding: 12, marginRight: -12, marginTop: -8, justifyContent: 'center', alignItems: 'center' }, pressed && { opacity: 0.6 }]}
                               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             >
                               {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                            </GHButton>
+                            </Pressable>
                           )}
                         </View>
                         {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>{t('flow.rain_alert', 'Rain alert: Indoor backup recommended')}</Text></View>}
@@ -843,9 +877,10 @@ const FlowScreen = ({ navigation }) => {
           </ViewShot>
 
           <View style={styles.centerButtonWrap}>
-            <GHButton 
-              style={styles.addStepDetail} 
+            <Pressable 
+              style={({ pressed }) => [styles.addStepDetail, pressed && { opacity: 0.7, backgroundColor: 'rgba(0, 102, 138, 0.08)' }]} 
               onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setEditingStep(null);
                 setEditActivity('');
                 setEditMemo('');
@@ -854,10 +889,11 @@ const FlowScreen = ({ navigation }) => {
                 setSelectedRegion(null);
                 openEditModal();
               }}
+              hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
             >
               <Plus size={20} color={Colors.primary} />
               <Text style={styles.addStepText}>{t('flow.add_schedule', 'Add Schedule')}</Text>
-            </GHButton>
+            </Pressable>
           </View>
         </ScrollView>
       </View>
@@ -953,9 +989,7 @@ const FlowScreen = ({ navigation }) => {
                           <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Flows')}</Text>
                           <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Curated journeys')}</Text>
                         </View>
-                        <GHButton style={styles.headerAddBtn} onPress={() => openFlowModal()}>
-                          <Plus size={24} color="white" />
-                        </GHButton>
+                        <View style={{ width: 52 }} />
                       </View>
                     </View>
                   }
@@ -964,6 +998,32 @@ const FlowScreen = ({ navigation }) => {
                 />
               )}
             </View>
+            <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
+            <Pressable
+              style={({ pressed }) => [
+                {
+                  position: 'absolute',
+                  bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16,
+                  right: 30,
+                  width: 64, height: 64, borderRadius: 32,
+                  backgroundColor: '#111827',
+                  justifyContent: 'center', alignItems: 'center',
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+                  shadowOpacity: 0.35, shadowRadius: 10, elevation: 12,
+                },
+                pressed && { opacity: 0.8, transform: [{ scale: 0.92 }] }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                openFlowModal();
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <View pointerEvents="none">
+                <Plus size={32} color="white" strokeWidth={3} />
+              </View>
+            </Pressable>
+          </View>
           </>
         )}
 
@@ -978,11 +1038,7 @@ const FlowScreen = ({ navigation }) => {
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeFlowModal} />
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ flex: 1, justifyContent: 'flex-end' }}
-              pointerEvents="box-none"
-            >
+            <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
               <Animated.View style={[styles.editModalContent, { transform: [{ translateY: flowPanY }] }]}>
                     <View {...flowPanResponder.panHandlers} style={styles.handleArea}>
                       <View style={styles.modalHandle} />
@@ -999,7 +1055,8 @@ const FlowScreen = ({ navigation }) => {
                       </Pressable>
                     </View>
 
-                    <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
                       <View style={styles.modalContentPadding}>
                         <Text style={styles.inputLabel}>{t('flow.flow_title', 'Flow Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !flowTitle && styles.compactInputRowRequired]}>
@@ -1031,10 +1088,11 @@ const FlowScreen = ({ navigation }) => {
 
                       <View style={{ height: 100 }} />
                     </ScrollView>
-                    
+                    </KeyboardAvoidingView>
+
                     {searchModalVisible && searchMode === 'flow' && renderSearchLayer()}
               </Animated.View>
-            </KeyboardAvoidingView>
+            </View>
           </GestureHandlerRootView>
         </Modal>
 
@@ -1047,11 +1105,7 @@ const FlowScreen = ({ navigation }) => {
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeEditModal} />
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ flex: 1, justifyContent: 'flex-end' }}
-              pointerEvents="box-none"
-            >
+            <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
               <Animated.View style={[styles.editModalContent, { transform: [{ translateY: panY }] }]}>
                     <View {...panResponder.panHandlers} style={styles.handleArea}>
                       <View style={styles.modalHandle} />
@@ -1088,7 +1142,8 @@ const FlowScreen = ({ navigation }) => {
                       </GHButton>
                     </View>
 
-                    <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
                       <View style={styles.modalContentPadding}>
                         <Text style={styles.inputLabel}>{t('flow.activity', 'Activity')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !editActivity && styles.compactInputRowRequired]}>
@@ -1164,10 +1219,11 @@ const FlowScreen = ({ navigation }) => {
 
                       <View style={{ height: 60 }} />
                     </ScrollView>
+                    </KeyboardAvoidingView>
 
                     {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
               </Animated.View>
-            </KeyboardAvoidingView>
+            </View>
 
             {/* Date / Time Picker Overlay */}
             {(showDatePicker || showTimePicker) && (
@@ -1228,7 +1284,7 @@ const FlowScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  listContent: { paddingHorizontal: Spacing.lg, paddingBottom: 160, paddingTop: Spacing.md },
+  listContent: { paddingHorizontal: Spacing.lg, paddingBottom: 220, paddingTop: Spacing.md },
   listHeader: { marginBottom: Spacing.xl, marginTop: Spacing.md },
   screenTitle: { ...Typography.h1, fontSize: 34, color: Colors.onBackground, letterSpacing: -0.5 },
   screenSubtitle: { ...Typography.body, color: Colors.onSurfaceVariant, marginTop: 4 },
@@ -1331,7 +1387,7 @@ const styles = StyleSheet.create({
   resultName: { ...Typography.h3, fontSize: 16 },
   resultAddress: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, marginTop: 2 },
   modalBg: { backgroundColor: 'rgba(0,0,0,0.5)' },
-  editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20, maxHeight: height * 0.9 },
+  editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 0, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20, maxHeight: height * 0.9 },
   editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
   editTitle: { ...Typography.h2, fontSize: 24, letterSpacing: -0.5, color: Colors.onBackground },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 16, opacity: 0.5 },
@@ -1340,7 +1396,7 @@ const styles = StyleSheet.create({
   searchAccessoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0, 191, 255, 0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   searchAccessoryText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   modalContentPadding: { marginBottom: Spacing.xl },
-  handleArea: { alignItems: 'center', paddingTop: 4, paddingBottom: 12 },
+  handleArea: { alignItems: 'center', paddingTop: 12, paddingBottom: 12 },
   charCount: { fontSize: 12, color: Colors.outline, fontWeight: '500' },
   headerDeleteBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,59,48,0.08)', alignItems: 'center', justifyContent: 'center' },
   requiredAsterisk: { color: Colors.error, fontWeight: '700' },

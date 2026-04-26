@@ -1,0 +1,26 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_KMA_SERVICE_KEY": "7tVKsVRy1O3q85q7nMJA7BpHLKZ38NzZN8BMdMtHWhTrIhkoGQJZ%2Flz2X4NNVQ%2Bxygo%2FDFCLk8eHRE9JmB7j0g%3D%3D",
+        "EXPO_PUBLIC_WEATHER_API_KEY": "9ec649060fca47d8ac621847261804",
+        "EXPO_PUBLIC_VWORLD_API_KEY": "81A27DF2-32B9-33CA-91A3-A3FAF5F6A2CC"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

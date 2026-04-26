@@ -810,7 +810,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
         <View style={styles.moduleCard}>
           <View style={styles.moduleHeader}><Calendar size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>{t('weather.daily_forecast', '10-Day Forecast')}</Text></View>
-          <View style={styles.dailyTableHead}><Text style={[styles.headTxt, { width: 50 }]}>{t('weather.date', 'Date')}</Text><Text style={styles.headTxt}>{t('weather.am', 'AM')}</Text><Text style={styles.headTxt}>{t('weather.pm', 'PM')}</Text><Text style={[styles.headTxt, { flex: 1, textAlign: 'center' }]}>{t('weather.temp_trend', 'Temp Trend')}</Text></View>
+          <View style={styles.dailyTableHead}><Text style={[styles.headTxt, { width: 62 }]}>{t('weather.date', 'Date')}</Text><Text style={[styles.headTxt, { width: 50 }]}>{t('weather.am', 'AM')}</Text><Text style={[styles.headTxt, { width: 50 }]}>{t('weather.pm', 'PM')}</Text><Text style={[styles.headTxt, { flex: 1, textAlign: 'center', marginLeft: 10 }]}>{t('weather.temp_trend', 'Temp Trend')}</Text></View>
           {dailyForecast.map((item, index) => (
             <View key={index} style={[styles.dailyRow, index === dailyForecast.length - 1 && { borderBottomWidth: 0 }]}>
               <View style={styles.dailyDayColumn}>
@@ -979,10 +979,10 @@ const styles = StyleSheet.create({
   dailyTableHead: { flexDirection: 'row', marginBottom: 8 },
   headTxt: { fontSize: 11, fontWeight: '800', color: Colors.outline, width: 60, textAlign: 'center' },
   dailyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant },
-  dailyDayColumn: { width: 60, alignItems: 'center', justifyContent: 'center' },
+  dailyDayColumn: { width: 62, alignItems: 'center', justifyContent: 'center' },
   dailyDay: { fontSize: 14, fontWeight: '700', color: Colors.text, textAlign: 'center', height: 24, lineHeight: 24 },
   dailyDate: { fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginTop: 0, textAlign: 'center' },
-  dayHalf: { width: 45, alignItems: 'center' },
+  dayHalf: { width: 50, alignItems: 'center' },
   popText: { fontSize: 10, fontWeight: '800', color: Colors.primary },
   rangeContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
   dailyLow: { width: 42, textAlign: 'right', fontSize: 14, color: Colors.textSecondary },
