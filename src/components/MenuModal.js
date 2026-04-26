@@ -148,7 +148,6 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
     { id: 'settings', icon: <Settings size={20} color={Colors.primary} />, label: t('menu.preferences'), sub: t('menu.preferences_sub') },
     { id: 'privacy', icon: <Shield size={20} color={Colors.primary} />, label: t('menu.privacy', 'Privacy Policy'), sub: t('menu.privacy_sub', 'Check our privacy policy') },
     { id: 'reset', icon: <RefreshCw size={20} color={Colors.error} />, label: t('menu.reset'), sub: t('menu.reset_sub') },
-    { id: 'help', icon: <Info size={20} color={Colors.outline} />, label: t('menu.help') },
   ];
 
   if (!isShowing && !visible) return null;
