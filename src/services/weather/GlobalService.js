@@ -230,33 +230,42 @@ export const fetchExtraMetrics = async (lat, lon) => {
 };
 
 /**
- * 전 세계 도시 및 지역을 검색합니다. (WeatherAPI Search API)
+ * 전 세계 도시 및 지역을 검색합니다. (Nominatim / OpenStreetMap)
  */
 export const searchLocations = async (query) => {
   if (!query || query.length < 2) return [];
 
   try {
-    const response = await axios.get(`https://api.weatherapi.com/v1/search.json`, {
+    const response = await axios.get('https://nominatim.openstreetmap.org/search', {
       params: {
-        key: WEATHER_API_KEY,
-        q: query
-      }
+        q: query,
+        format: 'json',
+        addressdetails: 1,
+        limit: 10,
+        'accept-language': 'en',
+      },
+      headers: {
+        'User-Agent': 'TodoWeatherApp/1.0',
+      },
     });
 
     const data = response.data || [];
     return data.map(item => {
+      const a = item.address || {};
+      const name = a.city || a.town || a.village || a.county || a.state || a.country || item.display_name.split(',')[0];
+      const parts = [a.state, a.country].filter(Boolean);
       return {
-        id: (item.id || Date.now() + Math.random()).toString(),
-        name: item.name,
-        address: `${item.region ? item.region + ', ' : ''}${item.country}`,
-        lat: item.lat,
-        lon: item.lon,
+        id: item.place_id.toString(),
+        name,
+        address: parts.join(', '),
+        lat: parseFloat(item.lat),
+        lon: parseFloat(item.lon),
         type: 'global',
-        category: 'search.place'
+        category: 'search.place',
       };
     });
   } catch (error) {
-    console.error('WeatherAPI Search API Error:', error);
+    console.error('Nominatim Search Error:', error);
     return [];
   }
 };

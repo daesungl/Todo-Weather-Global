@@ -286,6 +286,8 @@
       "activity_required_msg": "Please enter what you are doing.",
       "invalid_time": "Invalid Time",
       "invalid_time_msg": "Please use HH:mm format",
+      "limit_title": "Flow Limit Reached",
+      "limit_msg": "You can create up to 50 flows.",
       "sharing_not_available": "Sharing Not Available",
       "sharing_not_available_msg": "Sharing is not available on this device",
       "share_failed": "Share Failed",

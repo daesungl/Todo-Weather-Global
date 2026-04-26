@@ -1116,12 +1116,15 @@ const TasksScreen = ({ navigation }) => {
     );
   }, [tasks, flows, selectedDate, holidaysMap, handleDayPress]);
 
-  const handleSearch = async (val) => {
+  const searchTimerRef = useRef(null);
+  const handleSearch = (val) => {
     setSearchQuery(val);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (val.length < 2) {
       setSearchResults([]);
       return;
     }
+    searchTimerRef.current = setTimeout(async () => {
     setIsSearching(true);
     try {
       const domestic = await searchPlaces(val);
@@ -1132,6 +1135,7 @@ const TasksScreen = ({ navigation }) => {
     } finally {
       setIsSearching(false);
     }
+    }, 500);
   };
 
   const selectSearchResult = (item) => {

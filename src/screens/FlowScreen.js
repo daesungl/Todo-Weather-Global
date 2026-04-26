@@ -216,38 +216,23 @@ const FlowScreen = ({ navigation }) => {
       setFlows(currentFlows);
     }
     setIsLoading(false);
-
-    // Background weather refresh
-    refreshFlowWeather(currentFlows);
   };
 
-  const refreshFlowWeather = async (targetFlows) => {
-    let hasChanges = false;
-    const updatedFlows = await Promise.all(targetFlows.map(async (flow) => {
-      if (flow.lat && flow.lon) {
-        try {
-          const weather = await WeatherService.getWeather(flow.lat, flow.lon, true, flow.location, flow.location);
-          if (weather) {
-            const tempText = weather.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
-            if (flow.weatherTemp !== tempText || flow.weatherCondKey !== weather.condKey) {
-              hasChanges = true;
-              return {
-                ...flow,
-                weatherTemp: tempText,
-                weatherCondKey: weather.condKey,
-                weatherIsDay: weather.isDay !== false,
-              };
-            }
-          }
-        } catch (e) { console.warn('[Flow] Refresh failed for', flow.location); }
-      }
-      return flow;
-    }));
-
-    if (hasChanges) {
-      setFlows(updatedFlows);
-      saveFlows(updatedFlows);
-    }
+  const refreshFlowWeather = async (flow) => {
+    if (!flow.lat || !flow.lon) return;
+    try {
+      const weather = await WeatherService.getWeather(flow.lat, flow.lon, false, flow.location, flow.location);
+      if (!weather) return;
+      const weatherTemp = weather.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
+      setFlows(prev => {
+        const updated = prev.map(f => f.id === flow.id
+          ? { ...f, weatherTemp, weatherCondKey: weather.condKey, weatherIsDay: weather.isDay !== false }
+          : f
+        );
+        saveFlows(updated);
+        return updated;
+      });
+    } catch (e) { console.warn('[Flow] Refresh failed for', flow.location); }
   };
 
   // --- Search Logic ---
@@ -295,13 +280,20 @@ const FlowScreen = ({ navigation }) => {
   useEffect(() => {
     if (selectedFlow) {
       fetchHeroWeather(selectedFlow);
+      refreshFlowWeather(selectedFlow);
     }
   }, [selectedFlow]);
+
+  const MAX_FLOWS = 50;
 
   const saveFlow = async () => {
     if (isSaving) return;
     if (!flowTitle.trim()) {
       Alert.alert(t('flow.alert.title_required'), t('flow.alert.title_required_msg'));
+      return;
+    }
+    if (!editingFlow && flows.length >= MAX_FLOWS) {
+      Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), t('flow.alert.limit_msg', `You can create up to ${MAX_FLOWS} flows.`));
       return;
     }
     
