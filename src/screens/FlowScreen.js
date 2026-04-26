@@ -480,41 +480,57 @@ const FlowScreen = ({ navigation }) => {
   };
 
   const getFlowGradient = (existingFlows = []) => {
-    // 1. 프리미엄 큐레이션 팔레트 (기본 선호 색상들)
-    const curatedPalette = [
-      ['#6366f1', '#a855f7'], // Indigo Purple
-      ['#FF6B6B', '#FF8E8E'], // Coral
-      ['#4ECDC4', '#55efc4'], // Teal
-      ['#45B7D1', '#74b9ff'], // Sky
-      ['#9B59B6', '#a29bfe'], // Lavender
-      ['#E67E22', '#e17055'], // Orange
-      ['#2ECC71', '#00b894'], // Green
-      ['#f59e0b', '#d97706'], // Amber
-      ['#ec4899', '#f43f5e'], // Pink Rose
-      ['#06b6d4', '#3b82f6'], // Cyan Blue
-    ];
+    // 1. 지능형 랜덤 컬러 생성기 (가독성 보장 + 무한한 다양성)
+    const generateSafeGradient = () => {
+      // 색상(Hue)을 0-360도 전체에서 선택
+      const h = Math.floor(Math.random() * 360);
+      
+      // 색상 영역에 따른 명도(Lightness) 보정 로직 (WCAG 가독성 기준 기반)
+      // 노란색, 연두색 등 밝은 계열(40~100도)은 명도를 더 낮게, 파란색/보라색 등 어두운 계열은 명도를 약간 더 높게.
+      let l;
+      if (h >= 40 && h <= 100) {
+        // Yellow-Green 영역: 더 어둡게 (35~45%)
+        l = 35 + Math.floor(Math.random() * 10);
+      } else if (h >= 190 && h <= 280) {
+        // Blue-Purple 영역: 조금 더 밝게 해도 가독성 좋음 (45~55%)
+        l = 45 + Math.floor(Math.random() * 10);
+      } else {
+        // 기타 영역 (Red, Orange, Cyan, Magenta): 중간 명도 (40~50%)
+        l = 40 + Math.floor(Math.random() * 10);
+      }
 
-    // 2. 이미 사용 중인 색상 확인 (시작 색상 기준)
-    const usedColors = new Set(existingFlows.map(f => f.gradient?.[0]?.toLowerCase()));
-    const unusedCurated = curatedPalette.filter(g => !usedColors.has(g[0].toLowerCase()));
+      // 채도(Saturation): 65%~90% 사이에서 풍부하게 표현
+      const s = 65 + Math.floor(Math.random() * 25);
+      
+      const color1 = `hsl(${h}, ${s}%, ${l}%)`;
+      // 끝 색상은 색상을 20-40도 정도 회전시키고, 명도를 살짝 변형하여 입체감 있는 그라디언트 생성
+      const h2 = (h + 20 + Math.floor(Math.random() * 20)) % 360;
+      const l2 = Math.max(25, l - 10); // 너무 어두워지지 않게 하한선(25%) 설정
+      const color2 = `hsl(${h2}, ${s}%, ${l2}%)`;
 
-    // 3. 큐레이션된 색상이 남았다면 그 중에서 랜덤 선택
-    if (unusedCurated.length > 0) {
-      return unusedCurated[Math.floor(Math.random() * unusedCurated.length)];
+      return [color1, color2];
+    };
+
+    // 2. 이미 사용 중인 색상과 너무 겹치지 않게 최대 5번 시도
+    let bestGradient = generateSafeGradient();
+    const usedHues = existingFlows.map(f => {
+      const match = f.gradient?.[0]?.match(/hsl\((\d+)/);
+      return match ? parseInt(match[1]) : -1;
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const candidate = generateSafeGradient();
+      const candHue = parseInt(candidate[0].match(/hsl\((\d+)/)[1]);
+      
+      // 기존 색상들과 Hue 값이 30도 이상 차이 나면 채택
+      const isUnique = usedHues.every(uh => Math.abs(uh - candHue) > 30);
+      if (isUnique) {
+        bestGradient = candidate;
+        break;
+      }
     }
 
-    // 4. 큐레이션 색상을 다 썼다면, 지능형 HSL 랜덤 생성 (무한 확장)
-    // 항상 활기차고(Vibrant) 가독성 좋은 범위를 유지합니다.
-    const h = Math.floor(Math.random() * 360); // 0-359도 (색상)
-    const s = 65 + Math.floor(Math.random() * 20); // 65-85% (채도 - 선명하게)
-    const l = 55 + Math.floor(Math.random() * 10); // 55-65% (명도 - 밝게)
-    
-    // 시작 색상 (HSL -> String)
-    const color1 = `hsl(${h}, ${s}%, ${l}%)`;
-    // 끝 색상 (색상을 30도 정도 회전시키고 명도를 살짝 조절하여 조화로운 그라디언트 생성)
-    const color2 = `hsl(${(h + 30) % 360}, ${s}%, ${l - 10}%)`;
-    
-    return [color1, color2];
+    return bestGradient;
   };
 
   const renderWeatherIcon = (key, size = 20, color = Colors.primary, isDay = true) => {
@@ -567,6 +583,7 @@ const FlowScreen = ({ navigation }) => {
             value={searchQuery} 
             onChangeText={setSearchQuery} 
             autoFocus 
+            autoCapitalize="none"
           />
           {searchQuery.length > 0 && (
             <GHButton onPress={() => setSearchQuery('')}>
@@ -890,7 +907,7 @@ const FlowScreen = ({ navigation }) => {
                         <Text style={styles.inputLabel}>Flow Title <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !flowTitle && styles.compactInputRowRequired]}>
                           <Flag size={18} color={flowTitle ? Colors.primary : Colors.error} />
-                          <TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder="e.g. Hawaii Trip, Morning Routine" placeholderTextColor={Colors.outline} />
+                          <TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder="e.g. Hawaii Trip, Morning Routine" placeholderTextColor={Colors.outline} autoCapitalize="none" />
                         </View>
                       </View>
 
@@ -911,7 +928,7 @@ const FlowScreen = ({ navigation }) => {
 
                       <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>Description</Text>
-                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder="What is this flow about?" placeholderTextColor={Colors.outline} /></View>
+                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder="What is this flow about?" placeholderTextColor={Colors.outline} autoCapitalize="none" /></View>
                       </View>
 
                       <View style={{ height: 100 }} />
@@ -964,7 +981,7 @@ const FlowScreen = ({ navigation }) => {
                         <Text style={styles.inputLabel}>Activity <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !editActivity && styles.compactInputRowRequired]}>
                           <Edit3 size={18} color={editActivity ? Colors.primary : Colors.error} />
-                          <TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder="What are you doing?" placeholderTextColor={Colors.outline} />
+                          <TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder="What are you doing?" placeholderTextColor={Colors.outline} autoCapitalize="none" />
                         </View>
                       </View>
 
@@ -1059,6 +1076,7 @@ const FlowScreen = ({ navigation }) => {
                           multiline
                           textAlignVertical="top"
                           maxLength={500}
+                          autoCapitalize="none"
                         />
                       </View>
 
