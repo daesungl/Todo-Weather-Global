@@ -71,6 +71,7 @@ const FlowScreen = ({ navigation }) => {
   const [editMemo, setEditMemo] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const pickerBackupRef = useRef({ editDate: '', editTime: '' });
 
   // Flow Create/Edit State
   const [flowModalVisible, setFlowModalVisible] = useState(false);
@@ -1000,9 +1001,9 @@ const FlowScreen = ({ navigation }) => {
                               </Pressable>
                             ) : null}
                           </View>
-                          <Pressable 
-                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} 
-                            onPress={() => { setShowDatePicker(!showDatePicker); setShowTimePicker(false); }}
+                          <Pressable
+                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
+                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime }; setShowDatePicker(true); setShowTimePicker(false); }}
                           >
                             <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                             <Text style={[styles.editInputText, !editDate && { color: Colors.outline }]} numberOfLines={1}>
@@ -1020,9 +1021,9 @@ const FlowScreen = ({ navigation }) => {
                               </Pressable>
                             ) : null}
                           </View>
-                          <Pressable 
-                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]} 
-                            onPress={() => { setShowTimePicker(!showTimePicker); setShowDatePicker(false); }}
+                          <Pressable
+                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
+                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime }; setShowTimePicker(true); setShowDatePicker(false); }}
                           >
                             <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                             <Text style={[styles.editInputText, !editTime && { color: Colors.outline }]} numberOfLines={1}>
@@ -1031,36 +1032,6 @@ const FlowScreen = ({ navigation }) => {
                           </Pressable>
                         </View>
                       </View>
-
-                      {showDatePicker && (
-                        <View style={styles.pickerContainer}>
-                          <DateTimePicker
-                            value={new Date(editDate || Date.now())}
-                            mode="date"
-                            display="inline"
-                            onChange={onDateChange}
-                            minimumDate={new Date(2020, 0, 1)}
-                            accentColor={Colors.primary}
-                          />
-                        </View>
-                      )}
-
-                      {showTimePicker && (
-                        <View style={styles.pickerContainer}>
-                          <DateTimePicker
-                            value={(() => {
-                              const [h, m] = (editTime || '00:00').split(':');
-                              const d = new Date();
-                              d.setHours(parseInt(h), parseInt(m));
-                              return d;
-                            })()}
-                            mode="time"
-                            is24Hour={true}
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                            onChange={onTimeChange}
-                          />
-                        </View>
-                      )}
 
                       <View style={styles.inputGroup}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -1086,6 +1057,51 @@ const FlowScreen = ({ navigation }) => {
                     {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
               </Animated.View>
             </KeyboardAvoidingView>
+
+            {/* Date / Time Picker Overlay */}
+            {(showDatePicker || showTimePicker) && (
+              <View style={[StyleSheet.absoluteFillObject, styles.pickerOverlay]}>
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => { setEditDate(pickerBackupRef.current.editDate); setEditTime(pickerBackupRef.current.editTime); setShowDatePicker(false); setShowTimePicker(false); }} />
+                <View style={[styles.pickerSheet, showDatePicker && { height: 490 }]}>
+                  <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
+                  <View style={styles.pickerHeader}>
+                    <Pressable onPress={() => { setEditDate(pickerBackupRef.current.editDate); setEditTime(pickerBackupRef.current.editTime); setShowDatePicker(false); setShowTimePicker(false); }} style={{ padding: 4 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>취소</Text>
+                    </Pressable>
+                    <Text style={styles.pickerTitle}>{showDatePicker ? '날짜' : '시간'}</Text>
+                    <Pressable onPress={() => { setShowDatePicker(false); setShowTimePicker(false); }} style={styles.pickerDoneBtn}>
+                      <Text style={styles.pickerDoneText}>완료</Text>
+                    </Pressable>
+                  </View>
+                  {showDatePicker ? (
+                    <DateTimePicker
+                      value={new Date(editDate || Date.now())}
+                      mode="date"
+                      display="inline"
+                      accentColor={Colors.primary}
+                      onChange={onDateChange}
+                      minimumDate={new Date(2020, 0, 1)}
+                      style={{ width: width - 32, height: 360, alignSelf: 'center' }}
+                    />
+                  ) : (
+                    <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+                      <DateTimePicker
+                        value={(() => {
+                          const [h, m] = (editTime || '00:00').split(':');
+                          const d = new Date(); d.setHours(parseInt(h), parseInt(m)); return d;
+                        })()}
+                        mode="time"
+                        display="spinner"
+                        is24Hour={true}
+                        textColor="black"
+                        onChange={onTimeChange}
+                        style={{ height: 216, width: width - 32, alignSelf: 'center' }}
+                      />
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
           </GestureHandlerRootView>
         </Modal>
 
