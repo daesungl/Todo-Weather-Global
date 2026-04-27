@@ -12,8 +12,8 @@ import { useUnits } from '../contexts/UnitContext';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
-import { BANNER_UNIT_ID } from '../constants/AdUnits';
+import { BannerAdSize } from 'react-native-google-mobile-ads';
+import AdBanner from '../components/AdBanner';
 import AirService from '../services/weather/AirService';
 import WeatherService from '../services/weather/WeatherService';
 import { fetchExtraMetrics } from '../services/weather/GlobalService';
@@ -114,7 +114,6 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
   // WeatherService와 동일한 캐시키를 loadAsyncData에서 재사용하기 위한 ref
   const weatherCacheKeyRef = useRef('');
-  const [adError, setAdError] = useState(false);
 
   // Pulse animation for loading skeleton
   useEffect(() => {
@@ -811,25 +810,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </ScrollView>
         </View>
 
-        {/* Medium Rectangle Ad - Native Style between Hourly and Daily Forecast */}
-        {!adError && (
-          <View style={styles.detailAdWrapper}>
-            <View style={styles.adBadge}>
-              <Text style={styles.adBadgeText}>AD</Text>
-            </View>
-            <BannerAd
-              unitId={BANNER_UNIT_ID}
-              size={BannerAdSize.MEDIUM_RECTANGLE}
-              requestOptions={{
-                requestNonPersonalizedAdsOnly: true,
-              }}
-              onAdFailedToLoad={(error) => {
-                console.log('Weather Detail Ad Failed:', error);
-                setAdError(true);
-              }}
-            />
-          </View>
-        )}
+        {/* Medium Rectangle Ad */}
+        <View style={styles.detailAdWrapper}>
+          <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+        </View>
 
         <View style={styles.moduleCard}>
           <View style={styles.moduleHeader}><Calendar size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>{t('weather.daily_forecast', '10-Day Forecast')}</Text></View>

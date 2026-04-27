@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -33,7 +33,7 @@ const HomeScreen = ({ navigation }) => {
   const regionsRef = useRef([]);
   const scrollViewRef = useRef(null);
 
-  const { isPremium } = useSubscription();
+  const { isPremium, limits } = useSubscription();
 
   const goToPage = (nextPage, direction) => {
     const dir = direction ?? (nextPage > currentPageRef.current ? -1 : 1);
@@ -117,6 +117,10 @@ const HomeScreen = ({ navigation }) => {
 
   // Real Regions Data
   const [regions, setRegions] = useState([]);
+  const displayRegions = useMemo(() => {
+    if (isPremium) return regions.map(r => ({ ...r, inactive: false }));
+    return regions.map((r, i) => ({ ...r, inactive: i >= limits.regions }));
+  }, [regions, isPremium, limits.regions]);
   const [regionsWeather, setRegionsWeather] = useState({});
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -288,9 +292,13 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleAddRegion = async (item) => {
-    // Subscription check: Free users limit to 3 total regions
-    if (!isPremium && regions.length >= 3) {
-      Alert.alert(t('common.info', '알림'), t('home.premium_only_limit', '더 많은 지역을 추가하려면 프리미엄 구독이 필요합니다. (최대 3개)'));
+    if (displayRegions.filter(r => !r.inactive).length >= limits.regions) {
+      Alert.alert(
+        t('common.info', '알림'),
+        isPremium
+          ? t('region.limit_premium', `최대 ${limits.regions}개 지역까지 추가할 수 있습니다.`)
+          : t('region.limit_free', `무료 플랜은 최대 ${limits.regions}개까지 추가할 수 있습니다. 더 추가하려면 프리미엄을 이용해 주세요.`)
+      );
       return;
     }
 
@@ -445,7 +453,29 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.paginationArea} {...swipePanResponder.panHandlers}>
           <Animated.View style={[styles.regionsList, { transform: [{ translateX: slideAnim }] }]}>
-            {(regions || []).filter(r => r.pageIndex === currentPage - 1).map(region => {
+            {(displayRegions || []).filter(r => r.pageIndex === currentPage - 1).map(region => {
+              if (region.inactive) {
+                return (
+                  <View key={region.id} style={[styles.regionCard, { backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed' }]}>
+                    <View style={styles.regionCardHeader}>
+                      <View style={styles.regionNameContainer}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.regionNameText, { color: Colors.outline }]} numberOfLines={1}>{region.name}</Text>
+                          {region.address && <Text style={[styles.regionAddressText, { color: Colors.outlineVariant }]} numberOfLines={1}>{region.address}</Text>}
+                        </View>
+                      </View>
+                      <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.trashBtn}>
+                        <Trash2 size={18} color={Colors.outlineVariant} />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                      <Lock size={16} color={Colors.outline} />
+                      <Text style={{ fontSize: 13, color: Colors.outline }}>구독 해지로 비활성화 — 재구독 시 복원</Text>
+                    </View>
+                  </View>
+                );
+              }
+
               const weather = regionsWeather[region.id];
               return (
                 <TouchableOpacity
@@ -489,35 +519,23 @@ const HomeScreen = ({ navigation }) => {
                     </View>
 
                     <View style={styles.metricsContainer}>
-                      {/* 1. POP % */}
                       <View style={styles.metricRow}>
                         <Umbrella size={14} color={Colors.primary} />
-                        <Text style={styles.metricLabelText}>
-                          {weather?.hourlyForecast?.[0]?.pop || '0%'}
-                        </Text>
+                        <Text style={styles.metricLabelText}>{weather?.hourlyForecast?.[0]?.pop || '0%'}</Text>
                       </View>
-                      {/* 2. Rainfall mm */}
                       <View style={styles.metricRow}>
                         <Umbrella size={14} color={(weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline} />
-                        <Text style={[styles.metricLabelText, { color: (weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline }]}>
-                          {weather?.pcp || '0mm'}
-                        </Text>
+                        <Text style={[styles.metricLabelText, { color: (weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline }]}>{weather?.pcp || '0mm'}</Text>
                       </View>
-                      {/* 3. Wind speed + Direction Arrow */}
                       <View style={styles.metricRow}>
                         <View style={{ transform: [{ rotate: `${(weather?.windDeg || 0) - 45}deg` }] }}>
                           <Navigation size={14} color={Colors.outline} />
                         </View>
-                        <Text style={styles.metricLabelText}>
-                          {weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}
-                        </Text>
+                        <Text style={styles.metricLabelText}>{weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}</Text>
                       </View>
-                      {/* 4. Humidity % */}
                       <View style={styles.metricRow}>
                         <Droplets size={14} color={Colors.outline} />
-                        <Text style={styles.metricLabelText}>
-                          {weather?.humidity || '0%'}
-                        </Text>
+                        <Text style={styles.metricLabelText}>{weather?.humidity || '0%'}</Text>
                       </View>
                     </View>
                   </View>
@@ -525,7 +543,7 @@ const HomeScreen = ({ navigation }) => {
               );
             })}
 
-            {(regions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 && (
+            {(displayRegions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 && (
               <TouchableOpacity style={styles.addSlotCard} onPress={openSearchModal}>
                 <View style={styles.addIconCircle}>
                   <Plus size={24} color={Colors.primary} strokeWidth={3} />

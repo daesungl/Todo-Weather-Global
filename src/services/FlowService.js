@@ -45,6 +45,37 @@ export const deleteFlow = async (id) => {
 };
 
 /**
+ * 무료 한도 초과분을 비활성화합니다. 오래된 것부터 유지, 최신 것부터 잠금.
+ */
+export const applyFlowFreeLimit = async (limit) => {
+  try {
+    const flows = await getFlows();
+    const sorted = [...flows].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    const updated = sorted.map((f, i) => ({ ...f, inactive: i >= limit }));
+    await saveFlows(updated);
+    return updated;
+  } catch (e) {
+    console.error('Failed to apply flow limit', e);
+    return [];
+  }
+};
+
+/**
+ * 비활성화된 Flow를 모두 복원합니다.
+ */
+export const restoreAllFlows = async () => {
+  try {
+    const flows = await getFlows();
+    const updated = flows.map(f => ({ ...f, inactive: false }));
+    await saveFlows(updated);
+    return updated;
+  } catch (e) {
+    console.error('Failed to restore flows', e);
+    return [];
+  }
+};
+
+/**
  * 새로운 Flow를 하나 추가합니다.
  */
 export const addFlow = async (flow) => {

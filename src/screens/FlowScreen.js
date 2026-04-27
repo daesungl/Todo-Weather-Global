@@ -40,7 +40,8 @@ import {
   FileText,
   Keyboard as KeyboardIcon,
   Flag,
-  Share2
+  Share2,
+  Lock
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ViewShot from 'react-native-view-shot';
@@ -68,7 +69,7 @@ const FlowScreen = ({ navigation }) => {
   
   const [flows, setFlows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { isPremium } = useSubscription();
+  const { isPremium, limits } = useSubscription();
 
   // Search Modal State
   const [searchModalVisible, setSearchModalVisible] = useState(false);
@@ -111,6 +112,7 @@ const FlowScreen = ({ navigation }) => {
   const flatListRef = useRef(null);
   const stepScrollRef = useRef(null);
   const memoYRef = useRef(0);
+  const activityInputRef = useRef(null);
   const flowTitleRef = useRef(null);
   const flowDescRef = useRef(null);
   const focusedFlowInputRef = useRef(null);
@@ -224,11 +226,14 @@ const FlowScreen = ({ navigation }) => {
     })
   ).current;
 
-  const openEditModal = () => {
+  const openEditModal = (isNew = false) => {
     panY.setValue(height);
     setEditModalVisible(true);
     stepScrollRef.current?.scrollTo({ y: 0, animated: false });
     Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+    if (isNew) {
+      setTimeout(() => activityInputRef.current?.focus(), 320);
+    }
   };
 
   const closeEditModal = () => {
@@ -361,7 +366,16 @@ const FlowScreen = ({ navigation }) => {
     }
   }, [selectedFlow]);
 
-  const MAX_FLOWS = isPremium ? 50 : 5;
+  const MAX_FLOWS = limits.flows;
+  const MAX_STEPS = limits.stepsPerFlow;
+
+  // inactive 플래그를 렌더 시점에 계산 — AsyncStorage 타이밍 이슈 없이 isPremium 즉시 반영
+  const displayFlows = React.useMemo(() => {
+    if (isPremium) return flows.map(f => ({ ...f, inactive: false }));
+    const sorted = [...flows].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    const activeIds = new Set(sorted.slice(0, MAX_FLOWS).map(f => f.id));
+    return flows.map(f => ({ ...f, inactive: !activeIds.has(f.id) }));
+  }, [flows, isPremium, MAX_FLOWS]);
 
   const saveFlow = async () => {
     if (isSaving) return;
@@ -369,8 +383,10 @@ const FlowScreen = ({ navigation }) => {
       Alert.alert(t('flow.alert.title_required'), t('flow.alert.title_required_msg'));
       return;
     }
-    if (!editingFlow && flows.length >= MAX_FLOWS) {
-      const msg = isPremium ? t('flow.alert.limit_msg', `You can create up to ${MAX_FLOWS} flows.`) : t('flow.alert.premium_limit_msg', 'Premium subscription is required to create more flows.');
+    if (!editingFlow && displayFlows.filter(f => !f.inactive).length >= MAX_FLOWS) {
+      const msg = isPremium
+        ? t('flow.alert.limit_msg', `최대 ${MAX_FLOWS}개 플로우까지 만들 수 있습니다.`)
+        : t('flow.alert.premium_limit_msg', `무료 플랜은 최대 ${MAX_FLOWS}개 플로우까지 만들 수 있습니다. 더 만들려면 프리미엄을 이용해 주세요.`);
       Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), msg);
       return;
     }
@@ -439,6 +455,13 @@ const FlowScreen = ({ navigation }) => {
       Alert.alert(t('flow.alert.activity_required'), t('flow.alert.activity_required_msg'));
       return;
     }
+    if (!editingStep && (selectedFlow?.steps?.length || 0) >= MAX_STEPS) {
+      const msg = isPremium
+        ? t('flow.alert.step_limit_msg', `플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`)
+        : t('flow.alert.step_limit_free_msg', `무료 플랜은 플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다. 더 추가하려면 프리미엄을 이용해 주세요.`);
+      Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), msg);
+      return;
+    }
     if (editTime && !editTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
       Alert.alert(t('flow.alert.invalid_time'), t('flow.alert.invalid_time_msg'));
       return;
@@ -503,6 +526,21 @@ const FlowScreen = ({ navigation }) => {
     setFlows(updatedFlows);
     await saveFlows(updatedFlows);
     closeEditModal();
+  };
+
+  const deleteStepById = async (stepId) => {
+    const now = new Date().toISOString();
+    const updatedFlows = flows.map(f => {
+      if (f.id === selectedFlow.id) {
+        const updatedSteps = f.steps.filter(s => s.id !== stepId);
+        const updatedF = { ...f, steps: updatedSteps, updatedAt: now };
+        setSelectedFlow(updatedF);
+        return updatedF;
+      }
+      return f;
+    });
+    setFlows(updatedFlows);
+    await saveFlows(updatedFlows);
   };
 
   const handleShareFlowImage = async () => {
@@ -775,7 +813,14 @@ const FlowScreen = ({ navigation }) => {
   });
 
   const renderTimelineDetail = () => {
-    const groupedSteps = groupStepsByDate(selectedFlow.steps);
+    const allSteps = selectedFlow.steps || [];
+    const displaySteps = (() => {
+      if (isPremium) return allSteps;
+      const sorted = [...allSteps].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+      const activeIds = new Set(sorted.slice(0, MAX_STEPS).map(s => s.id));
+      return allSteps.map(s => ({ ...s, inactive: !activeIds.has(s.id) }));
+    })();
+    const groupedSteps = groupStepsByDate(displaySteps);
     const sortedDates = Object.keys(groupedSteps).sort((a, b) => {
       if (a === 'Unscheduled') return 1;
       if (b === 'Unscheduled') return -1;
@@ -886,12 +931,26 @@ const FlowScreen = ({ navigation }) => {
                   {groupedSteps[date].map((step, index) => (
                     <View key={step.id} style={styles.stepRow}>
                       <View style={styles.timeCol}>
-                        <Text style={styles.timeText}>{step.time || '--:--'}</Text>
+                        <Text style={[styles.timeText, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
                       </View>
                       <View style={styles.timelineCol}>
-                        <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted]} />
+                        <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.inactive && { backgroundColor: Colors.outline }]} />
                         {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
                       </View>
+                      {step.inactive ? (
+                        <View style={[styles.stepInfoCard, { backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center' }]}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Lock size={13} color={Colors.outline} />
+                              <Text style={{ fontSize: 13, color: Colors.outline }} numberOfLines={1}>{step.activity || t('flow.untitled_schedule', 'Untitled Schedule')}</Text>
+                            </View>
+                            <Text style={{ fontSize: 11, color: Colors.outlineVariant, marginTop: 4 }}>{t('flow.locked_premium', '재구독 시 복원')}</Text>
+                          </View>
+                          <GHButton onPress={() => deleteStepById(step.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 4 }}>
+                            <Trash2 size={16} color={Colors.outline} />
+                          </GHButton>
+                        </View>
+                      ) : (
                       <Pressable
                         style={({ pressed }) => [styles.stepInfoCard, pressed && { opacity: 0.7 }]}
                         onPress={() => openEditStep(step)}
@@ -903,13 +962,19 @@ const FlowScreen = ({ navigation }) => {
                             </Text>
                             {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
                           </View>
-                          {step.weather && (
-                            <View style={{ marginLeft: 8 }}>
-                              {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                            </View>
-                          )}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            {step.weather && (
+                              <View>
+                                {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
+                              </View>
+                            )}
+                            <GHButton onPress={() => deleteStepById(step.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 4 }}>
+                              <Trash2 size={16} color={Colors.outlineVariant} />
+                            </GHButton>
+                          </View>
                         </View>
                       </Pressable>
+                      )}
                     </View>
                   ))}
                 </View>
@@ -939,7 +1004,7 @@ const FlowScreen = ({ navigation }) => {
                 setEditDate(new Date().toISOString().split('T')[0]);
                 setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
                 setSelectedRegion(null);
-                openEditModal();
+                openEditModal(true);
               }}
               hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
             >
@@ -964,13 +1029,39 @@ const FlowScreen = ({ navigation }) => {
               ) : (
                 <DraggableFlatList
                   ref={flatListRef}
-                  data={flows || []}
+                  data={displayFlows || []}
                   keyExtractor={(item) => item.id}
                   onDragEnd={({ data }) => { setFlows(data); saveFlows(data); }}
                   activationDistance={20}
                   renderItem={({ item: flow, drag, isActive }) => (
                     <ScaleDecorator>
                       <View style={styles.flowCardContainer}>
+                        {flow.inactive ? (
+                          <View style={styles.flowCardLocked}>
+                            <LinearGradient colors={['#9ca3af', '#6b7280']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.flowCard, { opacity: 0.7 }]}>
+                              <BorderlessButton
+                                onPress={() => {
+                                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                                  handleDeleteFlow(flow.id);
+                                }}
+                                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                                style={styles.deleteBtnAbsolute}
+                              >
+                                <Trash2 size={18} color="rgba(255,255,255,0.8)" />
+                              </BorderlessButton>
+                              <View style={styles.cardMainArea}>
+                                <Text style={styles.cardTitle}>{flow.title}</Text>
+                                <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{getLocalizedPeriod(flow.period)}</Text></View>
+                              </View>
+                              <View style={styles.cardBottom}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Lock size={12} color="rgba(255,255,255,0.9)" />
+                                  <Text style={styles.tagText}>{t('flow.locked_premium', '구독 해지로 비활성화됨 — 재구독 시 복원')}</Text>
+                                </View>
+                              </View>
+                            </LinearGradient>
+                          </View>
+                        ) : (
                         <GHButton
                           onLongPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1032,6 +1123,7 @@ const FlowScreen = ({ navigation }) => {
                             </View>
                           </LinearGradient>
                         </GHButton>
+                        )}
                       </View>
                     </ScaleDecorator>
                   )}
@@ -1205,7 +1297,7 @@ const FlowScreen = ({ navigation }) => {
                         <Text style={styles.inputLabel}>{t('flow.activity', 'Activity')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !editActivity && styles.compactInputRowRequired]}>
                           <Edit3 size={18} color={editActivity ? Colors.primary : Colors.error} />
-                          <TextInput style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder={t('flow.activity_placeholder', 'What are you doing?')} placeholderTextColor={Colors.outline} autoCapitalize="none" />
+                          <TextInput ref={activityInputRef} style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder={t('flow.activity_placeholder', 'What are you doing?')} placeholderTextColor={Colors.outline} autoCapitalize="none" />
                         </View>
                       </View>
 
@@ -1435,6 +1527,7 @@ const styles = StyleSheet.create({
       android: { elevation: 8 }
     }),
   },
+  flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
   flowCard: { padding: Spacing.xl, borderRadius: 32, height: 220, justifyContent: 'space-between' },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   deleteBtnAbsolute: { position: 'absolute', top: Spacing.lg, right: Spacing.lg, padding: 8, zIndex: 10 },

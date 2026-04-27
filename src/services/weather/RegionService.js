@@ -50,6 +50,36 @@ export const addRegion = async (name, address, lat, lon, pageIndex = 0) => {
 };
 
 /**
+ * 무료 한도 초과분을 비활성화합니다. 기존 순서 기준, 뒤쪽(최신)부터 잠금.
+ */
+export const applyRegionFreeLimit = async (limit) => {
+  try {
+    const regions = await getBookmarkedRegions();
+    const updated = regions.map((r, i) => ({ ...r, inactive: i >= limit }));
+    await saveBookmarkedRegions(updated);
+    return updated;
+  } catch (e) {
+    console.error('Failed to apply region limit', e);
+    return [];
+  }
+};
+
+/**
+ * 비활성화된 지역을 모두 복원합니다.
+ */
+export const restoreAllRegions = async () => {
+  try {
+    const regions = await getBookmarkedRegions();
+    const updated = regions.map(r => ({ ...r, inactive: false }));
+    await saveBookmarkedRegions(updated);
+    return updated;
+  } catch (e) {
+    console.error('Failed to restore regions', e);
+    return [];
+  }
+};
+
+/**
  * 특정 관심 지역을 삭제합니다.
  */
 export const removeRegion = async (id) => {

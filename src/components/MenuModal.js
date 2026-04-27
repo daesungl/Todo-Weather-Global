@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
-import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind } from 'lucide-react-native';
+import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind, Crown } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUnits } from '../contexts/UnitContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.82;
@@ -14,6 +15,7 @@ const DRAWER_WIDTH = width * 0.82;
 const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const { t, i18n } = useTranslation();
   const { tempUnit, windUnit, setTempUnit, setWindUnit } = useUnits();
+  const { isPremium, updateSubscriptionStatus } = useSubscription();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   // Use internal state to keep modal alive during closing animation
@@ -337,6 +339,23 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                     </TouchableOpacity>
                   </View>
 
+                  {/* Dev: Premium Toggle */}
+                  <View style={styles.devSection}>
+                    <View style={styles.devRow}>
+                      <Crown size={16} color={isPremium ? '#f59e0b' : Colors.outline} />
+                      <Text style={[styles.devLabel, isPremium && { color: '#f59e0b' }]}>
+                        {isPremium ? 'Premium ON' : 'Premium OFF'}
+                      </Text>
+                      <Switch
+                        value={isPremium}
+                        onValueChange={(val) => updateSubscriptionStatus(val)}
+                        trackColor={{ false: Colors.outlineVariant, true: '#fde68a' }}
+                        thumbColor={isPremium ? '#f59e0b' : Colors.outline}
+                        style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+                      />
+                    </View>
+                  </View>
+
                   {/* Identity Section */}
                   <View style={styles.footer}>
                     <View style={styles.profileBox}>
@@ -431,6 +450,29 @@ const styles = StyleSheet.create({
     marginTop: Spacing.huge,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.xl,
+  },
+  devSection: {
+    marginTop: 24,
+    paddingHorizontal: 4,
+  },
+  devRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderStyle: 'dashed',
+  },
+  devLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.outline,
+    letterSpacing: 0.5,
   },
   profileBox: {
     flexDirection: 'row',

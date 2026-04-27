@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Modal, TextInput, FlatList, ActivityIndicator } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Trash2, Plus, Sun, Search, X, MapPin, Droplets, Wind, Zap, CloudRain, Moon, Cloud, CloudSnow } from 'lucide-react-native';
+import { ChevronLeft, Trash2, Plus, Sun, Search, X, MapPin, Droplets, Wind, Zap, CloudRain, Moon, Cloud, CloudSnow, Lock } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
@@ -15,7 +15,7 @@ const { width, height } = Dimensions.get('window');
 
 const RegionManagementScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { isPremium } = useSubscription();
+  const { isPremium, limits } = useSubscription();
   const [regions, setRegions] = useState([]);
   const [weatherDataMap, setWeatherDataMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -24,9 +24,15 @@ const RegionManagementScreen = ({ navigation }) => {
 
   const goBack = () => navigation.goBack();
 
+  const displayRegions = useMemo(() => {
+    if (isPremium) return regions.map(r => ({ ...r, inactive: false }));
+    return regions.map((r, i) => ({ ...r, inactive: i >= limits.regions }));
+  }, [regions, isPremium, limits.regions]);
+
   useEffect(() => {
     loadRegions();
   }, []);
+
 
   const loadRegions = async () => {
     setLoading(true);
@@ -53,9 +59,13 @@ const RegionManagementScreen = ({ navigation }) => {
   };
 
   const handleAddRegion = async (place) => {
-    // Subscription check: Free users limit to 3 total regions
-    if (!isPremium && regions.length >= 3) {
-      Alert.alert(t('common.info', '알림'), t('home.premium_only_limit', '더 많은 지역을 추가하려면 프리미엄 구독이 필요합니다. (최대 3개)'));
+    if (displayRegions.filter(r => !r.inactive).length >= limits.regions) {
+      Alert.alert(
+        t('common.info', '알림'),
+        isPremium
+          ? t('region.limit_premium', `최대 ${limits.regions}개 지역까지 추가할 수 있습니다.`)
+          : t('region.limit_free', `무료 플랜은 최대 ${limits.regions}개까지 추가할 수 있습니다. 더 추가하려면 프리미엄을 이용해 주세요.`)
+      );
       return;
     }
     const updated = await addRegion(place.name, place.address, place.lat, place.lon);
@@ -86,7 +96,24 @@ const RegionManagementScreen = ({ navigation }) => {
 
   const renderRegionCard = (item) => {
     const weather = weatherDataMap[item.id];
-    
+
+    if (item.inactive) {
+      return (
+        <View key={item.id} style={[styles.regionCard, styles.regionCardLocked]}>
+          <View style={styles.cardHeader}>
+            <Text style={[styles.regionTitle, { color: Colors.outline }]}>{item.name}</Text>
+            <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteIconBtn}>
+              <Trash2 size={18} color={Colors.outline} />
+            </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <Lock size={16} color={Colors.outline} />
+            <Text style={{ fontSize: 13, color: Colors.outline }}>구독 해지로 비활성화됨 — 재구독 시 복원</Text>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View key={item.id} style={styles.regionCard}>
         <View style={styles.cardHeader}>
@@ -201,7 +228,7 @@ const RegionManagementScreen = ({ navigation }) => {
             <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />
           ) : (
             <>
-              {regions.map(renderRegionCard)}
+              {displayRegions.map(renderRegionCard)}
               
               <TouchableOpacity style={styles.addCard} onPress={() => setSearchModalVisible(true)}>
                 <View style={styles.addBtnCircle}>
@@ -237,11 +264,16 @@ const styles = StyleSheet.create({
   scrollContent: { padding: Spacing.md, paddingBottom: 100 },
   listSection: { gap: Spacing.md },
   
-  regionCard: { 
-    backgroundColor: 'white', 
-    borderRadius: 20, 
-    padding: 16, 
-    borderWidth: 1, 
+  regionCardLocked: {
+    backgroundColor: Colors.surfaceContainerLow,
+    borderColor: Colors.outlineVariant,
+    borderStyle: 'dashed',
+  },
+  regionCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
     borderColor: '#E0E0E0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

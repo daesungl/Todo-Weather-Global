@@ -5,11 +5,23 @@ const SubscriptionContext = createContext();
 
 const PREMIUM_STORAGE_KEY = '@is_premium_user';
 
+export const LIMITS = {
+  FREE: {
+    regions: 5,
+    flows: 5,
+    stepsPerFlow: 10,
+  },
+  PREMIUM: {
+    regions: 15,
+    flows: 30,
+    stepsPerFlow: 30,
+  },
+};
+
 export const SubscriptionProvider = ({ children }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 앱 시작 시 구독 상태 불러오기
   useEffect(() => {
     loadSubscriptionStatus();
   }, []);
@@ -27,18 +39,19 @@ export const SubscriptionProvider = ({ children }) => {
     }
   };
 
-  // 구독 상태 업데이트 (나중에 결제 성공 시 호출)
   const updateSubscriptionStatus = async (status) => {
     try {
-      setIsPremium(status);
       await AsyncStorage.setItem(PREMIUM_STORAGE_KEY, JSON.stringify(status));
+      setIsPremium(status);
     } catch (e) {
       console.error('Failed to save subscription status', e);
     }
   };
 
+  const limits = isPremium ? LIMITS.PREMIUM : LIMITS.FREE;
+
   return (
-    <SubscriptionContext.Provider value={{ isPremium, updateSubscriptionStatus, loading }}>
+    <SubscriptionContext.Provider value={{ isPremium, updateSubscriptionStatus, loading, limits }}>
       {children}
     </SubscriptionContext.Provider>
   );
