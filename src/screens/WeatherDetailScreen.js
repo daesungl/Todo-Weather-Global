@@ -9,6 +9,7 @@ import {
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { useUnits } from '../contexts/UnitContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
@@ -50,6 +51,7 @@ const formatAlertTime = (tmFc) => {
 const WeatherDetailScreen = ({ navigation, route }) => {
   const { t, i18n } = useTranslation();
   const { formatTemp, formatWind } = useUnits();
+  const { isPremium } = useSubscription();
   const { weatherData: initialData = {} } = route?.params || {};
 
   const defaultData = {
@@ -810,10 +812,11 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </ScrollView>
         </View>
 
-        {/* Medium Rectangle Ad */}
-        <View style={styles.detailAdWrapper}>
-          <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
-        </View>
+        {!isPremium && (
+          <View style={styles.detailAdWrapper}>
+            <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+          </View>
+        )}
 
         <View style={styles.moduleCard}>
           <View style={styles.moduleHeader}><Calendar size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>{t('weather.daily_forecast', '10-Day Forecast')}</Text></View>

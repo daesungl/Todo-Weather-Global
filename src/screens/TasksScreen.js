@@ -1252,9 +1252,13 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </View>
 
-          <View style={{ marginBottom: 10 }}>
-            <AdBanner />
-          </View>
+          {isPremium ? (
+            <View style={{ height: 18 }} />
+          ) : (
+            <View style={{ marginBottom: 10 }}>
+              <AdBanner />
+            </View>
+          )}
 
           <View style={styles.calendarArea}>
             <View style={styles.weekdayLabels}>
@@ -1429,9 +1433,13 @@ const TasksScreen = ({ navigation }) => {
 
                   {/* Fixed Footer with Large Ad and Add Button (TimeTree Style) */}
                   <View style={styles.modalFooter}>
-                    <View style={{ marginBottom: 12, alignItems: 'center' }}>
-                      <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
-                    </View>
+                    {isPremium ? (
+                      <View style={{ height: 18 }} />
+                    ) : (
+                      <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                        <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+                      </View>
+                    )}
                     <TouchableOpacity
                       style={styles.sheetAddBtn}
                       onPress={() => { setIsTaskListVisible(false); openAddModal(); }}

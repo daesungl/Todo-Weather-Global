@@ -442,10 +442,13 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </TouchableOpacity>
 
-        {/* 프리미엄 여백 및 광고 통합 배너 */}
-        <View style={styles.adBannerWrapper}>
-          <AdBanner />
-        </View>
+        {isPremium ? (
+          <View style={{ height: 24 }} />
+        ) : (
+          <View style={styles.adBannerWrapper}>
+            <AdBanner />
+          </View>
+        )}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t('home.interest_regions')}</Text>

@@ -9,9 +9,8 @@ const AdBanner = ({ unitId = BANNER_UNIT_ID, size = BannerAdSize.ANCHORED_ADAPTI
   const [adLoaded, setAdLoaded] = useState(false);
   const [adError, setAdError] = useState(false);
 
-  // 구독 사용자라면 광고를 렌더링하지 않고 기본 여백만 반환
   if (isPremium) {
-    return <View style={styles.premiumSpacer} />;
+    return null;
   }
 
   return (
@@ -47,10 +46,6 @@ const styles = StyleSheet.create({
   },
   loadingMinHeight: {
     minHeight: 60, // 배너 로딩 중일 때 깜빡임 방지
-  },
-  premiumSpacer: {
-    height: 40, // 구독 사용자를 위한 하단 여백
-    width: '100%',
   },
   errorSpacer: {
     height: 30, // 광고 로드 실패 시 보장할 여백

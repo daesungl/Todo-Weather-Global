@@ -1142,10 +1142,13 @@ const FlowScreen = ({ navigation }) => {
                         </View>
                       </View>
 
-                      {/* Top Banner Ad for Flow Screen */}
-                      <View style={{ marginBottom: 12, alignItems: 'center' }}>
-                        <AdBanner />
-                      </View>
+                      {isPremium ? (
+                        <View style={{ height: 18 }} />
+                      ) : (
+                        <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                          <AdBanner />
+                        </View>
+                      )}
                     </View>
                   }
                   contentContainerStyle={styles.listContent}
@@ -1431,9 +1434,13 @@ const FlowScreen = ({ navigation }) => {
                         />
                       </View>
 
-                      <View style={{ marginVertical: 12, alignItems: 'center' }}>
-                        <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
-                      </View>
+                      {isPremium ? (
+                        <View style={{ height: 18 }} />
+                      ) : (
+                        <View style={{ marginVertical: 12, alignItems: 'center' }}>
+                          <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+                        </View>
+                      )}
                       <View style={{ height: 12 }} />
                     </ScrollView>
 
