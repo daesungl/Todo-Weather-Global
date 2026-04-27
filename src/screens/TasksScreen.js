@@ -664,6 +664,20 @@ const TasksScreen = ({ navigation }) => {
       hideSubscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      setIsAdding(false);
+      setIsTaskListVisible(false);
+      setSelectedTaskDetail(null);
+      setIsDetailMenuVisible(false);
+      setIsEditingInSheet(false);
+      const today = new Date();
+      setSelectedDate(today);
+      calendarListRef.current?.scrollToIndex({ index: getMonthIndex(today), animated: true });
+    });
+    return unsubscribe;
+  }, [navigation]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);

@@ -27,6 +27,7 @@ const HomeScreen = ({ navigation }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const loadingPageRef = useRef(null);
   const regionsRef = useRef([]);
+  const scrollViewRef = useRef(null);
 
   const goToPage = (nextPage, direction) => {
     const dir = direction ?? (nextPage > currentPageRef.current ? -1 : 1);
@@ -98,7 +99,16 @@ const HomeScreen = ({ navigation }) => {
       ])
     ).start();
   }, []);
-  
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      closeSearchModal();
+      if (currentPageRef.current !== 1) goToPage(1, 1);
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   // Real Regions Data
   const [regions, setRegions] = useState([]);
   const [regionsWeather, setRegionsWeather] = useState({});
@@ -349,7 +359,7 @@ const HomeScreen = ({ navigation }) => {
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
       <MainHeader onMenuPress={() => setMenuVisible(true)} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Hero Section */}
         <TouchableOpacity 
           style={styles.heroSection} 

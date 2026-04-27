@@ -13,11 +13,11 @@ const TABS = [
   { name: 'Flow', Icon: Compass },
 ];
 
-export default function CustomTabBar({ state, navigation }) {
+export default function CustomTabBar({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <View 
+    <View
       style={[styles.bottomNavContainer, { bottom: Math.max(insets.bottom, 20) + 10 }]}
       pointerEvents="box-none"
     >
@@ -25,13 +25,20 @@ export default function CustomTabBar({ state, navigation }) {
         {TABS.map((tab, index) => {
           const isActive = state.index === index;
           const { Icon } = tab;
+          const route = state.routes[index];
           return (
             <TouchableOpacity
               key={tab.name}
               style={[styles.navItem, isActive && styles.activeNavItem]}
               onPress={() => {
-                console.log(`[CustomTabBar] Navigating to: ${tab.name}`);
-                navigation.navigate(tab.name);
+                const event = navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+                if (!isActive && !event.defaultPrevented) {
+                  navigation.navigate({ name: route.name, merge: true });
+                }
               }}
               activeOpacity={0.7}
             >

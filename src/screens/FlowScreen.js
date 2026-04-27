@@ -100,6 +100,7 @@ const FlowScreen = ({ navigation }) => {
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
   const searchPanY = useRef(new Animated.Value(0)).current;
+  const flatListRef = useRef(null);
 
   // --- Initialization ---
   useFocusEffect(
@@ -107,6 +108,14 @@ const FlowScreen = ({ navigation }) => {
       loadInitialData();
     }, [])
   );
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      setSelectedFlow(null);
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
@@ -911,6 +920,7 @@ const FlowScreen = ({ navigation }) => {
                 <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />
               ) : (
                 <DraggableFlatList
+                  ref={flatListRef}
                   data={flows || []}
                   keyExtractor={(item) => item.id}
                   onDragEnd={({ data }) => { setFlows(data); saveFlows(data); }}
