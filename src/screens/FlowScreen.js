@@ -937,44 +937,47 @@ const FlowScreen = ({ navigation }) => {
                         <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.inactive && { backgroundColor: Colors.outline }]} />
                         {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
                       </View>
-                      {step.inactive ? (
-                        <View style={[styles.stepInfoCard, { backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center' }]}>
-                          <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Lock size={13} color={Colors.outline} />
-                              <Text style={{ fontSize: 13, color: Colors.outline }} numberOfLines={1}>{step.activity || t('flow.untitled_schedule', 'Untitled Schedule')}</Text>
-                            </View>
-                            <Text style={{ fontSize: 11, color: Colors.outlineVariant, marginTop: 4 }}>{t('flow.locked_premium', '재구독 시 복원')}</Text>
-                          </View>
-                          <GHButton onPress={() => deleteStepById(step.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 4 }}>
-                            <Trash2 size={16} color={Colors.outline} />
-                          </GHButton>
-                        </View>
-                      ) : (
-                      <Pressable
-                        style={({ pressed }) => [styles.stepInfoCard, pressed && { opacity: 0.7 }]}
-                        onPress={() => openEditStep(step)}
-                      >
-                        <View style={styles.stepHeader}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.stepActivity} numberOfLines={1}>
-                              {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
-                            </Text>
-                            {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
-                          </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            {step.weather && (
-                              <View>
-                                {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                        {step.inactive ? (
+                          <View style={[styles.stepInfoCard, { backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', flex: 1 }]}>
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Lock size={13} color={Colors.outline} />
+                                <Text style={{ fontSize: 13, color: Colors.outline }} numberOfLines={1}>{step.activity || t('flow.untitled_schedule', 'Untitled Schedule')}</Text>
                               </View>
-                            )}
-                            <GHButton onPress={() => deleteStepById(step.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 4 }}>
-                              <Trash2 size={16} color={Colors.outlineVariant} />
-                            </GHButton>
+                              <Text style={{ fontSize: 11, color: Colors.outlineVariant, marginTop: 4 }}>{t('flow.locked_premium', '재구독 시 복원')}</Text>
+                            </View>
                           </View>
-                        </View>
-                      </Pressable>
-                      )}
+                        ) : (
+                          <Pressable
+                            style={({ pressed }) => [styles.stepInfoCard, pressed && { opacity: 0.7 }, { flex: 1 }]}
+                            onPress={() => openEditStep(step)}
+                          >
+                            <View style={styles.stepHeader}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.stepActivity} numberOfLines={1}>
+                                  {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
+                                </Text>
+                                {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
+                              </View>
+                              {step.weather && (
+                                <View style={{ marginLeft: 8 }}>
+                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
+                                </View>
+                              )}
+                            </View>
+                          </Pressable>
+                        )}
+                        
+                        {/* 쓰레기통 버튼을 버블 밖으로 이동 */}
+                        <GHButton 
+                          onPress={() => deleteStepById(step.id)} 
+                          hitSlop={{ top: 20, bottom: 20, left: 10, right: 20 }} 
+                          style={styles.deleteBtnOuter}
+                        >
+                          <Trash2 size={18} color={Colors.outlineVariant} />
+                        </GHButton>
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -1573,7 +1576,7 @@ const styles = StyleSheet.create({
   dayBadge: { backgroundColor: Colors.primary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginRight: 8 },
   dayBadgeText: { ...Typography.labelSmall, color: 'white', fontWeight: '800' },
   dayDateText: { ...Typography.bodyLarge, fontWeight: '800', color: Colors.onBackground },
-  stepRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8 },
+  stepRow: { flexDirection: 'row', paddingLeft: 12, paddingRight: 4, marginBottom: 8 },
   timeCol: { width: 45, alignItems: 'flex-end', paddingTop: 8 },
   timeText: { ...Typography.labelMedium, fontWeight: '800', color: Colors.onBackground },
   timelineCol: { width: 32, alignItems: 'center' },
@@ -1582,9 +1585,16 @@ const styles = StyleSheet.create({
   dotCompleted: { backgroundColor: Colors.secondary },
   timelineLine: { width: 1.5, flex: 1, backgroundColor: Colors.outlineVariant, opacity: 0.3, marginVertical: 4 },
   stepInfoCard: {
-    flex: 1, backgroundColor: 'white', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 14, marginLeft: 12, marginBottom: Spacing.sm, minHeight: 68, justifyContent: 'center',
+    backgroundColor: 'white', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 14, marginLeft: 12, marginBottom: Spacing.sm, minHeight: 68, justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)',
     ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 8 }, android: { elevation: 2 } })
+  },
+  deleteBtnOuter: {
+    padding: 10,
+    marginLeft: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    opacity: 0.6,
   },
   activeStepCard: { borderColor: 'rgba(0, 102, 138, 0.15)', ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20 }, android: { elevation: 6 } }) },
   warningStepCard: { borderWidth: 1.5, borderColor: 'rgba(239, 68, 68, 0.2)' },
