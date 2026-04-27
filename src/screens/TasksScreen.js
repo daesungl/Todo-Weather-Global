@@ -155,12 +155,12 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
     const fTasks = [];
     (flows || []).forEach(flow => {
       (flow.steps || []).forEach(step => {
-        if (step.date && step.date >= monthStart && step.date <= monthEnd) {
+        if (step.date && step.date <= monthEnd && (step.endDate || step.date) >= monthStart) {
           fTasks.push({
             id: `flow_${flow.id}_${step.id}`,
             title: `[${flow.title || '플로우'}] ${step.activity}`,
             date: step.date,
-            endDate: step.date,
+            endDate: step.endDate || step.date,
             color: flow.color || (flow.gradient && flow.gradient[0]) || Colors.primary,
             isFlowTask: true,
             flowId: flow.id,
@@ -823,12 +823,13 @@ const TasksScreen = ({ navigation }) => {
     const ft = [];
     (flows || []).forEach(flow => {
       (flow.steps || []).forEach(step => {
-        if (step.date === ds) {
+        const sEnd = step.endDate || step.date;
+        if (step.date && ds >= step.date && ds <= sEnd) {
           ft.push({
             id: `flow_${flow.id}_${step.id}`,
             title: `[${flow.title || '플로우'}] ${step.activity}`,
             date: step.date,
-            endDate: step.date,
+            endDate: sEnd,
             color: flow.color || (flow.gradient && flow.gradient[0]) || Colors.primary,
             isFlowTask: true,
             flowTitle: flow.title,

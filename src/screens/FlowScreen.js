@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton } from 'react-native-gesture-handler';
@@ -80,11 +80,13 @@ const FlowScreen = ({ navigation }) => {
   const [editingStep, setEditingStep] = useState(null);
   const [editTime, setEditTime] = useState('');
   const [editDate, setEditDate] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [matchStartDate, setMatchStartDate] = useState(true);
   const [editActivity, setEditActivity] = useState('');
   const [editMemo, setEditMemo] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const pickerBackupRef = useRef({ editDate: '', editTime: '' });
+  const [pickerType, setPickerType] = useState(null); // 'startDate', 'startTime', 'endDate', 'endTime'
+  const pickerBackupRef = useRef({ editDate: '', editTime: '', editEndDate: '', editEndTime: '' });
 
   // Flow Create/Edit State
   const [flowModalVisible, setFlowModalVisible] = useState(false);
@@ -206,11 +208,15 @@ const FlowScreen = ({ navigation }) => {
     setEditingStep(null);
     setEditActivity('');
     setEditMemo('');
-    setEditDate(new Date().toISOString().split('T')[0]);
-    setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    const today = new Date().toISOString().split('T')[0];
+    const nowTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    setEditDate(today);
+    setEditTime(nowTime);
+    setEditEndDate(today);
+    setEditEndTime(nowTime);
+    setMatchStartDate(true);
     setSelectedRegion(null);
-    setShowDatePicker(false);
-    setShowTimePicker(false);
+    setPickerType(null);
   };
 
   const closeFlowModal = () => {
@@ -426,11 +432,14 @@ const FlowScreen = ({ navigation }) => {
         weatherData = { condKey: weatherKey, isDay: weatherIsDay };
       }
 
+      const finalEndDate = matchStartDate ? editDate : editEndDate;
+      const finalEndTime = matchStartDate ? editTime : editEndTime;
+
       const updatedFlows = flows.map(f => {
         if (f.id === selectedFlow.id) {
           const updatedSteps = editingStep 
-            ? f.steps.map(s => s.id === editingStep.id ? { ...s, time: editTime, date: editDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now } : s)
-            : [...(f.steps || []), { id: Date.now().toString(), date: editDate, time: editTime, activity: editActivity, memo: editMemo, region: selectedRegion, status: 'upcoming', weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, createdAt: now, updatedAt: now }];
+            ? f.steps.map(s => s.id === editingStep.id ? { ...s, time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now } : s)
+            : [...(f.steps || []), { id: Date.now().toString(), date: editDate, time: editTime, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, status: 'upcoming', weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, createdAt: now, updatedAt: now }];
           
           const sorted = sortSteps(updatedSteps);
           const updatedF = { ...f, steps: sorted, updatedAt: now };
@@ -551,11 +560,13 @@ const FlowScreen = ({ navigation }) => {
     setEditingStep(step);
     setEditTime(step.time);
     setEditDate(step.date);
+    setEditEndTime(step.endTime || step.time);
+    setEditEndDate(step.endDate || step.date);
+    setMatchStartDate(!(step.endDate && step.endDate !== step.date) && !(step.endTime && step.endTime !== step.time));
     setEditActivity(step.activity);
     setEditMemo(step.memo || '');
     setSelectedRegion(step.region || null);
-    setShowDatePicker(false);
-    setShowTimePicker(false);
+    setPickerType(null);
     openEditModal();
   };
 
@@ -647,21 +658,37 @@ const FlowScreen = ({ navigation }) => {
   };
 
   const onDateChange = (event, selectedDate) => {
-    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (Platform.OS === 'android') setPickerType(null);
     if (selectedDate) {
       const y = selectedDate.getFullYear();
       const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const d = String(selectedDate.getDate()).padStart(2, '0');
-      setEditDate(`${y}-${m}-${d}`);
+      const formatted = `${y}-${m}-${d}`;
+      
+      if (pickerType === 'endDate') {
+        setEditEndDate(formatted);
+        setMatchStartDate(false);
+      } else {
+        setEditDate(formatted);
+        if (matchStartDate) setEditEndDate(formatted);
+      }
     }
   };
 
   const onTimeChange = (event, selectedTime) => {
-    if (Platform.OS === 'android') setShowTimePicker(false);
+    if (Platform.OS === 'android') setPickerType(null);
     if (selectedTime) {
       const h = String(selectedTime.getHours()).padStart(2, '0');
       const m = String(selectedTime.getMinutes()).padStart(2, '0');
-      setEditTime(`${h}:${m}`);
+      const formatted = `${h}:${m}`;
+      
+      if (pickerType === 'endTime') {
+        setEditEndTime(formatted);
+        setMatchStartDate(false);
+      } else {
+        setEditTime(formatted);
+        if (matchStartDate) setEditEndTime(formatted);
+      }
     }
   };
 
@@ -1195,7 +1222,7 @@ const FlowScreen = ({ navigation }) => {
                       <View style={styles.rowInputs}>
                         <View style={[styles.inputGroup, { flex: 1.3, marginRight: 10 }]}>
                           <View style={styles.labelRow}>
-                            <Text style={styles.inputLabel}>{t('flow.date', 'Date')}</Text>
+                            <Text style={styles.inputLabel}>{t('flow.start_date', 'Start Date')}</Text>
                             {editDate ? (
                               <Pressable onPress={() => setEditDate('')} hitSlop={10}>
                                 <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
@@ -1204,7 +1231,7 @@ const FlowScreen = ({ navigation }) => {
                           </View>
                           <Pressable
                             style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime }; setShowDatePicker(true); setShowTimePicker(false); }}
+                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('startDate'); }}
                           >
                             <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                             <Text style={[styles.editInputText, !editDate && { color: Colors.outline }]} numberOfLines={1}>
@@ -1215,7 +1242,7 @@ const FlowScreen = ({ navigation }) => {
 
                         <View style={[styles.inputGroup, { flex: 1 }]}>
                           <View style={styles.labelRow}>
-                            <Text style={styles.inputLabel}>{t('common.time', 'Time')}</Text>
+                            <Text style={styles.inputLabel}>{t('common.start_time', 'Time')}</Text>
                             {editTime ? (
                               <Pressable onPress={() => setEditTime('')} hitSlop={10}>
                                 <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
@@ -1224,11 +1251,69 @@ const FlowScreen = ({ navigation }) => {
                           </View>
                           <Pressable
                             style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime }; setShowTimePicker(true); setShowDatePicker(false); }}
+                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('startTime'); }}
                           >
                             <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                             <Text style={[styles.editInputText, !editTime && { color: Colors.outline }]} numberOfLines={1}>
                               {editTime || '--:--'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { marginBottom: 0 }]}>{t('flow.same_as_start', 'Same as start date/time')}</Text>
+                        <Switch
+                          value={matchStartDate}
+                          onValueChange={(val) => {
+                            setMatchStartDate(val);
+                            if (val) {
+                              setEditEndDate(editDate);
+                              setEditEndTime(editTime);
+                            }
+                          }}
+                          trackColor={{ false: Colors.surfaceContainerHigh, true: Colors.primary }}
+                          thumbColor={'white'}
+                        />
+                      </View>
+
+                      <View style={styles.rowInputs}>
+                        <View style={[styles.inputGroup, { flex: 1.3, marginRight: 10 }]}>
+                          <View style={styles.labelRow}>
+                            <Text style={styles.inputLabel}>{t('flow.end_date', 'End Date')}</Text>
+                            {editEndDate ? (
+                              <Pressable onPress={() => { setEditEndDate(''); setMatchStartDate(false); }} hitSlop={10}>
+                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
+                          <Pressable
+                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
+                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('endDate'); }}
+                          >
+                            <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                            <Text style={[styles.editInputText, !editEndDate && { color: Colors.outline }]} numberOfLines={1}>
+                              {editEndDate || '--/--'}
+                            </Text>
+                          </Pressable>
+                        </View>
+
+                        <View style={[styles.inputGroup, { flex: 1 }]}>
+                          <View style={styles.labelRow}>
+                            <Text style={styles.inputLabel}>{t('common.end_time', 'Time')}</Text>
+                            {editEndTime ? (
+                              <Pressable onPress={() => { setEditEndTime(''); setMatchStartDate(false); }} hitSlop={10}>
+                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
+                          <Pressable
+                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
+                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('endTime'); }}
+                          >
+                            <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                            <Text style={[styles.editInputText, !editEndTime && { color: Colors.outline }]} numberOfLines={1}>
+                              {editEndTime || '--:--'}
                             </Text>
                           </Pressable>
                         </View>
@@ -1279,23 +1364,40 @@ const FlowScreen = ({ navigation }) => {
             </View>
 
             {/* Date / Time Picker Overlay */}
-            {(showDatePicker || showTimePicker) && (
+            {(pickerType) && (
               <View style={[StyleSheet.absoluteFillObject, styles.pickerOverlay]}>
-                <Pressable style={StyleSheet.absoluteFill} onPress={() => { setEditDate(pickerBackupRef.current.editDate); setEditTime(pickerBackupRef.current.editTime); setShowDatePicker(false); setShowTimePicker(false); }} />
-                <View style={[styles.pickerSheet, showDatePicker && { height: 490 }]}>
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => { 
+                  setEditDate(pickerBackupRef.current.editDate); 
+                  setEditTime(pickerBackupRef.current.editTime); 
+                  setEditEndDate(pickerBackupRef.current.editEndDate);
+                  setEditEndTime(pickerBackupRef.current.editEndTime);
+                  setPickerType(null); 
+                }} />
+                <View style={[styles.pickerSheet, (pickerType === 'startDate' || pickerType === 'endDate') && { height: 490 }]}>
                   <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
                   <View style={styles.pickerHeader}>
-                    <Pressable onPress={() => { setEditDate(pickerBackupRef.current.editDate); setEditTime(pickerBackupRef.current.editTime); setShowDatePicker(false); setShowTimePicker(false); }} style={{ padding: 4 }}>
+                    <Pressable onPress={() => { 
+                      setEditDate(pickerBackupRef.current.editDate); 
+                      setEditTime(pickerBackupRef.current.editTime); 
+                      setEditEndDate(pickerBackupRef.current.editEndDate);
+                      setEditEndTime(pickerBackupRef.current.editEndTime);
+                      setPickerType(null); 
+                    }} style={{ padding: 4 }}>
                       <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>{t('common.cancel', 'Cancel')}</Text>
                     </Pressable>
-                    <Text style={styles.pickerTitle}>{showDatePicker ? t('flow.date', 'Date') : t('common.time', 'Time')}</Text>
-                    <Pressable onPress={() => { setShowDatePicker(false); setShowTimePicker(false); }} style={styles.pickerDoneBtn}>
+                    <Text style={styles.pickerTitle}>
+                      {pickerType === 'startDate' ? t('flow.start_date', 'Start Date') : 
+                       pickerType === 'endDate' ? t('flow.end_date', 'End Date') : 
+                       pickerType === 'startTime' ? t('common.start_time', 'Start Time') : 
+                       t('common.end_time', 'End Time')}
+                    </Text>
+                    <Pressable onPress={() => setPickerType(null)} style={styles.pickerDoneBtn}>
                       <Text style={styles.pickerDoneText}>{t('common.done', 'Done')}</Text>
                     </Pressable>
                   </View>
-                  {showDatePicker ? (
+                  {(pickerType === 'startDate' || pickerType === 'endDate') ? (
                     <DateTimePicker
-                      value={new Date(editDate || Date.now())}
+                      value={new Date((pickerType === 'startDate' ? editDate : editEndDate) || Date.now())}
                       mode="date"
                       display="inline"
                       accentColor={Colors.primary}
@@ -1303,13 +1405,14 @@ const FlowScreen = ({ navigation }) => {
                       minimumDate={new Date(2020, 0, 1)}
                       style={{ width: width - 32, height: 360, alignSelf: 'center' }}
                       locale={i18n.language}
-                      key={`date-${i18n.language}`}
+                      key={`date-${i18n.language}-${pickerType}`}
                     />
                   ) : (
                     <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
                       <DateTimePicker
                         value={(() => {
-                          const [h, m] = (editTime || '00:00').split(':');
+                          const timeVal = pickerType === 'startTime' ? editTime : editEndTime;
+                          const [h, m] = (timeVal || '00:00').split(':');
                           const d = new Date(); d.setHours(parseInt(h), parseInt(m)); return d;
                         })()}
                         mode="time"
@@ -1319,7 +1422,7 @@ const FlowScreen = ({ navigation }) => {
                         onChange={onTimeChange}
                         style={{ height: 216, width: width - 32, alignSelf: 'center' }}
                         locale={i18n.language}
-                        key={`time-${i18n.language}`}
+                        key={`time-${i18n.language}-${pickerType}`}
                       />
                     </View>
                   )}
