@@ -43,13 +43,16 @@ import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { 
-  getHolidaysForYear, 
-  loadSavedCountries, 
-  saveCountries, 
+import {
+  getHolidaysForYear,
+  loadSavedCountries,
+  saveCountries,
   isPublicHoliday,
   getSupportedCountries
 } from '../services/task/HolidayService';
+
+import { BANNER_UNIT_ID } from '../constants/AdUnits';
+import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 
 // Moved width/height inside component for logic, but need global for styles
 const { width, height } = Dimensions.get('window');
@@ -59,30 +62,30 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const ITEM_HEIGHT = 50;
 const TASK_COLOR_LABELS = [
-  { key: 'dark_blue',    name: '다크 블루',   color: '#2A234F' },
-  { key: 'charcoal',     name: '차콜',        color: '#2B2B2B' },
-  { key: 'navy_blue',    name: '네이비 블루', color: '#10367D' },
-  { key: 'burgundy',     name: '버건디',      color: '#7D2027' },
-  { key: 'indigo',       name: '인디고',      color: '#3730A3' },
+  { key: 'dark_blue', name: '다크 블루', color: '#2A234F' },
+  { key: 'charcoal', name: '차콜', color: '#2B2B2B' },
+  { key: 'navy_blue', name: '네이비 블루', color: '#10367D' },
+  { key: 'burgundy', name: '버건디', color: '#7D2027' },
+  { key: 'indigo', name: '인디고', color: '#3730A3' },
   { key: 'forest_green', name: '포레스트 그린', color: '#06530B' },
-  { key: 'olive_green',  name: '올리브 그린', color: '#574C00' },
-  { key: 'crimson_red',  name: '크림슨 레드', color: '#B40023' },
-  { key: 'slate',        name: '슬레이트',    color: '#475569' },
-  { key: 'peacock_blue', name: '피콕 블루',   color: '#006D77' },
-  { key: 'violet',       name: '바이올렛',    color: '#7C3AED' },
-  { key: 'emerald',      color: '#047857', name: '에메랄드' },
-  { key: 'mustard',      color: '#887114', name: '머스타드' },
-  { key: 'orange',       color: '#EA2E00', name: '오렌지' },
-  { key: 'coral',        color: '#E05252', name: '코럴' },
-  { key: 'terracotta',   color: '#C66B3D', name: '테라코타' },
-  { key: 'sky_blue',     color: '#2196F3', name: '스카이 블루' },
-  { key: 'sage_green',   color: '#A8B89F', name: '세이지 그린' },
-  { key: 'blush_pink',   color: '#FFB3C3', name: '블러쉬 핑크' },
+  { key: 'olive_green', name: '올리브 그린', color: '#574C00' },
+  { key: 'crimson_red', name: '크림슨 레드', color: '#B40023' },
+  { key: 'slate', name: '슬레이트', color: '#475569' },
+  { key: 'peacock_blue', name: '피콕 블루', color: '#006D77' },
+  { key: 'violet', name: '바이올렛', color: '#7C3AED' },
+  { key: 'emerald', color: '#047857', name: '에메랄드' },
+  { key: 'mustard', color: '#887114', name: '머스타드' },
+  { key: 'orange', color: '#EA2E00', name: '오렌지' },
+  { key: 'coral', color: '#E05252', name: '코럴' },
+  { key: 'terracotta', color: '#C66B3D', name: '테라코타' },
+  { key: 'sky_blue', color: '#2196F3', name: '스카이 블루' },
+  { key: 'sage_green', color: '#A8B89F', name: '세이지 그린' },
+  { key: 'blush_pink', color: '#FFB3C3', name: '블러쉬 핑크' },
   { key: 'pastel_purple', color: '#BBBFEC', name: '파스텔 퍼플' },
-  { key: 'lavender',      color: '#EBEBEB', name: '라벤더' },
-  { key: 'cream',         color: '#F4EFE6', name: '크림' },
-  { key: 'ivory',         color: '#FEF9DB', name: '아이보리' },
-  { key: 'beige',         color: '#F0E7D6', name: '베이지' },
+  { key: 'lavender', color: '#EBEBEB', name: '라벤더' },
+  { key: 'cream', color: '#F4EFE6', name: '크림' },
+  { key: 'ivory', color: '#FEF9DB', name: '아이보리' },
+  { key: 'beige', color: '#F0E7D6', name: '베이지' },
 ];
 
 const TASK_COLORS = TASK_COLOR_LABELS.map(l => l.color);
@@ -124,7 +127,7 @@ const getMonthDays = (baseDate) => {
   for (let i = 1; i <= lastDay.getDate(); i++) {
     days.push({ date: new Date(year, month, i), current: true });
   }
-  
+
   // Fill until the end of the last week that has current month days
   const totalDays = Math.ceil(days.length / 7) * 7;
   const nextPadding = totalDays - days.length;
@@ -137,7 +140,7 @@ const getMonthDays = (baseDate) => {
 const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMap, onDayPress }) => {
   const baseDate = React.useMemo(() => getDateFromIndex(index), [index]);
   const days = React.useMemo(() => getMonthDays(baseDate), [baseDate]);
-  
+
   const { monthTasks, taskSlots } = React.useMemo(() => {
     const monthStart = dateStr(days[0].date);
     const monthEnd = dateStr(days[days.length - 1].date);
@@ -278,11 +281,11 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                   styles.dayNum,
                   !day.current && { color: Colors.outlineVariant },
                   isToday && styles.todayText,
-                  (!isToday && (isPublicHoliday(ds, holidaysMap) || day.date.getDay() === 0)) && { 
-                    color: day.current ? Colors.error : Colors.error + '40' 
+                  (!isToday && (isPublicHoliday(ds, holidaysMap) || day.date.getDay() === 0)) && {
+                    color: day.current ? Colors.error : Colors.error + '40'
                   },
-                  (!isToday && day.date.getDay() === 6) && { 
-                    color: day.current ? Colors.secondary : Colors.secondary + '40' 
+                  (!isToday && day.date.getDay() === 6) && {
+                    color: day.current ? Colors.secondary : Colors.secondary + '40'
                   }
                 ]}>{day.date.getDate()}</Text>
               </View>
@@ -292,13 +295,13 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                 const weekIndex = Math.floor(i / 7);
                 const task = dayTasks.find(t => taskSlots[`${t.id}_${weekIndex}`] === slotIdx);
                 if (!task) return <View key={slotIdx} style={styles.emptySlotRow} />;
-                
+
                 const isStart = ds === task.date;
                 const isEnd = ds === (task.endDate || task.date);
                 const isMulti = task.endDate && task.endDate !== task.date;
                 const col = task.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === task.id) % TASK_COLORS.length];
                 const opacity = task.isCompleted ? '40' : (day.current ? 'CC' : '30');
-                
+
                 const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
                 const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
                 // Clamp -1 (out-of-range) to calendar bounds, matching slot-calculation logic
@@ -311,10 +314,10 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                 const cellWidth = Math.floor((width - Spacing.lg * 2) / 7);
 
                 return (
-                  <View 
-                    key={slotIdx} 
+                  <View
+                    key={slotIdx}
                     style={[
-                      styles.calendarTaskBar, 
+                      styles.calendarTaskBar,
                       { backgroundColor: col + opacity },
                       isStart && styles.barStart,
                       isEnd && styles.barEnd,
@@ -389,13 +392,13 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
     const baseDate = getDateFromIndex(prev.index);
     const mYear = baseDate.getFullYear();
     const mMonth = baseDate.getMonth();
-    
+
     const pDate = new Date(prev.selectedDateStr);
     const nDate = new Date(next.selectedDateStr);
-    
+
     const diffPrev = (pDate.getFullYear() - mYear) * 12 + (pDate.getMonth() - mMonth);
     const diffNext = (nDate.getFullYear() - mYear) * 12 + (nDate.getMonth() - mMonth);
-    
+
     if (Math.abs(diffPrev) <= 1 || Math.abs(diffNext) <= 1) return false;
   }
   return true;
@@ -432,7 +435,7 @@ const ToastItem = React.memo(({ toast, bottom, onDone, styles }) => {
 });
 
 const CountryItem = React.memo(({ item, isSelected, onPress }) => (
-  <TouchableOpacity 
+  <TouchableOpacity
     style={styles.countryResultItem}
     onPress={() => onPress(item.code)}
   >
@@ -451,7 +454,7 @@ const SelectedCountryItem = React.memo(({ code, country, onRemove }) => (
       <Text style={styles.selectedCountryName}>{country?.displayPrimary || code}</Text>
       <Text style={styles.selectedCountryCode}>{country?.displaySecondary || country?.name || code} ({code})</Text>
     </View>
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.countryRemoveBtn}
       onPress={() => onRemove(code)}
     >
@@ -472,19 +475,21 @@ const TasksScreen = ({ navigation }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
   const [isTaskListVisible, setIsTaskListVisible] = useState(false);
-    
+
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
-  
+
   // FlatList 강제 리마운트용 키 (대규모 점프 시 렉 방지)
   const [calendarListKey, setCalendarListKey] = useState('calendar-list-init');
-  
+
   const [taskWeather, setTaskWeather] = useState({});
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
-  
+
   // Holiday State
   const [holidayCountries, setHolidayCountries] = useState(['KR']); // Default, will be updated from storage
   const [holidaysMap, setHolidaysMap] = useState({});
+
+  const [adError, setAdError] = useState(false);
 
   // Picker Temporary State
   const [tempYear, setTempYear] = useState(new Date().getFullYear());
@@ -501,7 +506,7 @@ const TasksScreen = ({ navigation }) => {
   const [isDetailMenuVisible, setIsDetailMenuVisible] = useState(false);
   const [isEditingInSheet, setIsEditingInSheet] = useState(false);
   const editSheetX = useRef(new Animated.Value(width)).current;
-  
+
   // Toast Stack State
   const [toasts, setToasts] = useState([]);
   const toastIdCounter = useRef(0);
@@ -540,12 +545,12 @@ const TasksScreen = ({ navigation }) => {
 
   const closeAddModal = useCallback((onAfterClose) => {
     Keyboard.dismiss();
-    
+
     if (isMemoEditing) {
       setIsMemoEditing(false);
       return;
     }
-    
+
     setShowColorPicker(false);
     setSearchMode(null);
     // 날짜/시간 피커가 열린 채 모달을 닫을 경우 피커 상태 초기화
@@ -705,7 +710,7 @@ const TasksScreen = ({ navigation }) => {
       const priorityCode = isKorean ? 'KR' : 'US';
       if (a.code === priorityCode) return -1;
       if (b.code === priorityCode) return 1;
-      
+
       // 일본, 영국, 중국 등도 주요 국가로 앞쪽에 배치 (선택 사항)
       const majorCodes = isKorean ? ['US', 'JP', 'CN', 'GB'] : ['GB', 'CA', 'AU', 'KR'];
       const aIdx = majorCodes.indexOf(a.code);
@@ -738,7 +743,7 @@ const TasksScreen = ({ navigation }) => {
       setHolidaysMap({});
       return;
     }
-    
+
     // Defer the heavy calculation by 50ms so the UI (checkbox) updates instantly
     const timer = setTimeout(() => {
       const h1 = getHolidaysForYear(year - 1, holidayCountries);
@@ -758,8 +763,8 @@ const TasksScreen = ({ navigation }) => {
     if (!countrySearch) return [];
     const search = countrySearch.toLowerCase();
     return processedCountries
-      .filter(c => 
-        c.ename.toLowerCase().includes(search) || 
+      .filter(c =>
+        c.ename.toLowerCase().includes(search) ||
         c.code.toLowerCase().includes(search) ||
         (c.kname && c.kname.includes(countrySearch))
       )
@@ -813,7 +818,7 @@ const TasksScreen = ({ navigation }) => {
       const end = t.endDate || t.date;
       return ds >= start && ds <= end;
     });
-    
+
     // 2. Flow tasks
     const ft = [];
     (flows || []).forEach(flow => {
@@ -848,7 +853,7 @@ const TasksScreen = ({ navigation }) => {
 
   const applyPicker = () => {
     const newDate = new Date(tempYear, tempMonth, selectedDate.getDate());
-    
+
     // 점프 거리가 3개월을 초과하면 FlatList를 새로고침하여 중간 렌더링 렉(Freeze) 방지
     const monthDiff = (newDate.getFullYear() - selectedDate.getFullYear()) * 12 + (newDate.getMonth() - selectedDate.getMonth());
     if (Math.abs(monthDiff) > 3) {
@@ -914,9 +919,9 @@ const TasksScreen = ({ navigation }) => {
   const openAddModal = () => {
     console.log('[FAB] openAddModal called');
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    } catch (e) {}
-    
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+    } catch (e) { }
+
     setEditingTask(null);
     setNewTitle('');
     setTaskDate(new Date(selectedDate));
@@ -1023,7 +1028,7 @@ const TasksScreen = ({ navigation }) => {
 
     const startCheck = new Date(taskDate);
     const endCheck = new Date(endDate);
-    
+
     if (!isAllDay) {
       const [sh, sm] = newTime.split(':').map(Number);
       const [eh, em] = endTime.split(':').map(Number);
@@ -1156,16 +1161,16 @@ const TasksScreen = ({ navigation }) => {
       return;
     }
     searchTimerRef.current = setTimeout(async () => {
-    setIsSearching(true);
-    try {
-      const domestic = await searchPlaces(val);
-      const global = await searchLocations(val);
-      setSearchResults([...domestic, ...global]);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSearching(false);
-    }
+      setIsSearching(true);
+      try {
+        const domestic = await searchPlaces(val);
+        const global = await searchLocations(val);
+        setSearchResults([...domestic, ...global]);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsSearching(false);
+      }
     }, 500);
   };
 
@@ -1187,1407 +1192,1432 @@ const TasksScreen = ({ navigation }) => {
   };
   const getTaskTimeDisplay = (task, targetDate) => {
     if (task.isAllDay) return t('tasks.allDay', '종일');
-    
+
     const curStr = dateStr(targetDate);
     const startStr = task.date;
     const endStr = task.endDate || task.date;
-    
+
     const isStart = curStr === startStr;
     const isEnd = curStr === endStr;
     const isMiddle = curStr > startStr && curStr < endStr;
-    
+
     if (isMiddle) return '00:00 - 24:00';
     if (isStart && isEnd) return `${task.time} - ${task.endTime || task.time}`;
     if (isStart) return `${task.time} - 24:00`;
     if (isEnd) return `00:00 - ${task.endTime || task.time}`;
-    
+
     return task.time || t('tasks.allDay', '종일');
   };
 
 
   return (
     <>
-    <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
-      <MainHeader onMenuPress={() => setMenuVisible(true)} />
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: Spacing.md }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header Content */}
-        <View style={{ marginBottom: Spacing.md }}>
-          <View style={styles.monthHeaderRow}>
-            <TouchableOpacity style={styles.monthSelectBtn} onPress={openPicker}>
-              <Text style={styles.monthText}>
-                {selectedDate.toLocaleString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', year: 'numeric' })}
-              </Text>
-              <Calendar size={20} color="#1B254B" style={{ marginLeft: 8 }} pointerEvents="none" />
-            </TouchableOpacity>
+      <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
+        <MainHeader onMenuPress={() => setMenuVisible(true)} />
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingTop: Spacing.md }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header Content */}
+          <View style={{ marginBottom: 0 }}>
+            <View style={styles.monthHeaderRow}>
+              <TouchableOpacity style={styles.monthSelectBtn} onPress={openPicker}>
+                <Text style={styles.monthText}>
+                  {selectedDate.toLocaleString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', year: 'numeric' })}
+                </Text>
+                <Calendar size={20} color="#1B254B" style={{ marginLeft: 8 }} pointerEvents="none" />
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.holidayHeaderBtn, { flexShrink: 1, maxWidth: width * 0.4 }]}
-              onPress={() => {
-                setShowHolidaySettings(true);
-                holidayModalY.setValue(height);
-                Animated.spring(holidayModalY, {
-                  toValue: 0,
-                  useNativeDriver: true,
-                  bounciness: 4,
-                  speed: 14,
-                }).start();
+              <TouchableOpacity
+                style={[styles.holidayHeaderBtn, { flexShrink: 1, maxWidth: width * 0.4 }]}
+                onPress={() => {
+                  setShowHolidaySettings(true);
+                  holidayModalY.setValue(height);
+                  Animated.spring(holidayModalY, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    bounciness: 4,
+                    speed: 14,
+                  }).start();
+                }}
+              >
+                <MapPin size={14} color={Colors.primary} />
+                <Text style={styles.holidayHeaderText} numberOfLines={1} ellipsizeMode="tail">
+                  {t('tasks.holidays_label')}{(holidayCountries || []).join(', ')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {!adError && (
+            <View style={styles.adBannerWrapper}>
+              <View style={styles.adBadge}>
+                <Text style={styles.adBadgeText}>AD</Text>
+              </View>
+              <BannerAd
+                unitId={BANNER_UNIT_ID}
+                size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+                requestOptions={{
+                  requestNonPersonalizedAdsOnly: true,
+                }}
+                onAdFailedToLoad={(error) => {
+                  console.error('Ad failed to load: ', error);
+                  setAdError(true);
+                }}
+              />
+            </View>
+          )}
+
+          <View style={styles.calendarArea}>
+            <View style={styles.weekdayLabels}>
+              {(t('common.days_short', { returnObjects: true }) || ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']).map(d => (
+                <Text key={d} style={styles.weekdayText}>{d}</Text>
+              ))}
+            </View>
+
+            <FlatList
+              key={calendarListKey}
+              ref={calendarListRef}
+              data={monthGridData}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={item => item.toString()}
+              initialScrollIndex={getMonthIndex(selectedDate)}
+              getItemLayout={(data, index) => ({
+                length: width - Spacing.lg * 2,
+                offset: (width - Spacing.lg * 2) * index,
+                index,
+              })}
+              windowSize={3}
+              initialNumToRender={2}
+              maxToRenderPerBatch={2}
+              updateCellsBatchingPeriod={50}
+              removeClippedSubviews={true}
+              onMomentumScrollBegin={() => { isScrollingRef.current = true; }}
+              onMomentumScrollEnd={(e) => {
+                const index = Math.round(e.nativeEvent.contentOffset.x / (width - Spacing.lg * 2));
+                const newBaseDate = getDateFromIndex(index);
+
+                if (newBaseDate.getMonth() !== selectedDate.getMonth() || newBaseDate.getFullYear() !== selectedDate.getFullYear()) {
+                  const targetDay = Math.min(selectedDate.getDate(), new Date(newBaseDate.getFullYear(), newBaseDate.getMonth() + 1, 0).getDate());
+                  const finalDate = new Date(newBaseDate.getFullYear(), newBaseDate.getMonth(), targetDay);
+                  setSelectedDate(finalDate);
+                  setTaskDate(finalDate);
+                }
+                isScrollingRef.current = false;
               }}
-            >
-              <MapPin size={14} color={Colors.primary} />
-              <Text style={styles.holidayHeaderText} numberOfLines={1} ellipsizeMode="tail">
-                {t('tasks.holidays_label')}{(holidayCountries || []).join(', ')}
-              </Text>
-            </TouchableOpacity>
+              renderItem={renderCalendarItem}
+            />
           </View>
-        </View>
+        </ScrollView>
 
-        <View style={styles.calendarArea}>
-          <View style={styles.weekdayLabels}>
-            {(t('common.days_short', { returnObjects: true }) || ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']).map(d => (
-              <Text key={d} style={styles.weekdayText}>{d}</Text>
-            ))}
-          </View>
+        {/* Unified Task Sheet (List + Detail Navigation) */}
+        <Modal
+          visible={isTaskListVisible}
+          animationType="none"
+          transparent={true}
+          statusBarTranslucent={true}
+          onRequestClose={closeTaskListModal}
+        >
 
-          <FlatList
-            key={calendarListKey}
-            ref={calendarListRef}
-            data={monthGridData}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={item => item.toString()}
-            initialScrollIndex={getMonthIndex(selectedDate)}
-            getItemLayout={(data, index) => ({
-              length: width - Spacing.lg * 2,
-              offset: (width - Spacing.lg * 2) * index,
-              index,
-            })}
-            windowSize={3}
-            initialNumToRender={2}
-            maxToRenderPerBatch={2}
-            updateCellsBatchingPeriod={50}
-            removeClippedSubviews={true}
-            onMomentumScrollBegin={() => { isScrollingRef.current = true; }}
-            onMomentumScrollEnd={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / (width - Spacing.lg * 2));
-              const newBaseDate = getDateFromIndex(index);
-              
-              if (newBaseDate.getMonth() !== selectedDate.getMonth() || newBaseDate.getFullYear() !== selectedDate.getFullYear()) {
-                const targetDay = Math.min(selectedDate.getDate(), new Date(newBaseDate.getFullYear(), newBaseDate.getMonth() + 1, 0).getDate());
-                const finalDate = new Date(newBaseDate.getFullYear(), newBaseDate.getMonth(), targetDay);
-                setSelectedDate(finalDate);
-                setTaskDate(finalDate);
-              }
-              isScrollingRef.current = false;
-            }}
-            renderItem={renderCalendarItem}
-          />
-        </View>
-      </ScrollView>
-
-      {/* Unified Task Sheet (List + Detail Navigation) */}
-      <Modal
-        visible={isTaskListVisible}
-        animationType="none"
-        transparent={true}
-        statusBarTranslucent={true}
-        onRequestClose={closeTaskListModal}
-      >
-
-        <View style={styles.modalBg}>
-          <Animated.View 
-            style={[
-              StyleSheet.absoluteFill,
-              { 
-                backgroundColor: 'black',
-                opacity: listModalTranslateY.interpolate({
-                  inputRange: [0, height],
-                  outputRange: [0.5, 0],
-                  extrapolate: 'clamp'
-                })
-              }
-            ]} 
-          />
-          <Animated.View style={[styles.sheetContent, { 
-            height: height * 0.9, 
-            overflow: 'hidden',
-            transform: [{ translateY: listModalTranslateY }]
-          }]}>
-            <Animated.View style={{ 
-              flex: 1, 
-              flexDirection: 'row', 
-              width: width * 2,
-              transform: [{
-                translateX: sheetAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -width]
-                })
-              }]
-            }}>
-              {/* PAGE 1: Task List */}
-              <View style={{ width: width }}>
-                <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
-                  <View style={styles.modalHandle} />
-                  <View style={styles.sheetTitleArea}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.sheetDateTitle}>{formatDisplayDate(selectedDate)}</Text>
-                        <Text style={styles.sheetSubtitle}>{t('tasks.scheduled_tasks', 'Scheduled Tasks')}</Text>
-                      </View>
-                      <TouchableOpacity 
-                        onPress={closeTaskListModal}
-                        style={styles.headerSaveBtn}
-                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                      >
-                        <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-
-                <ScrollView 
-                  style={styles.sheetList} 
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 100 }}
-                >
-                  {(filteredTasks || []).length === 0 && !isPublicHoliday(dateStr(selectedDate), holidaysMap) ? (
-                    <View style={styles.emptyState}>
-                      <CalendarDays size={48} color={Colors.outlineVariant} strokeWidth={1} style={{ marginBottom: Spacing.md }} />
-                      <Text style={styles.emptyText}>{t('tasks.empty', 'No tasks scheduled.')}</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.taskList}>
-                      {/* Public Holidays Section */}
-                      {holidaysMap[dateStr(selectedDate)] && holidaysMap[dateStr(selectedDate)].length > 0 && (
-                        <View style={styles.holidaySection}>
-                          {holidaysMap[dateStr(selectedDate)].map((h, idx) => (
-                            <View key={idx} style={styles.holidayBadge}>
-                              <Text style={styles.holidayNameText}>[{h.country}] {h.name}</Text>
-                              <Text style={styles.holidayTypeText}>{h.type === 'public' ? t('tasks.public_holiday', 'Public Holiday') : t('tasks.observance', 'Observance')}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {(filteredTasks || []).map((task) => {
-                        const taskCol = task.color || TASK_COLORS[tasks.findIndex(gt => gt.id === task.id) % TASK_COLORS.length];
-                        const timeDisplay = getTaskTimeDisplay(task, selectedDate);
-                        
-                        return (
-                          <TouchableOpacity 
-                            key={task.id} 
-                            style={[styles.timeTreeListItem, task.isCompleted && { opacity: 0.5 }]}
-                            onPress={() => { 
-                              setSelectedTaskDetail(task);
-                              Animated.timing(sheetAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-                            }}
-                          >
-                            <View style={styles.listItemTimeArea}>
-                              <Text style={styles.listItemTimeText}>{timeDisplay}</Text>
-                            </View>
-                            
-                            <View style={[styles.listItemColorBar, { backgroundColor: taskCol }]} />
-                            
-                            <View style={styles.listItemContent}>
-                              <Text style={[styles.listItemTitle, task.isCompleted && styles.taskTitleCompleted]} numberOfLines={1}>
-                                {task.title}
-                              </Text>
-                            </View>
-
-                            <TouchableOpacity 
-                              onPress={task.isFlowTask ? null : () => handleToggle(task.id)} 
-                              style={[styles.listItemCheck, task.isFlowTask && { opacity: 0.3 }]} 
-                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                              disabled={task.isFlowTask}
-                            >
-                              {task.isCompleted ? 
-                                <CheckCircle2 size={20} color={taskCol} pointerEvents="none" /> : 
-                                <Circle size={20} color={Colors.outlineVariant} pointerEvents="none" />
-                              }
-                            </TouchableOpacity>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                </ScrollView>
-
-                <TouchableOpacity 
-                  style={[styles.sheetAddBtn, { position: 'absolute', bottom: 16, left: 0, right: 0 }]} 
-                  onPress={() => { setIsTaskListVisible(false); openAddModal(); }}
-                >
-                  <Plus size={20} color="white" strokeWidth={3} />
-                  <Text style={styles.sheetAddBtnText}>{t('tasks.addNew', 'Add New Task')}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* PAGE 2: Task Detail */}
-              <View style={{ width: width }}>
-                <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
-                  <View style={styles.modalHandle} />
-                  <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
-                    <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                      <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      onPress={selectedTaskDetail?.isFlowTask ? null : () => setIsDetailMenuVisible(true)} 
-                      style={[styles.detailHeaderBtn, selectedTaskDetail?.isFlowTask && { opacity: 0.3 }]} 
-                      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                      disabled={!selectedTaskDetail || selectedTaskDetail.isFlowTask}
-                    >
-                      <MoreHorizontal size={24} color={Colors.text} pointerEvents="none" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {selectedTaskDetail && (
-                  <ScrollView 
-                    style={{ flex: 1 }} 
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 60 }}
-                  >
-                    <View style={styles.detailBody}>
-                      <View style={styles.detailTitleSection}>
-                        <View style={[styles.detailColorBar, { backgroundColor: selectedTaskDetail.color || Colors.primary }]} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
-                          {selectedTaskDetail.isFlowTask && (
-                            <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' }}>
-                              {t('tasks.flowReadOnlyNotice', '* This task is read-only information managed in Flow.')}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-
-                      <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>
-                        {(() => { const { year, main } = formatDetailDate(selectedTaskDetail.date); return (
-                        <View style={{ alignItems: 'center' }}>
-                          <Text style={styles.detailDateYear}>{year}</Text>
-                          <Text style={styles.detailDateMain}>{main}</Text>
-                          {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.time || '00:00'}</Text>}
-                        </View>
-                        ); })()}
-                        <ArrowRight size={24} color={Colors.primary} />
-                        {(() => { const { year, main } = formatDetailDate(selectedTaskDetail.endDate || selectedTaskDetail.date); return (
-                        <View style={{ alignItems: 'center' }}>
-                          <Text style={styles.detailDateYear}>{year}</Text>
-                          <Text style={styles.detailDateMain}>{main}</Text>
-                          {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.endTime || selectedTaskDetail.time || '00:00'}</Text>}
-                        </View>
-                        ); })()}
-                      </View>
-
-                      <View style={styles.detailInfoList}>
-                        {selectedTaskDetail.isAllDay && (
-                          <View style={styles.detailInfoItem}>
-                            <Clock size={20} color={Colors.outline} />
-                            <Text style={styles.detailInfoText}>{t('tasks.allDay', '종일')}</Text>
-                          </View>
-                        )}
-                        {(selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion) && (
-                          <View style={styles.detailInfoItem}>
-                            <MapPin size={20} color={Colors.outline} />
-                            <Text style={styles.detailInfoText}>
-                              {selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion?.name}
-                            </Text>
-                          </View>
-                        )}
-                        <View style={styles.detailInfoItem}>
-                          <Tag size={20} color={Colors.outline} />
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                            <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: selectedTaskDetail.color || Colors.primary }} />
-                            <Text style={styles.detailInfoText}>
-                              {(() => {
-                                const label = TASK_COLOR_LABELS.find(l => l.color === (selectedTaskDetail.color || Colors.primary));
-                                return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.defaultColor', 'Default Color');
-                              })()}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.detailInfoItem}>
-                          <AlignLeft size={20} color={Colors.outline} />
-                          <Text style={styles.detailInfoText}>{selectedTaskDetail.memo || 'No memo'}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </ScrollView>
-                )}
-
-                {isDetailMenuVisible && (
-                  <>
-                    <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setIsDetailMenuVisible(false)} />
-                    <View style={styles.floatingMenu}>
-                      <TouchableOpacity style={styles.menuItem} onPress={async () => {
-                        setIsDetailMenuVisible(false);
-                        const updated = await toggleTaskCompletion(selectedTaskDetail.id);
-                        setTasks(updated);
-                        const newStatus = !selectedTaskDetail.isCompleted;
-                        setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
-                      }}>
-                        <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
-                        <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
-                          {selectedTaskDetail.isCompleted ? t('tasks.mark_incomplete') : t('tasks.mark_complete')}
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity style={styles.menuItem} onPress={async () => {
-                        setIsDetailMenuVisible(false);
-                        const shareText = `[Todo] ${selectedTaskDetail.title}\nPeriod: ${selectedTaskDetail.date} ~ ${selectedTaskDetail.endDate || selectedTaskDetail.date}\nNotes: ${selectedTaskDetail.memo || ''}`;
-                        await Clipboard.setStringAsync(shareText);
-                        showToast(t('tasks.copy_success'));
-                      }}>
-                        <Share2 size={18} color={Colors.text} /><Text style={styles.menuText}>{t('tasks.share')}</Text>
-                      </TouchableOpacity>
-
-                      <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
-
-                      <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); openEditInSheet(selectedTaskDetail); }}>
-                        <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>{t('common.edit')}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.menuItem} onPress={() => {
-                        setIsDetailMenuVisible(false);
-                        const taskId = selectedTaskDetail.id;
-                        isAlertActiveRef.current = true;
-                        Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
-                          { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
-                          { text: t('common.delete'), style: 'destructive', onPress: async () => {
-                            isAlertActiveRef.current = false;
-                            handleBackToList();
-                            const updated = await deleteTask(taskId);
-                            setTasks(updated);
-                            showToast(t('tasks.delete_success'));
-                          } }
-                        ], { cancelable: false });
-                      }}>
-                        <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>{t('common.delete')}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </View>
-            </Animated.View>
-
-            {/* PAGE 3: Edit Panel (slides in from right within the same modal) */}
-            {isEditingInSheet && (
-              <Animated.View style={[
+          <View style={styles.modalBg}>
+            <Animated.View
+              style={[
                 StyleSheet.absoluteFill,
-                { backgroundColor: 'white', paddingHorizontal: Spacing.xl, transform: [{ translateX: editSheetX }] }
-              ]}>
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                  style={{ flex: 1 }}
-                  keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-                >
-                  {isMemoEditing ? (
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.modalHeader}>
-                        <View style={styles.modalHandle} />
-                        <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-                          <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                            <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
-                          </TouchableOpacity>
-                          <View style={{ alignItems: 'center' }}>
-                            <Text style={styles.modalTitle}>Memo</Text>
-                            <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '600' }}>{newMemo.length} / 1000</Text>
-                          </View>
-                          <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                            <Text style={styles.headerSaveText} pointerEvents="none">{t('common.done', 'Done')}</Text>
-                          </TouchableOpacity>
+                {
+                  backgroundColor: 'black',
+                  opacity: listModalTranslateY.interpolate({
+                    inputRange: [0, height],
+                    outputRange: [0.5, 0],
+                    extrapolate: 'clamp'
+                  })
+                }
+              ]}
+            />
+            <Animated.View style={[styles.sheetContent, {
+              height: height * 0.9,
+              overflow: 'hidden',
+              transform: [{ translateY: listModalTranslateY }]
+            }]}>
+              <Animated.View style={{
+                flex: 1,
+                flexDirection: 'row',
+                width: width * 2,
+                transform: [{
+                  translateX: sheetAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -width]
+                  })
+                }]
+              }}>
+                {/* PAGE 1: Task List */}
+                <View style={{ width: width }}>
+                  <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
+                    <View style={styles.modalHandle} />
+                    <View style={styles.sheetTitleArea}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.sheetDateTitle}>{formatDisplayDate(selectedDate)}</Text>
+                          <Text style={styles.sheetSubtitle}>{t('tasks.scheduled_tasks', 'Scheduled Tasks')}</Text>
                         </View>
-                      </View>
-                      <View style={{ flex: 1, paddingBottom: Platform.OS === 'ios' ? 20 : 0 }}>
-                        <TextInput
-                          style={[styles.fullMemoInput, { flex: 1 }]}
-                          placeholder={t('tasks.memo_placeholder', 'Add notes...')}
-                          value={newMemo}
-                          onChangeText={setNewMemo}
-                          multiline
-                          autoFocus
-                          autoCapitalize="none"
-                          maxLength={1000}
-                          placeholderTextColor={Colors.outline}
-                          textAlignVertical="top"
-                        />
-                      </View>
-                    </View>
-                  ) : (
-                    <>
-                      <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
-                        <View style={styles.modalHandle} />
-                        <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-                          <TouchableOpacity onPress={() => closeEditInSheet()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                            <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
-                          </TouchableOpacity>
-                          <Text style={styles.modalTitle}>{t('tasks.edit_task', 'Edit Task')}</Text>
-                          {isKeyboardVisible ? (
-                            <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
-                                <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
-                                <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
-                              </View>
-                            </TouchableOpacity>
-                          ) : (
-                            <TouchableOpacity onPress={handleSaveTask} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                              <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      </View>
-                      <ScrollView
-                        ref={modalScrollRef}
-                        style={styles.modalForm}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        contentContainerStyle={{ paddingBottom: 250 }}
-                        automaticallyAdjustKeyboardInsets={true}
-                      >
-                        <TextInput
-                          ref={titleInputRef}
-                          style={styles.timeTreeTitle}
-                          placeholder={t('tasks.placeholder', '투두')}
-                          value={newTitle}
-                          onChangeText={setNewTitle}
-                          returnKeyType="done"
-                          autoCapitalize="none"
-                          onSubmitEditing={() => Keyboard.dismiss()}
-                        />
-                        <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setPendingColor(selectedColor); setShowColorPicker(true); }}>
-                          <View style={styles.rowLead}>
-                            <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
-                            <Text style={styles.timeTreeRowText}>
-                              {(() => {
-                                const label = TASK_COLOR_LABELS.find(l => l.color === selectedColor);
-                                return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.selectLabel', 'Select Label');
-                              })()}
-                            </Text>
-                          </View>
-                          <ChevronRight size={20} color={Colors.outline} />
-                        </TouchableOpacity>
-                        <View style={styles.timeTreeDivider} />
-                        <View style={styles.timeTreeRow}>
-                          <View style={styles.rowLead}>
-                            <Compass size={22} color={isAllDay ? Colors.primary : Colors.textSecondary} />
-                            <Text style={styles.timeTreeRowText}>{t('tasks.all_day', 'All Day')}</Text>
-                          </View>
-                          <Switch value={isAllDay} onValueChange={setIsAllDay} trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }} thumbColor={isAllDay ? Colors.primary : '#F4F7FE'} />
-                        </View>
-                        <View style={styles.timeTreeDivider} />
-                        <View style={styles.timeTreeRow}>
-                          <View style={styles.rowLead}>
-                            <Calendar size={20} color={Colors.textSecondary} />
-                            <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
-                          </View>
-                          <View style={styles.rowTail}>
-                            <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
-                              <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
-                            </TouchableOpacity>
-                            {!isAllDay && (
-                              <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
-                                <Text style={styles.timeTreeTimeText}>{newTime}</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        </View>
-                        <View style={styles.timeTreeRow}>
-                          <View style={styles.rowLead}>
-                            <View style={{ width: 22 }} />
-                            <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
-                          </View>
-                          <View style={styles.rowTail}>
-                            <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
-                              <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
-                            </TouchableOpacity>
-                            {!isAllDay && (
-                              <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
-                                <Text style={styles.timeTreeTimeText}>{endTime}</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        </View>
-                        <View style={styles.timeTreeDivider} />
-                        <View style={styles.timeTreeRow}>
-                          <View style={styles.rowLead}>
-                            <MapPin size={22} color={Colors.textSecondary} />
-                            <TextInput
-                              style={styles.timeTreeInput}
-                              placeholder={t('tasks.loc_placeholder', 'Location')}
-                              value={newLocName}
-                              onChangeText={setNewLocName}
-                              autoCapitalize="none"
-                            />
-                          </View>
-                        </View>
-                        <View style={styles.timeTreeDivider} />
-                        <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
-                          <View style={styles.memoHeader}>
-                            <AlignLeft size={18} color={Colors.textSecondary} />
-                            <Text style={styles.memoLabel}>{t('tasks.memo', 'Memo')}</Text>
-                          </View>
-                          <View style={styles.memoPreviewBox}>
-                            <Text style={[styles.memoPreviewText, !newMemo && { color: Colors.outline }]} numberOfLines={10} ellipsizeMode="tail">
-                              {newMemo ? (newMemo.split('\n').length > 10 ? newMemo.split('\n').slice(0, 10).join('\n') + '...' : newMemo) : t('tasks.memo_placeholder', 'Add notes...')}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      </ScrollView>
-                    </>
-                  )}
-                </KeyboardAvoidingView>
-
-                {/* Date / Time Picker Overlay */}
-                {Platform.OS === 'ios' && (showDatePicker || showTimePicker || showEndDatePicker || showEndTimePicker) && (
-                  <View style={styles.iosPickerOverlay}>
-                    <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeAllPickers} />
-                    <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
-                      <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
-                      <View style={styles.iosPickerHeader}>
-                        <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
-                          <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>{t('common.cancel', '취소')}</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.iosPickerTitle}>
-                          {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
-                        </Text>
-                        <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
-                          <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
+                        <TouchableOpacity
+                          onPress={closeTaskListModal}
+                          style={styles.headerSaveBtn}
+                          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                        >
+                          <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
                         </TouchableOpacity>
                       </View>
-                      {(showDatePicker || showEndDatePicker) ? (
-                        <DateTimePicker
-                          key={i18n.language}
-                          value={(() => {
-                            try {
-                              if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
-                              if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
-                            } catch (e) { return new Date(); }
-                            return new Date();
-                          })()}
-                          mode="date"
-                          display="inline"
-                          locale={i18n.language}
-                          accentColor={Colors.primary}
-                          onChange={(event, date) => {
-                            if (showDatePicker) onDateChange(event, date);
-                            else if (showEndDatePicker) onEndDateChange(event, date);
-                          }}
-                          style={{ width: width - 32, height: 360, alignSelf: 'center' }}
-                        />
-                      ) : (
-                        <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
-                          <DateTimePicker
-                            key={i18n.language}
-                            value={(() => {
-                              try {
-                                if (showTimePicker) {
-                                  const [h, m] = newTime.split(':').map(Number);
-                                  const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
-                                }
-                                if (showEndTimePicker) {
-                                  const [h, m] = endTime.split(':').map(Number);
-                                  const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
-                                }
-                              } catch (e) { return new Date(); }
-                              return new Date();
-                            })()}
-                            mode="time"
-                            display="spinner"
-                            locale={i18n.language}
-                            is24Hour={true}
-                            textColor="black"
-                            onChange={(event, date) => {
-                              if (showTimePicker) onTimeChange(event, date);
-                              else if (showEndTimePicker) onEndTimeChange(event, date);
-                            }}
-                            style={{ height: 216, width: width - 32, alignSelf: 'center' }}
-                          />
-                        </View>
-                      )}
                     </View>
                   </View>
-                )}
 
-                {/* Color Picker Overlay */}
-                {showColorPicker && (
-                  <View style={styles.innerSearchOverlay}>
-                    <View style={[styles.searchHeader, { alignItems: 'flex-start', flexDirection: 'column', gap: 12 }]}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                        <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', '라벨 선택')}</Text>
-                        <TouchableOpacity onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }} style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>{t('common.select', 'Select')}</Text>
-                        </TouchableOpacity>
+                  <ScrollView
+                    style={styles.sheetList}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 100 }}
+                  >
+                    {(filteredTasks || []).length === 0 && !isPublicHoliday(dateStr(selectedDate), holidaysMap) ? (
+                      <View style={styles.emptyState}>
+                        <CalendarDays size={48} color={Colors.outlineVariant} strokeWidth={1} style={{ marginBottom: Spacing.md }} />
+                        <Text style={styles.emptyText}>{t('tasks.empty', 'No tasks scheduled.')}</Text>
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, width: '100%' }}>
-                        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>
-                            {(() => {
-                              const label = TASK_COLOR_LABELS.find(l => l.color === pendingColor);
-                              return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.label', 'Label');
-                            })()}
-                          </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
-                            <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{t('tasks.sample_task', 'Task Sample')}</Text>
+                    ) : (
+                      <View style={styles.taskList}>
+                        {/* Public Holidays Section */}
+                        {holidaysMap[dateStr(selectedDate)] && holidaysMap[dateStr(selectedDate)].length > 0 && (
+                          <View style={styles.holidaySection}>
+                            {holidaysMap[dateStr(selectedDate)].map((h, idx) => (
+                              <View key={idx} style={styles.holidayBadge}>
+                                <Text style={styles.holidayNameText}>[{h.country}] {h.name}</Text>
+                                <Text style={styles.holidayTypeText}>{h.type === 'public' ? t('tasks.public_holiday', 'Public Holiday') : t('tasks.observance', 'Observance')}</Text>
+                              </View>
+                            ))}
                           </View>
-                        </View>
-                      </View>
-                    </View>
-                    <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical: 8 }}>
-                      <View style={styles.colorGrid}>
-                        {TASK_COLOR_LABELS.map((item, idx) => {
-                          const isPending = pendingColor === item.color;
+                        )}
+
+                        {(filteredTasks || []).map((task) => {
+                          const taskCol = task.color || TASK_COLORS[tasks.findIndex(gt => gt.id === task.id) % TASK_COLORS.length];
+                          const timeDisplay = getTaskTimeDisplay(task, selectedDate);
+
                           return (
                             <TouchableOpacity
-                              key={idx}
-                              style={[styles.colorGridCell, isPending && { borderColor: item.color, borderWidth: 2, backgroundColor: item.color + '18' }]}
-                              onPress={() => { if (isPending) { setSelectedColor(item.color); setShowColorPicker(false); } else { setPendingColor(item.color); } }}
-                              activeOpacity={0.7}
+                              key={task.id}
+                              style={[styles.timeTreeListItem, task.isCompleted && { opacity: 0.5 }]}
+                              onPress={() => {
+                                setSelectedTaskDetail(task);
+                                Animated.timing(sheetAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+                              }}
                             >
-                              <View style={[styles.colorSwatch, { backgroundColor: item.color }, item.color.toUpperCase() === '#EBEBEB' || item.color.toUpperCase() === '#F4EFE6' || item.color.toUpperCase() === '#FEF9DB' || item.color.toUpperCase() === '#F0E7D6' ? { borderWidth: 1, borderColor: '#E2E8F0' } : {}]}>
-                                {isPending && <View style={{ position: 'absolute', inset: 0, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: 'white' }} /></View>}
+                              <View style={styles.listItemTimeArea}>
+                                <Text style={styles.listItemTimeText}>{timeDisplay}</Text>
                               </View>
-                              <Text style={styles.colorLabel} numberOfLines={1}>{t(`tasks.colors.${item.key}`, item.name)}</Text>
+
+                              <View style={[styles.listItemColorBar, { backgroundColor: taskCol }]} />
+
+                              <View style={styles.listItemContent}>
+                                <Text style={[styles.listItemTitle, task.isCompleted && styles.taskTitleCompleted]} numberOfLines={1}>
+                                  {task.title}
+                                </Text>
+                              </View>
+
+                              <TouchableOpacity
+                                onPress={task.isFlowTask ? null : () => handleToggle(task.id)}
+                                style={[styles.listItemCheck, task.isFlowTask && { opacity: 0.3 }]}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                disabled={task.isFlowTask}
+                              >
+                                {task.isCompleted ?
+                                  <CheckCircle2 size={20} color={taskCol} pointerEvents="none" /> :
+                                  <Circle size={20} color={Colors.outlineVariant} pointerEvents="none" />
+                                }
+                              </TouchableOpacity>
                             </TouchableOpacity>
                           );
                         })}
                       </View>
-                    </ScrollView>
-                  </View>
-                )}
-              </Animated.View>
-            )}
-          </Animated.View>
-          {renderToast('isTaskListVisible')}
-        </View>
-
-      </Modal>
-
-      {renderToast('main')}
-    
-
-      {/* Picker and Adding modals will be rendered here as siblings */}
-
-      {/* Wheel Picker Modal */}
-      <Modal visible={isPickerVisible} transparent animationType="fade" onRequestClose={() => setIsPickerVisible(false)}>
-
-        <View style={styles.pickerBg}>
-          <View style={styles.pickerContent}>
-            <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>{t('common.select_date', 'Select Date')}</Text>
-              <TouchableOpacity onPress={() => setIsPickerVisible(false)} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.wheelWrapper}>
-              {/* Visual Highlight Overlay */}
-              <View style={styles.wheelOverlay} pointerEvents="none" />
-
-              <View style={styles.wheelRow}>
-                {/* Year Wheel */}
-                <View style={styles.wheelCol}>
-                  <FlatList
-                    ref={yearListRef}
-                    data={YEARS}
-                    keyExtractor={item => item.toString()}
-                    showsVerticalScrollIndicator={false}
-                    snapToInterval={ITEM_HEIGHT}
-                    initialScrollIndex={tempYear - 1900}
-                    getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
-                    contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
-                    onScroll={(e) => {
-                      const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-                      if (index !== lastTickYearIndex.current) {
-                        lastTickYearIndex.current = index;
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }
-                    }}
-                    scrollEventThrottle={16}
-                    onMomentumScrollEnd={(e) => {
-                      const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-                      setTempYear(1900 + index);
-                    }}
-                    renderItem={({ item: year }) => (
-                      <View style={styles.wheelItem}>
-                        <Text style={[styles.wheelItemText, tempYear === year && styles.activeWheelText]}>{year}{t('common.year_unit', '년')}</Text>
-                      </View>
                     )}
-                  />
+                  </ScrollView>
+
+                  <TouchableOpacity
+                    style={[styles.sheetAddBtn, { position: 'absolute', bottom: 16, left: 0, right: 0 }]}
+                    onPress={() => { setIsTaskListVisible(false); openAddModal(); }}
+                  >
+                    <Plus size={20} color="white" strokeWidth={3} />
+                    <Text style={styles.sheetAddBtnText}>{t('tasks.addNew', 'Add New Task')}</Text>
+                  </TouchableOpacity>
                 </View>
 
-                {/* Month Wheel */}
-                <View style={styles.wheelCol}>
-                  <FlatList
-                    ref={monthListRef}
-                    data={MONTHS}
-                    keyExtractor={item => item.toString()}
-                    showsVerticalScrollIndicator={false}
-                    snapToInterval={ITEM_HEIGHT}
-                    initialScrollIndex={tempMonth}
-                    getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
-                    contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
-                    onScroll={(e) => {
-                      const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-                      if (index !== lastTickMonthIndex.current) {
-                        lastTickMonthIndex.current = index;
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }
-                    }}
-                    scrollEventThrottle={16}
-                    onMomentumScrollEnd={(e) => {
-                      const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-                      setTempMonth(index);
-                    }}
-                    renderItem={({ item: month }) => (
-                      <View style={styles.wheelItem}>
-                        <Text style={[styles.wheelItemText, tempMonth === (month - 1) && styles.activeWheelText]}>
-                          {t(`months.${month - 1}`)}{t('common.month_unit', '월')}
-                        </Text>
-                      </View>
-                    )}
-                  />
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.pickerFooter}>
-              <TouchableOpacity style={styles.todayBtn} onPress={() => {
-                const today = new Date();
-                const y = today.getFullYear();
-                const m = today.getMonth();
-                setTempYear(y);
-                setTempMonth(m);
-                yearListRef.current?.scrollToIndex({ index: y - 1900, animated: true });
-                monthListRef.current?.scrollToIndex({ index: m, animated: true });
-              }}>
-                <Text style={styles.todayBtnText}>{t('common.go_to_today', 'Go to Today')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={applyPicker}>
-                <Text style={styles.confirmBtnText}>{t('common.done', 'Done')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-      </Modal>
-
-      <Modal
-        visible={isAdding}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeAddModal}
-        onShow={() => {
-          modalScrollRef.current?.scrollTo({ y: 0, animated: false });
-          setTimeout(() => titleInputRef.current?.focus(), 300);
-        }}
-      >
-        <View style={[styles.modalBg, { flex: 1 }]}>
-          <View style={styles.modalContent}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={{ flex: 1 }}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-            >
-              {isMemoEditing ? (
-                /* Full Screen Memo Editor */
-                <View style={{ flex: 1 }}>
-                  <View style={styles.modalHeader}>
+                {/* PAGE 2: Task Detail */}
+                <View style={{ width: width }}>
+                  <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
                     <View style={styles.modalHandle} />
-                    <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-                      <TouchableOpacity 
-                        onPress={() => setIsMemoEditing(false)} 
-                        style={styles.headerActionBtn}
-                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                      >
+                    <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
+                      <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
                         <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                       </TouchableOpacity>
-                      <View style={{ alignItems: 'center' }}>
-                        <Text style={styles.modalTitle}>{t('tasks.memo', 'Memo')}</Text>
-                        <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '600' }}>
-                          {newMemo.length} / 1000
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        onPress={() => setIsMemoEditing(false)} 
-                        style={styles.headerSaveBtn}
+                      <TouchableOpacity
+                        onPress={selectedTaskDetail?.isFlowTask ? null : () => setIsDetailMenuVisible(true)}
+                        style={[styles.detailHeaderBtn, selectedTaskDetail?.isFlowTask && { opacity: 0.3 }]}
                         hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                        disabled={!selectedTaskDetail || selectedTaskDetail.isFlowTask}
                       >
-                        <Text style={styles.headerSaveText} pointerEvents="none">{t('common.done', 'Done')}</Text>
+                        <MoreHorizontal size={24} color={Colors.text} pointerEvents="none" />
                       </TouchableOpacity>
                     </View>
                   </View>
-                  <View style={{ flex: 1, paddingBottom: Platform.OS === 'ios' ? 20 : 0 }}>
-                    <TextInput
-                      style={[styles.fullMemoInput, { flex: 1 }]}
-                      placeholder={t('tasks.memo_placeholder', 'Add notes...')}
-                      value={newMemo}
-                      onChangeText={setNewMemo}
-                      multiline
-                      autoFocus
-                      autoCapitalize="none"
-                      maxLength={1000}
-                      placeholderTextColor={Colors.outline}
-                      textAlignVertical="top"
+
+                  {selectedTaskDetail && (
+                    <ScrollView
+                      style={{ flex: 1 }}
+                      showsVerticalScrollIndicator={false}
+                      contentContainerStyle={{ paddingBottom: 60 }}
+                    >
+                      <View style={styles.detailBody}>
+                        <View style={styles.detailTitleSection}>
+                          <View style={[styles.detailColorBar, { backgroundColor: selectedTaskDetail.color || Colors.primary }]} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
+                            {selectedTaskDetail.isFlowTask && (
+                              <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' }}>
+                                {t('tasks.flowReadOnlyNotice', '* This task is read-only information managed in Flow.')}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+
+                        <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>
+                          {(() => {
+                            const { year, main } = formatDetailDate(selectedTaskDetail.date); return (
+                              <View style={{ alignItems: 'center' }}>
+                                <Text style={styles.detailDateYear}>{year}</Text>
+                                <Text style={styles.detailDateMain}>{main}</Text>
+                                {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.time || '00:00'}</Text>}
+                              </View>
+                            );
+                          })()}
+                          <ArrowRight size={24} color={Colors.primary} />
+                          {(() => {
+                            const { year, main } = formatDetailDate(selectedTaskDetail.endDate || selectedTaskDetail.date); return (
+                              <View style={{ alignItems: 'center' }}>
+                                <Text style={styles.detailDateYear}>{year}</Text>
+                                <Text style={styles.detailDateMain}>{main}</Text>
+                                {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.endTime || selectedTaskDetail.time || '00:00'}</Text>}
+                              </View>
+                            );
+                          })()}
+                        </View>
+
+                        <View style={styles.detailInfoList}>
+                          {selectedTaskDetail.isAllDay && (
+                            <View style={styles.detailInfoItem}>
+                              <Clock size={20} color={Colors.outline} />
+                              <Text style={styles.detailInfoText}>{t('tasks.allDay', '종일')}</Text>
+                            </View>
+                          )}
+                          {(selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion) && (
+                            <View style={styles.detailInfoItem}>
+                              <MapPin size={20} color={Colors.outline} />
+                              <Text style={styles.detailInfoText}>
+                                {selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion?.name}
+                              </Text>
+                            </View>
+                          )}
+                          <View style={styles.detailInfoItem}>
+                            <Tag size={20} color={Colors.outline} />
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                              <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: selectedTaskDetail.color || Colors.primary }} />
+                              <Text style={styles.detailInfoText}>
+                                {(() => {
+                                  const label = TASK_COLOR_LABELS.find(l => l.color === (selectedTaskDetail.color || Colors.primary));
+                                  return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.defaultColor', 'Default Color');
+                                })()}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.detailInfoItem}>
+                            <AlignLeft size={20} color={Colors.outline} />
+                            <Text style={styles.detailInfoText}>{selectedTaskDetail.memo || 'No memo'}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </ScrollView>
+                  )}
+
+                  {isDetailMenuVisible && (
+                    <>
+                      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setIsDetailMenuVisible(false)} />
+                      <View style={styles.floatingMenu}>
+                        <TouchableOpacity style={styles.menuItem} onPress={async () => {
+                          setIsDetailMenuVisible(false);
+                          const updated = await toggleTaskCompletion(selectedTaskDetail.id);
+                          setTasks(updated);
+                          const newStatus = !selectedTaskDetail.isCompleted;
+                          setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
+                        }}>
+                          <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
+                          <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
+                            {selectedTaskDetail.isCompleted ? t('tasks.mark_incomplete') : t('tasks.mark_complete')}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.menuItem} onPress={async () => {
+                          setIsDetailMenuVisible(false);
+                          const shareText = `[Todo] ${selectedTaskDetail.title}\nPeriod: ${selectedTaskDetail.date} ~ ${selectedTaskDetail.endDate || selectedTaskDetail.date}\nNotes: ${selectedTaskDetail.memo || ''}`;
+                          await Clipboard.setStringAsync(shareText);
+                          showToast(t('tasks.copy_success'));
+                        }}>
+                          <Share2 size={18} color={Colors.text} /><Text style={styles.menuText}>{t('tasks.share')}</Text>
+                        </TouchableOpacity>
+
+                        <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
+
+                        <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); openEditInSheet(selectedTaskDetail); }}>
+                          <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>{t('common.edit')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => {
+                          setIsDetailMenuVisible(false);
+                          const taskId = selectedTaskDetail.id;
+                          isAlertActiveRef.current = true;
+                          Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
+                            { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
+                            {
+                              text: t('common.delete'), style: 'destructive', onPress: async () => {
+                                isAlertActiveRef.current = false;
+                                handleBackToList();
+                                const updated = await deleteTask(taskId);
+                                setTasks(updated);
+                                showToast(t('tasks.delete_success'));
+                              }
+                            }
+                          ], { cancelable: false });
+                        }}>
+                          <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>{t('common.delete')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </Animated.View>
+
+              {/* PAGE 3: Edit Panel (slides in from right within the same modal) */}
+              {isEditingInSheet && (
+                <Animated.View style={[
+                  StyleSheet.absoluteFill,
+                  { backgroundColor: 'white', paddingHorizontal: Spacing.xl, transform: [{ translateX: editSheetX }] }
+                ]}>
+                  <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    style={{ flex: 1 }}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                  >
+                    {isMemoEditing ? (
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.modalHeader}>
+                          <View style={styles.modalHandle} />
+                          <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                            <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                              <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
+                            </TouchableOpacity>
+                            <View style={{ alignItems: 'center' }}>
+                              <Text style={styles.modalTitle}>Memo</Text>
+                              <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '600' }}>{newMemo.length} / 1000</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setIsMemoEditing(false)} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                              <Text style={styles.headerSaveText} pointerEvents="none">{t('common.done', 'Done')}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        <View style={{ flex: 1, paddingBottom: Platform.OS === 'ios' ? 20 : 0 }}>
+                          <TextInput
+                            style={[styles.fullMemoInput, { flex: 1 }]}
+                            placeholder={t('tasks.memo_placeholder', 'Add notes...')}
+                            value={newMemo}
+                            onChangeText={setNewMemo}
+                            multiline
+                            autoFocus
+                            autoCapitalize="none"
+                            maxLength={1000}
+                            placeholderTextColor={Colors.outline}
+                            textAlignVertical="top"
+                          />
+                        </View>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
+                          <View style={styles.modalHandle} />
+                          <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                            <TouchableOpacity onPress={() => closeEditInSheet()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                              <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
+                            </TouchableOpacity>
+                            <Text style={styles.modalTitle}>{t('tasks.edit_task', 'Edit Task')}</Text>
+                            {isKeyboardVisible ? (
+                              <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
+                                  <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
+                                  <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
+                                </View>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity onPress={handleSaveTask} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                                <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+                        <ScrollView
+                          ref={modalScrollRef}
+                          style={styles.modalForm}
+                          showsVerticalScrollIndicator={false}
+                          keyboardShouldPersistTaps="handled"
+                          contentContainerStyle={{ paddingBottom: 250 }}
+                          automaticallyAdjustKeyboardInsets={true}
+                        >
+                          <TextInput
+                            ref={titleInputRef}
+                            style={styles.timeTreeTitle}
+                            placeholder={t('tasks.placeholder', '투두')}
+                            value={newTitle}
+                            onChangeText={setNewTitle}
+                            returnKeyType="done"
+                            autoCapitalize="none"
+                            onSubmitEditing={() => Keyboard.dismiss()}
+                          />
+                          <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setPendingColor(selectedColor); setShowColorPicker(true); }}>
+                            <View style={styles.rowLead}>
+                              <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
+                              <Text style={styles.timeTreeRowText}>
+                                {(() => {
+                                  const label = TASK_COLOR_LABELS.find(l => l.color === selectedColor);
+                                  return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.selectLabel', 'Select Label');
+                                })()}
+                              </Text>
+                            </View>
+                            <ChevronRight size={20} color={Colors.outline} />
+                          </TouchableOpacity>
+                          <View style={styles.timeTreeDivider} />
+                          <View style={styles.timeTreeRow}>
+                            <View style={styles.rowLead}>
+                              <Compass size={22} color={isAllDay ? Colors.primary : Colors.textSecondary} />
+                              <Text style={styles.timeTreeRowText}>{t('tasks.all_day', 'All Day')}</Text>
+                            </View>
+                            <Switch value={isAllDay} onValueChange={setIsAllDay} trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }} thumbColor={isAllDay ? Colors.primary : '#F4F7FE'} />
+                          </View>
+                          <View style={styles.timeTreeDivider} />
+                          <View style={styles.timeTreeRow}>
+                            <View style={styles.rowLead}>
+                              <Calendar size={20} color={Colors.textSecondary} />
+                              <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
+                            </View>
+                            <View style={styles.rowTail}>
+                              <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
+                                <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
+                              </TouchableOpacity>
+                              {!isAllDay && (
+                                <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
+                                  <Text style={styles.timeTreeTimeText}>{newTime}</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
+                          <View style={styles.timeTreeRow}>
+                            <View style={styles.rowLead}>
+                              <View style={{ width: 22 }} />
+                              <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
+                            </View>
+                            <View style={styles.rowTail}>
+                              <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
+                                <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
+                              </TouchableOpacity>
+                              {!isAllDay && (
+                                <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
+                                  <Text style={styles.timeTreeTimeText}>{endTime}</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
+                          <View style={styles.timeTreeDivider} />
+                          <View style={styles.timeTreeRow}>
+                            <View style={styles.rowLead}>
+                              <MapPin size={22} color={Colors.textSecondary} />
+                              <TextInput
+                                style={styles.timeTreeInput}
+                                placeholder={t('tasks.loc_placeholder', 'Location')}
+                                value={newLocName}
+                                onChangeText={setNewLocName}
+                                autoCapitalize="none"
+                              />
+                            </View>
+                          </View>
+                          <View style={styles.timeTreeDivider} />
+                          <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
+                            <View style={styles.memoHeader}>
+                              <AlignLeft size={18} color={Colors.textSecondary} />
+                              <Text style={styles.memoLabel}>{t('tasks.memo', 'Memo')}</Text>
+                            </View>
+                            <View style={styles.memoPreviewBox}>
+                              <Text style={[styles.memoPreviewText, !newMemo && { color: Colors.outline }]} numberOfLines={10} ellipsizeMode="tail">
+                                {newMemo ? (newMemo.split('\n').length > 10 ? newMemo.split('\n').slice(0, 10).join('\n') + '...' : newMemo) : t('tasks.memo_placeholder', 'Add notes...')}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        </ScrollView>
+                      </>
+                    )}
+                  </KeyboardAvoidingView>
+
+                  {/* Date / Time Picker Overlay */}
+                  {Platform.OS === 'ios' && (showDatePicker || showTimePicker || showEndDatePicker || showEndTimePicker) && (
+                    <View style={styles.iosPickerOverlay}>
+                      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeAllPickers} />
+                      <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
+                        <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
+                        <View style={styles.iosPickerHeader}>
+                          <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>{t('common.cancel', '취소')}</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.iosPickerTitle}>
+                            {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
+                          </Text>
+                          <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
+                            <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {(showDatePicker || showEndDatePicker) ? (
+                          <DateTimePicker
+                            key={i18n.language}
+                            value={(() => {
+                              try {
+                                if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
+                                if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
+                              } catch (e) { return new Date(); }
+                              return new Date();
+                            })()}
+                            mode="date"
+                            display="inline"
+                            locale={i18n.language}
+                            accentColor={Colors.primary}
+                            onChange={(event, date) => {
+                              if (showDatePicker) onDateChange(event, date);
+                              else if (showEndDatePicker) onEndDateChange(event, date);
+                            }}
+                            style={{ width: width - 32, height: 360, alignSelf: 'center' }}
+                          />
+                        ) : (
+                          <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+                            <DateTimePicker
+                              key={i18n.language}
+                              value={(() => {
+                                try {
+                                  if (showTimePicker) {
+                                    const [h, m] = newTime.split(':').map(Number);
+                                    const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
+                                  }
+                                  if (showEndTimePicker) {
+                                    const [h, m] = endTime.split(':').map(Number);
+                                    const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
+                                  }
+                                } catch (e) { return new Date(); }
+                                return new Date();
+                              })()}
+                              mode="time"
+                              display="spinner"
+                              locale={i18n.language}
+                              is24Hour={true}
+                              textColor="black"
+                              onChange={(event, date) => {
+                                if (showTimePicker) onTimeChange(event, date);
+                                else if (showEndTimePicker) onEndTimeChange(event, date);
+                              }}
+                              style={{ height: 216, width: width - 32, alignSelf: 'center' }}
+                            />
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Color Picker Overlay */}
+                  {showColorPicker && (
+                    <View style={styles.innerSearchOverlay}>
+                      <View style={[styles.searchHeader, { alignItems: 'flex-start', flexDirection: 'column', gap: 12 }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                          <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', '라벨 선택')}</Text>
+                          <TouchableOpacity onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }} style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>{t('common.select', 'Select')}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, width: '100%' }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>
+                              {(() => {
+                                const label = TASK_COLOR_LABELS.find(l => l.color === pendingColor);
+                                return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.label', 'Label');
+                              })()}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{t('tasks.sample_task', 'Task Sample')}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                      <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical: 8 }}>
+                        <View style={styles.colorGrid}>
+                          {TASK_COLOR_LABELS.map((item, idx) => {
+                            const isPending = pendingColor === item.color;
+                            return (
+                              <TouchableOpacity
+                                key={idx}
+                                style={[styles.colorGridCell, isPending && { borderColor: item.color, borderWidth: 2, backgroundColor: item.color + '18' }]}
+                                onPress={() => { if (isPending) { setSelectedColor(item.color); setShowColorPicker(false); } else { setPendingColor(item.color); } }}
+                                activeOpacity={0.7}
+                              >
+                                <View style={[styles.colorSwatch, { backgroundColor: item.color }, item.color.toUpperCase() === '#EBEBEB' || item.color.toUpperCase() === '#F4EFE6' || item.color.toUpperCase() === '#FEF9DB' || item.color.toUpperCase() === '#F0E7D6' ? { borderWidth: 1, borderColor: '#E2E8F0' } : {}]}>
+                                  {isPending && <View style={{ position: 'absolute', inset: 0, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: 'white' }} /></View>}
+                                </View>
+                                <Text style={styles.colorLabel} numberOfLines={1}>{t(`tasks.colors.${item.key}`, item.name)}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  )}
+                </Animated.View>
+              )}
+            </Animated.View>
+            {renderToast('isTaskListVisible')}
+          </View>
+
+        </Modal>
+
+        {renderToast('main')}
+
+
+        {/* Picker and Adding modals will be rendered here as siblings */}
+
+        {/* Wheel Picker Modal */}
+        <Modal visible={isPickerVisible} transparent animationType="fade" onRequestClose={() => setIsPickerVisible(false)}>
+
+          <View style={styles.pickerBg}>
+            <View style={styles.pickerContent}>
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>{t('common.select_date', 'Select Date')}</Text>
+                <TouchableOpacity onPress={() => setIsPickerVisible(false)} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                  <Text style={styles.headerSaveText} pointerEvents="none">{t('common.close', '닫기')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.wheelWrapper}>
+                {/* Visual Highlight Overlay */}
+                <View style={styles.wheelOverlay} pointerEvents="none" />
+
+                <View style={styles.wheelRow}>
+                  {/* Year Wheel */}
+                  <View style={styles.wheelCol}>
+                    <FlatList
+                      ref={yearListRef}
+                      data={YEARS}
+                      keyExtractor={item => item.toString()}
+                      showsVerticalScrollIndicator={false}
+                      snapToInterval={ITEM_HEIGHT}
+                      initialScrollIndex={tempYear - 1900}
+                      getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
+                      contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
+                      onScroll={(e) => {
+                        const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+                        if (index !== lastTickYearIndex.current) {
+                          lastTickYearIndex.current = index;
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
+                      }}
+                      scrollEventThrottle={16}
+                      onMomentumScrollEnd={(e) => {
+                        const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+                        setTempYear(1900 + index);
+                      }}
+                      renderItem={({ item: year }) => (
+                        <View style={styles.wheelItem}>
+                          <Text style={[styles.wheelItemText, tempYear === year && styles.activeWheelText]}>{year}{t('common.year_unit', '년')}</Text>
+                        </View>
+                      )}
+                    />
+                  </View>
+
+                  {/* Month Wheel */}
+                  <View style={styles.wheelCol}>
+                    <FlatList
+                      ref={monthListRef}
+                      data={MONTHS}
+                      keyExtractor={item => item.toString()}
+                      showsVerticalScrollIndicator={false}
+                      snapToInterval={ITEM_HEIGHT}
+                      initialScrollIndex={tempMonth}
+                      getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
+                      contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
+                      onScroll={(e) => {
+                        const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+                        if (index !== lastTickMonthIndex.current) {
+                          lastTickMonthIndex.current = index;
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
+                      }}
+                      scrollEventThrottle={16}
+                      onMomentumScrollEnd={(e) => {
+                        const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+                        setTempMonth(index);
+                      }}
+                      renderItem={({ item: month }) => (
+                        <View style={styles.wheelItem}>
+                          <Text style={[styles.wheelItemText, tempMonth === (month - 1) && styles.activeWheelText]}>
+                            {t(`months.${month - 1}`)}{t('common.month_unit', '월')}
+                          </Text>
+                        </View>
+                      )}
                     />
                   </View>
                 </View>
-              ) : (
-                /* Main Form */
-                <>
-                  <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
-                    <View style={styles.modalHandle} />
-<View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-                      <TouchableOpacity onPress={() => closeAddModal()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                        <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
-                      </TouchableOpacity>
-                      
-                      <Text style={styles.modalTitle}>{editingTask ? t('tasks.edit_task', 'Edit Task') : t('tasks.add_new', 'Add Task')}</Text>
-                      
-                      {isKeyboardVisible ? (
-                        <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
-                            <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
-                            <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
-                          </View>
+              </View>
+
+              <View style={styles.pickerFooter}>
+                <TouchableOpacity style={styles.todayBtn} onPress={() => {
+                  const today = new Date();
+                  const y = today.getFullYear();
+                  const m = today.getMonth();
+                  setTempYear(y);
+                  setTempMonth(m);
+                  yearListRef.current?.scrollToIndex({ index: y - 1900, animated: true });
+                  monthListRef.current?.scrollToIndex({ index: m, animated: true });
+                }}>
+                  <Text style={styles.todayBtnText}>{t('common.go_to_today', 'Go to Today')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmBtn} onPress={applyPicker}>
+                  <Text style={styles.confirmBtnText}>{t('common.done', 'Done')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+        </Modal>
+
+        <Modal
+          visible={isAdding}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={closeAddModal}
+          onShow={() => {
+            modalScrollRef.current?.scrollTo({ y: 0, animated: false });
+            setTimeout(() => titleInputRef.current?.focus(), 300);
+          }}
+        >
+          <View style={[styles.modalBg, { flex: 1 }]}>
+            <View style={styles.modalContent}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+              >
+                {isMemoEditing ? (
+                  /* Full Screen Memo Editor */
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.modalHeader}>
+                      <View style={styles.modalHandle} />
+                      <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => setIsMemoEditing(false)}
+                          style={styles.headerActionBtn}
+                          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                        >
+                          <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                         </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity 
-                          onPress={handleSaveTask} 
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={styles.modalTitle}>{t('tasks.memo', 'Memo')}</Text>
+                          <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '600' }}>
+                            {newMemo.length} / 1000
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => setIsMemoEditing(false)}
                           style={styles.headerSaveBtn}
                           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                         >
-                          <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
+                          <Text style={styles.headerSaveText} pointerEvents="none">{t('common.done', 'Done')}</Text>
                         </TouchableOpacity>
-                      )}
+                      </View>
                     </View>
-                  </View>
-                  <ScrollView
-                    ref={modalScrollRef}
-                    style={styles.modalForm}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{ paddingBottom: 250 }}
-                    automaticallyAdjustKeyboardInsets={true}
-                  >
-                    <TextInput
-                      ref={titleInputRef}
-                      style={styles.timeTreeTitle}
-                      placeholder={t('tasks.placeholder', 'Todo')}
-                      value={newTitle}
-                      onChangeText={setNewTitle}
-                      returnKeyType="done"
-                      autoCapitalize="none"
-                      onSubmitEditing={() => Keyboard.dismiss()}
-                    />
-
-                    {/* Color Selection Row */}
-                    <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setPendingColor(selectedColor); setShowColorPicker(true); }}>
-                      <View style={styles.rowLead}>
-                        <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
-                        <Text style={styles.timeTreeRowText}>
-                          {(() => {
-                            const label = TASK_COLOR_LABELS.find(l => l.color === selectedColor);
-                            return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.selectLabel', '라벨 선택');
-                          })()}
-                        </Text>
-                      </View>
-                      <ChevronRight size={20} color={Colors.outline} />
-                    </TouchableOpacity>
-
-                    <View style={styles.timeTreeDivider} />
-
-                    {/* All-day Toggle */}
-                    <View style={styles.timeTreeRow}>
-                      <View style={styles.rowLead}>
-                        <Compass size={22} color={isAllDay ? Colors.primary : Colors.textSecondary} />
-                        <Text style={styles.timeTreeRowText}>{t('tasks.all_day', 'All Day')}</Text>
-                      </View>
-                      <Switch
-                        value={isAllDay}
-                        onValueChange={setIsAllDay}
-                        trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }}
-                        thumbColor={isAllDay ? Colors.primary : '#F4F7FE'}
+                    <View style={{ flex: 1, paddingBottom: Platform.OS === 'ios' ? 20 : 0 }}>
+                      <TextInput
+                        style={[styles.fullMemoInput, { flex: 1 }]}
+                        placeholder={t('tasks.memo_placeholder', 'Add notes...')}
+                        value={newMemo}
+                        onChangeText={setNewMemo}
+                        multiline
+                        autoFocus
+                        autoCapitalize="none"
+                        maxLength={1000}
+                        placeholderTextColor={Colors.outline}
+                        textAlignVertical="top"
                       />
                     </View>
-
-                    <View style={styles.timeTreeDivider} />
-
-                    {/* Start Date/Time */}
-                    <View style={styles.timeTreeRow}>
-                      <View style={styles.rowLead}>
-                        <Calendar size={20} color={Colors.textSecondary} />
-                        <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
-                      </View>
-                      <View style={styles.rowTail}>
-                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
-                          <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
+                  </View>
+                ) : (
+                  /* Main Form */
+                  <>
+                    <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
+                      <View style={styles.modalHandle} />
+                      <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+                        <TouchableOpacity onPress={() => closeAddModal()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                          <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                         </TouchableOpacity>
-                        {!isAllDay && (
-                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
-                            <Text style={styles.timeTreeTimeText}>{newTime}</Text>
+
+                        <Text style={styles.modalTitle}>{editingTask ? t('tasks.edit_task', 'Edit Task') : t('tasks.add_new', 'Add Task')}</Text>
+
+                        {isKeyboardVisible ? (
+                          <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
+                              <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
+                              <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
+                            </View>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={handleSaveTask}
+                            style={styles.headerSaveBtn}
+                            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                          >
+                            <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
                     </View>
+                    <ScrollView
+                      ref={modalScrollRef}
+                      style={styles.modalForm}
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={{ paddingBottom: 250 }}
+                      automaticallyAdjustKeyboardInsets={true}
+                    >
+                      <TextInput
+                        ref={titleInputRef}
+                        style={styles.timeTreeTitle}
+                        placeholder={t('tasks.placeholder', 'Todo')}
+                        value={newTitle}
+                        onChangeText={setNewTitle}
+                        returnKeyType="done"
+                        autoCapitalize="none"
+                        onSubmitEditing={() => Keyboard.dismiss()}
+                      />
 
-                    {/* End Date/Time */}
-                    <View style={styles.timeTreeRow}>
-                      <View style={styles.rowLead}>
-                        <View style={{ width: 22 }} />
-                        <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
-                      </View>
-                      <View style={styles.rowTail}>
-                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
-                          <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
-                        </TouchableOpacity>
-                        {!isAllDay && (
-                          <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
-                            <Text style={styles.timeTreeTimeText}>{endTime}</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
+                      {/* Color Selection Row */}
+                      <TouchableOpacity style={styles.timeTreeRow} onPress={() => { Keyboard.dismiss(); setPendingColor(selectedColor); setShowColorPicker(true); }}>
+                        <View style={styles.rowLead}>
+                          <View style={[styles.colorIndicator, { backgroundColor: selectedColor, marginRight: 12 }]} />
+                          <Text style={styles.timeTreeRowText}>
+                            {(() => {
+                              const label = TASK_COLOR_LABELS.find(l => l.color === selectedColor);
+                              return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.selectLabel', '라벨 선택');
+                            })()}
+                          </Text>
+                        </View>
+                        <ChevronRight size={20} color={Colors.outline} />
+                      </TouchableOpacity>
 
-                    <View style={styles.timeTreeDivider} />
+                      <View style={styles.timeTreeDivider} />
 
-                    {/* Location & Weather */}
-                    <View style={styles.timeTreeRow}>
-                      <View style={styles.rowLead}>
-                        <MapPin size={22} color={Colors.textSecondary} />
-                        <TextInput
-                          style={styles.timeTreeInput}
-                          placeholder={t('tasks.loc_placeholder', 'Location')}
-                          value={newLocName}
-                          onChangeText={setNewLocName}
-                          autoCapitalize="none"
+                      {/* All-day Toggle */}
+                      <View style={styles.timeTreeRow}>
+                        <View style={styles.rowLead}>
+                          <Compass size={22} color={isAllDay ? Colors.primary : Colors.textSecondary} />
+                          <Text style={styles.timeTreeRowText}>{t('tasks.all_day', 'All Day')}</Text>
+                        </View>
+                        <Switch
+                          value={isAllDay}
+                          onValueChange={setIsAllDay}
+                          trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }}
+                          thumbColor={isAllDay ? Colors.primary : '#F4F7FE'}
                         />
                       </View>
-                    </View>
 
+                      <View style={styles.timeTreeDivider} />
 
-
-                    <View style={styles.timeTreeDivider} />
-
-                    {/* Memo Section */}
-                    <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
-                      <View style={styles.memoHeader}>
-                        <AlignLeft size={18} color={Colors.textSecondary} />
-                        <Text style={styles.memoLabel}>{t('tasks.memo', 'Memo')}</Text>
+                      {/* Start Date/Time */}
+                      <View style={styles.timeTreeRow}>
+                        <View style={styles.rowLead}>
+                          <Calendar size={20} color={Colors.textSecondary} />
+                          <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
+                        </View>
+                        <View style={styles.rowTail}>
+                          <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
+                            <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
+                          </TouchableOpacity>
+                          {!isAllDay && (
+                            <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
+                              <Text style={styles.timeTreeTimeText}>{newTime}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                      <View style={styles.memoPreviewBox}>
-                        <Text 
-                          style={[styles.memoPreviewText, !newMemo && { color: Colors.outline }]} 
-                          numberOfLines={10}
-                          ellipsizeMode="tail"
-                        >
-                          {newMemo ? (
-                            newMemo.split('\n').length > 10 
-                              ? newMemo.split('\n').slice(0, 10).join('\n') + '...'
-                              : newMemo
-                          ) : t('tasks.memo_placeholder', 'Add notes...')}
-                        </Text>
+
+                      {/* End Date/Time */}
+                      <View style={styles.timeTreeRow}>
+                        <View style={styles.rowLead}>
+                          <View style={{ width: 22 }} />
+                          <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
+                        </View>
+                        <View style={styles.rowTail}>
+                          <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
+                            <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
+                          </TouchableOpacity>
+                          {!isAllDay && (
+                            <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
+                              <Text style={styles.timeTreeTimeText}>{endTime}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
+
+                      <View style={styles.timeTreeDivider} />
+
+                      {/* Location & Weather */}
+                      <View style={styles.timeTreeRow}>
+                        <View style={styles.rowLead}>
+                          <MapPin size={22} color={Colors.textSecondary} />
+                          <TextInput
+                            style={styles.timeTreeInput}
+                            placeholder={t('tasks.loc_placeholder', 'Location')}
+                            value={newLocName}
+                            onChangeText={setNewLocName}
+                            autoCapitalize="none"
+                          />
+                        </View>
+                      </View>
+
+
+
+                      <View style={styles.timeTreeDivider} />
+
+                      {/* Memo Section */}
+                      <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
+                        <View style={styles.memoHeader}>
+                          <AlignLeft size={18} color={Colors.textSecondary} />
+                          <Text style={styles.memoLabel}>{t('tasks.memo', 'Memo')}</Text>
+                        </View>
+                        <View style={styles.memoPreviewBox}>
+                          <Text
+                            style={[styles.memoPreviewText, !newMemo && { color: Colors.outline }]}
+                            numberOfLines={10}
+                            ellipsizeMode="tail"
+                          >
+                            {newMemo ? (
+                              newMemo.split('\n').length > 10
+                                ? newMemo.split('\n').slice(0, 10).join('\n') + '...'
+                                : newMemo
+                            ) : t('tasks.memo_placeholder', 'Add notes...')}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+
+                    </ScrollView>
+                  </>
+                )}
+              </KeyboardAvoidingView>
+            </View>
+
+            {/* Color Picker Overlay */}
+            {showColorPicker && (
+              <View style={styles.innerSearchOverlay}>
+                {/* 헤더: 프리뷰 + 선택 버튼 */}
+                <View style={[styles.searchHeader, { alignItems: 'flex-start', flexDirection: 'column', gap: 12 }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', '라벨 선택')}</Text>
+                    <TouchableOpacity
+                      onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }}
+                      style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>{t('common.select', 'Select')}</Text>
                     </TouchableOpacity>
-
-                  </ScrollView>
-                </>
-              )}
-            </KeyboardAvoidingView>
-          </View>
-
-          {/* Color Picker Overlay */}
-          {showColorPicker && (
-            <View style={styles.innerSearchOverlay}>
-              {/* 헤더: 프리뷰 + 선택 버튼 */}
-              <View style={[styles.searchHeader, { alignItems: 'flex-start', flexDirection: 'column', gap: 12 }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                  <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{t('tasks.select_color', '라벨 선택')}</Text>
-                  <TouchableOpacity
-                    onPress={() => { setSelectedColor(pendingColor); setShowColorPicker(false); }}
-                    style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: Colors.primary, borderRadius: 20 }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>{t('common.select', 'Select')}</Text>
-                  </TouchableOpacity>
-                </View>
-                {/* 컬러 프리뷰 샘플 */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, width: '100%' }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>
-                      {(() => {
-                        const label = TASK_COLOR_LABELS.find(l => l.color === pendingColor);
-                        return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.label', '라벨');
-                      })()}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{t('tasks.sample_task', 'Task Sample')}</Text>
+                  </View>
+                  {/* 컬러 프리뷰 샘플 */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, width: '100%' }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pendingColor, shadowColor: pendingColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 }}>
+                        {(() => {
+                          const label = TASK_COLOR_LABELS.find(l => l.color === pendingColor);
+                          return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.label', '라벨');
+                        })()}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: pendingColor, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{t('tasks.sample_task', 'Task Sample')}</Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
 
-              {/* 컬러 그리드 — 그룹 없이 순서대로 */}
-              <ScrollView
-                style={{ flex: 1 }}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingVertical: 8 }}
-              >
-                <View style={styles.colorGrid}>
-                  {TASK_COLOR_LABELS.map((item, idx) => {
-                    const isPending = pendingColor === item.color;
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        style={[
-                          styles.colorGridCell,
-                          isPending && { borderColor: item.color, borderWidth: 2, backgroundColor: item.color + '18' }
-                        ]}
-                        onPress={() => {
-                          if (isPending) {
-                            // 이미 선택된 색 재탭 → 확정 후 닫기
-                            setSelectedColor(item.color);
-                            setShowColorPicker(false);
-                          } else {
-                            setPendingColor(item.color);
-                          }
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[
-                          styles.colorSwatch,
-                          { backgroundColor: item.color },
-                          item.color.toUpperCase() === '#EBEBEB' || item.color.toUpperCase() === '#F4EFE6' ||
-                          item.color.toUpperCase() === '#FEF9DB' || item.color.toUpperCase() === '#F0E7D6'
-                            ? { borderWidth: 1, borderColor: '#E2E8F0' } : {}
-                        ]}>
-                          {isPending && (
-                            <View style={styles.colorCheckOverlay}>
-                              <CheckCircle2 size={16} color="white" strokeWidth={3} />
-                            </View>
-                          )}
-                        </View>
-                        <Text
-                          style={[
-                            styles.colorCellName,
-                            isPending && { color: item.color === '#EBEBEB' || item.color === '#FEF9DB' ? Colors.primary : item.color, fontWeight: '800' }
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {t(`tasks.colors.${item.key}`, item.name)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            </View>
-          )}
-
-          {searchMode && (
-            <View style={styles.innerSearchOverlay}>
-              <View style={styles.searchHeader}>
-                <Search size={20} color={Colors.outline} />
-                <TextInput style={styles.innerSearchPath} placeholder={t('search.placeholder')} autoFocus autoCapitalize="none" value={searchQuery} onChangeText={handleSearch} />
-                <TouchableOpacity 
-                  onPress={() => setSearchMode(null)} 
-                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                {/* 컬러 그리드 — 그룹 없이 순서대로 */}
+                <ScrollView
+                  style={{ flex: 1 }}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ paddingVertical: 8 }}
                 >
-                  <X size={24} color={Colors.text} pointerEvents="none" />
-                </TouchableOpacity>
+                  <View style={styles.colorGrid}>
+                    {TASK_COLOR_LABELS.map((item, idx) => {
+                      const isPending = pendingColor === item.color;
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[
+                            styles.colorGridCell,
+                            isPending && { borderColor: item.color, borderWidth: 2, backgroundColor: item.color + '18' }
+                          ]}
+                          onPress={() => {
+                            if (isPending) {
+                              // 이미 선택된 색 재탭 → 확정 후 닫기
+                              setSelectedColor(item.color);
+                              setShowColorPicker(false);
+                            } else {
+                              setPendingColor(item.color);
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[
+                            styles.colorSwatch,
+                            { backgroundColor: item.color },
+                            item.color.toUpperCase() === '#EBEBEB' || item.color.toUpperCase() === '#F4EFE6' ||
+                              item.color.toUpperCase() === '#FEF9DB' || item.color.toUpperCase() === '#F0E7D6'
+                              ? { borderWidth: 1, borderColor: '#E2E8F0' } : {}
+                          ]}>
+                            {isPending && (
+                              <View style={styles.colorCheckOverlay}>
+                                <CheckCircle2 size={16} color="white" strokeWidth={3} />
+                              </View>
+                            )}
+                          </View>
+                          <Text
+                            style={[
+                              styles.colorCellName,
+                              isPending && { color: item.color === '#EBEBEB' || item.color === '#FEF9DB' ? Colors.primary : item.color, fontWeight: '800' }
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {t(`tasks.colors.${item.key}`, item.name)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
               </View>
-              <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
-                {isSearching ? <ActivityIndicator style={{ marginTop: 20 }} /> : null}
-                {searchResults.map((item, idx) => (
-                  <TouchableOpacity key={idx} style={styles.searchItem} onPress={() => selectSearchResult(item)}>
-                    <MapPin size={18} color={item.type === 'domestic' ? Colors.primary : Colors.outline} />
-                    <View style={{ marginLeft: 12 }}>
-                      <Text style={styles.searchItemName}>{item.name}</Text>
-                      <Text style={styles.searchItemAddr}>{item.address}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
+            )}
 
-          {/* Date / Time Pickers */}
-          {Platform.OS === 'android' && (
-            <>
-              {showDatePicker && (
-                <View style={styles.inlinePickerContainer}>
-                  <DateTimePicker value={taskDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onDateChange} />
+            {searchMode && (
+              <View style={styles.innerSearchOverlay}>
+                <View style={styles.searchHeader}>
+                  <Search size={20} color={Colors.outline} />
+                  <TextInput style={styles.innerSearchPath} placeholder={t('search.placeholder')} autoFocus autoCapitalize="none" value={searchQuery} onChangeText={handleSearch} />
+                  <TouchableOpacity
+                    onPress={() => setSearchMode(null)}
+                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                  >
+                    <X size={24} color={Colors.text} pointerEvents="none" />
+                  </TouchableOpacity>
                 </View>
-              )}
-              {showTimePicker && (
-                <View style={styles.customWheelContainer}>
-                  <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select Start Time</Text></View>
-                  <DateTimePicker
-                    value={(() => {
-                      const d = new Date(taskDate);
-                      const [h, m] = newTime.split(':').map(Number);
-                      d.setHours(h, m);
-                      return d;
-                    })()}
-                    mode="time"
-                    is24Hour={true}
-                    display="spinner"
-                    onChange={onTimeChange}
-                  />
-                </View>
-              )}
-              {showEndDatePicker && (
-                <View style={styles.inlinePickerContainer}>
-                  <DateTimePicker value={endDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onEndDateChange} />
-                </View>
-              )}
-              {showEndTimePicker && (
-                <View style={styles.customWheelContainer}>
-                  <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select End Time</Text></View>
-                  <DateTimePicker
-                    value={(() => {
-                      const d = new Date(endDate);
-                      const [h, m] = endTime.split(':').map(Number);
-                      d.setHours(h, m);
-                      return d;
-                    })()}
-                    mode="time"
-                    is24Hour={true}
-                    display="spinner"
-                    onChange={onEndTimeChange}
-                  />
-                </View>
-              )}
-            </>
-          )}
+                <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
+                  {isSearching ? <ActivityIndicator style={{ marginTop: 20 }} /> : null}
+                  {searchResults.map((item, idx) => (
+                    <TouchableOpacity key={idx} style={styles.searchItem} onPress={() => selectSearchResult(item)}>
+                      <MapPin size={18} color={item.type === 'domestic' ? Colors.primary : Colors.outline} />
+                      <View style={{ marginLeft: 12 }}>
+                        <Text style={styles.searchItemName}>{item.name}</Text>
+                        <Text style={styles.searchItemAddr}>{item.address}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
-          {Platform.OS === 'ios' && (showDatePicker || showTimePicker || showEndDatePicker || showEndTimePicker) && (
-            <View style={styles.iosPickerOverlay}>
-              <TouchableOpacity
-                style={StyleSheet.absoluteFill}
-                activeOpacity={1}
-                onPress={closeAllPickers}
-              />
-              <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
-                {/* 핸들바 */}
-                <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
-                <View style={styles.iosPickerHeader}>
-                  <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>
-                      {t('common.cancel', '취소')}
-                    </Text>
-                  </TouchableOpacity>
-                  <Text style={styles.iosPickerTitle}>
-                    {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
-                  </Text>
-                  <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
-                    <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
-                  </TouchableOpacity>
-                </View>
-                {(showDatePicker || showEndDatePicker) ? (
-                  <DateTimePicker
-                    value={(() => {
-                      try {
-                        if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
-                        if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
-                      } catch (e) { return new Date(); }
-                      return new Date();
-                    })()}
-                    mode="date"
-                    display="inline"
-                    accentColor={Colors.primary}
-                    onChange={(event, date) => {
-                      if (showDatePicker) onDateChange(event, date);
-                      else if (showEndDatePicker) onEndDateChange(event, date);
-                    }}
-                    style={{ width: width - 32, height: 360, alignSelf: 'center' }}
-                  />
-                ) : (
-                  <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+            {/* Date / Time Pickers */}
+            {Platform.OS === 'android' && (
+              <>
+                {showDatePicker && (
+                  <View style={styles.inlinePickerContainer}>
+                    <DateTimePicker value={taskDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onDateChange} />
+                  </View>
+                )}
+                {showTimePicker && (
+                  <View style={styles.customWheelContainer}>
+                    <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select Start Time</Text></View>
                     <DateTimePicker
                       value={(() => {
-                        try {
-                          if (showTimePicker) {
-                            const [h, m] = newTime.split(':').map(Number);
-                            const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
-                          }
-                          if (showEndTimePicker) {
-                            const [h, m] = endTime.split(':').map(Number);
-                            const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
-                          }
-                        } catch (e) { return new Date(); }
-                        return new Date();
+                        const d = new Date(taskDate);
+                        const [h, m] = newTime.split(':').map(Number);
+                        d.setHours(h, m);
+                        return d;
                       })()}
                       mode="time"
-                      display="spinner"
                       is24Hour={true}
-                      textColor="black"
-                      onChange={(event, date) => {
-                        if (showTimePicker) onTimeChange(event, date);
-                        else if (showEndTimePicker) onEndTimeChange(event, date);
-                      }}
-                      style={{ height: 216, width: width - 32, alignSelf: 'center' }}
+                      display="spinner"
+                      onChange={onTimeChange}
                     />
                   </View>
                 )}
-              </View>
-            </View>
-          )}
-          {renderToast('isAdding')}
-        </View>
-      </Modal>
+                {showEndDatePicker && (
+                  <View style={styles.inlinePickerContainer}>
+                    <DateTimePicker value={endDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onEndDateChange} />
+                  </View>
+                )}
+                {showEndTimePicker && (
+                  <View style={styles.customWheelContainer}>
+                    <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select End Time</Text></View>
+                    <DateTimePicker
+                      value={(() => {
+                        const d = new Date(endDate);
+                        const [h, m] = endTime.split(':').map(Number);
+                        d.setHours(h, m);
+                        return d;
+                      })()}
+                      mode="time"
+                      is24Hour={true}
+                      display="spinner"
+                      onChange={onEndTimeChange}
+                    />
+                  </View>
+                )}
+              </>
+            )}
 
-      <Modal
-        visible={showHolidaySettings}
-        animationType="none"
-        transparent={true}
-        statusBarTranslucent={true}
-        onRequestClose={closeHolidayModal}
-      >
-
-        <View style={styles.modalBg}>
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              { 
-                backgroundColor: 'black',
-                opacity: holidayModalY.interpolate({
-                  inputRange: [0, height],
-                  outputRange: [0.5, 0],
-                  extrapolate: 'clamp'
-                })
-              }
-            ]} 
-          />
-          <Animated.View style={[styles.modalContent, { transform: [{ translateY: holidayModalY }] }]}>
-            <View style={styles.modalHeader} {...holidayModalPanResponder.panHandlers}>
-              <View style={styles.modalHandle} />
-              <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 4 }}>
-                <View style={{ flex: 1 }} />
-                <View style={{ flex: 3, alignItems: 'center' }}>
-                  <Text style={styles.modalTitle}>{t('tasks.holiday_settings', 'Holiday Settings')}</Text>
-                  <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{t('tasks.holiday_guide', 'Select countries to show public holidays')}</Text>
-                </View>
-                <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-                  {isKeyboardVisible ? (
-                    <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
-                        <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
-                        <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
-                      </View>
+            {Platform.OS === 'ios' && (showDatePicker || showTimePicker || showEndDatePicker || showEndTimePicker) && (
+              <View style={styles.iosPickerOverlay}>
+                <TouchableOpacity
+                  style={StyleSheet.absoluteFill}
+                  activeOpacity={1}
+                  onPress={closeAllPickers}
+                />
+                <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
+                  {/* 핸들바 */}
+                  <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
+                  <View style={styles.iosPickerHeader}>
+                    <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>
+                        {t('common.cancel', '취소')}
+                      </Text>
                     </TouchableOpacity>
+                    <Text style={styles.iosPickerTitle}>
+                      {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
+                    </Text>
+                    <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
+                      <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {(showDatePicker || showEndDatePicker) ? (
+                    <DateTimePicker
+                      value={(() => {
+                        try {
+                          if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
+                          if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
+                        } catch (e) { return new Date(); }
+                        return new Date();
+                      })()}
+                      mode="date"
+                      display="inline"
+                      accentColor={Colors.primary}
+                      onChange={(event, date) => {
+                        if (showDatePicker) onDateChange(event, date);
+                        else if (showEndDatePicker) onEndDateChange(event, date);
+                      }}
+                      style={{ width: width - 32, height: 360, alignSelf: 'center' }}
+                    />
                   ) : (
-                    <TouchableOpacity 
-                      onPress={closeHolidayModal} 
-                      style={styles.headerSaveBtn}
-                      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                    >
-                      <Text style={styles.headerSaveText} numberOfLines={1} pointerEvents="none">{t('common.close', '닫기')}</Text>
-                    </TouchableOpacity>
+                    <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
+                      <DateTimePicker
+                        value={(() => {
+                          try {
+                            if (showTimePicker) {
+                              const [h, m] = newTime.split(':').map(Number);
+                              const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
+                            }
+                            if (showEndTimePicker) {
+                              const [h, m] = endTime.split(':').map(Number);
+                              const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
+                            }
+                          } catch (e) { return new Date(); }
+                          return new Date();
+                        })()}
+                        mode="time"
+                        display="spinner"
+                        is24Hour={true}
+                        textColor="black"
+                        onChange={(event, date) => {
+                          if (showTimePicker) onTimeChange(event, date);
+                          else if (showEndTimePicker) onEndTimeChange(event, date);
+                        }}
+                        style={{ height: 216, width: width - 32, alignSelf: 'center' }}
+                      />
+                    </View>
                   )}
                 </View>
               </View>
-            </View>
+            )}
+            {renderToast('isAdding')}
+          </View>
+        </Modal>
 
-            <View style={[styles.searchBox, { marginTop: 16, marginHorizontal: 0 }]}>
-              <Search size={18} color={Colors.outline} style={{ marginRight: 8 }} />
-              <TextInput
-                style={styles.searchField}
-                placeholder={t('tasks.search_country_placeholder', 'Search country (e.g. Korea)')}
-                value={countrySearch}
-                onChangeText={setCountrySearch}
-                autoCapitalize="none"
-              />
-              {countrySearch.length > 0 && (
-                <TouchableOpacity onPress={() => setCountrySearch('')}>
-                  <X size={16} color={Colors.outline} pointerEvents="none" />
-                </TouchableOpacity>
-              )}
-            </View>
+        <Modal
+          visible={showHolidaySettings}
+          animationType="none"
+          transparent={true}
+          statusBarTranslucent={true}
+          onRequestClose={closeHolidayModal}
+        >
 
-            <View style={{ flex: 1, marginTop: 12 }}>
-              {countrySearch.length > 0 ? (
-                <FlatList
-                  data={filteredCountries}
-                  keyExtractor={item => item.code}
-                  style={{ flex: 1 }}
-                  keyboardShouldPersistTaps="handled"
-                  initialNumToRender={10}
-                  maxToRenderPerBatch={10}
-                  windowSize={5}
-                  getItemLayout={(data, index) => ({ length: 65, offset: 65 * index, index })}
-                  ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.search_results', 'Search Results')}</Text>}
-                  renderItem={({ item }) => (
-                    <CountryItem 
-                      item={item} 
-                      isSelected={holidayCountries.includes(item.code)} 
-                      onPress={(code) => {
-                        if (!holidayCountries.includes(code)) {
-                          const next = [...holidayCountries, code];
+          <View style={styles.modalBg}>
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: 'black',
+                  opacity: holidayModalY.interpolate({
+                    inputRange: [0, height],
+                    outputRange: [0.5, 0],
+                    extrapolate: 'clamp'
+                  })
+                }
+              ]}
+            />
+            <Animated.View style={[styles.modalContent, { transform: [{ translateY: holidayModalY }] }]}>
+              <View style={styles.modalHeader} {...holidayModalPanResponder.panHandlers}>
+                <View style={styles.modalHandle} />
+                <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 4 }}>
+                  <View style={{ flex: 1 }} />
+                  <View style={{ flex: 3, alignItems: 'center' }}>
+                    <Text style={styles.modalTitle}>{t('tasks.holiday_settings', 'Holiday Settings')}</Text>
+                    <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{t('tasks.holiday_guide', 'Select countries to show public holidays')}</Text>
+                  </View>
+                  <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
+                    {isKeyboardVisible ? (
+                      <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }} pointerEvents="none">
+                          <KeyboardIcon size={22} color={Colors.primary} pointerEvents="none" />
+                          <ChevronDown size={14} color={Colors.primary} pointerEvents="none" />
+                        </View>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={closeHolidayModal}
+                        style={styles.headerSaveBtn}
+                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                      >
+                        <Text style={styles.headerSaveText} numberOfLines={1} pointerEvents="none">{t('common.close', '닫기')}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.searchBox, { marginTop: 16, marginHorizontal: 0 }]}>
+                <Search size={18} color={Colors.outline} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.searchField}
+                  placeholder={t('tasks.search_country_placeholder', 'Search country (e.g. Korea)')}
+                  value={countrySearch}
+                  onChangeText={setCountrySearch}
+                  autoCapitalize="none"
+                />
+                {countrySearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setCountrySearch('')}>
+                    <X size={16} color={Colors.outline} pointerEvents="none" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={{ flex: 1, marginTop: 12 }}>
+                {countrySearch.length > 0 ? (
+                  <FlatList
+                    data={filteredCountries}
+                    keyExtractor={item => item.code}
+                    style={{ flex: 1 }}
+                    keyboardShouldPersistTaps="handled"
+                    initialNumToRender={10}
+                    maxToRenderPerBatch={10}
+                    windowSize={5}
+                    getItemLayout={(data, index) => ({ length: 65, offset: 65 * index, index })}
+                    ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.search_results', 'Search Results')}</Text>}
+                    renderItem={({ item }) => (
+                      <CountryItem
+                        item={item}
+                        isSelected={holidayCountries.includes(item.code)}
+                        onPress={(code) => {
+                          if (!holidayCountries.includes(code)) {
+                            const next = [...holidayCountries, code];
+                            setHolidayCountries(next);
+                            saveCountries(next);
+                          }
+                          setCountrySearch('');
+                        }}
+                      />
+                    )}
+                  />
+                ) : (
+                  <FlatList
+                    data={holidayCountries}
+                    keyExtractor={item => item}
+                    style={{ flex: 1 }}
+                    showsVerticalScrollIndicator={false}
+                    initialNumToRender={15}
+                    getItemLayout={(data, index) => ({ length: 75, offset: 75 * index, index })}
+                    ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.selected_countries', 'Selected Countries')}</Text>}
+                    renderItem={({ item: code }) => (
+                      <SelectedCountryItem
+                        code={code}
+                        country={processedCountries.find(c => c.code === code)}
+                        onRemove={(cCode) => {
+                          const next = holidayCountries.filter(c => c !== cCode);
                           setHolidayCountries(next);
                           saveCountries(next);
-                        }
-                        setCountrySearch('');
-                      }} 
-                    />
-                  )}
-                />
-              ) : (
-                <FlatList
-                  data={holidayCountries}
-                  keyExtractor={item => item}
-                  style={{ flex: 1 }}
-                  showsVerticalScrollIndicator={false}
-                  initialNumToRender={15}
-                  getItemLayout={(data, index) => ({ length: 75, offset: 75 * index, index })}
-                  ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.selected_countries', 'Selected Countries')}</Text>}
-                  renderItem={({ item: code }) => (
-                    <SelectedCountryItem 
-                      code={code} 
-                      country={processedCountries.find(c => c.code === code)}
-                      onRemove={(cCode) => {
-                        const next = holidayCountries.filter(c => c !== cCode);
-                        setHolidayCountries(next);
-                        saveCountries(next);
-                      }}
-                    />
-                  )}
-                />
-              )}
-            </View>
-          </Animated.View>
-        </View>
+                        }}
+                      />
+                    )}
+                  />
+                )}
+              </View>
+            </Animated.View>
+          </View>
 
-      </Modal>
+        </Modal>
 
-      <MenuModal
-        visible={menuVisible}
-        onClose={() => setMenuVisible(false)} 
-        onReset={() => loadData()} 
-      />
+        <MenuModal
+          visible={menuVisible}
+          onClose={() => setMenuVisible(false)}
+          onReset={() => loadData()}
+        />
 
-    </View>
-    <Pressable
-      style={({ pressed }) => [
-        styles.fabCircle,
-        {
-          position: 'absolute',
-          bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16,
-          right: 30,
-          zIndex: 999999,
-          opacity: pressed ? 0.7 : 1,
-        }
-      ]}
-      onPress={() => {
-        console.log('[FAB] Press detected');
-        openAddModal();
-      }}
-      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-    >
-      <Plus size={32} color="white" strokeWidth={3} pointerEvents="none" />
-    </Pressable>
+      </View>
+      <Pressable
+        style={({ pressed }) => [
+          styles.fabCircle,
+          {
+            position: 'absolute',
+            bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16,
+            right: 30,
+            zIndex: 999999,
+            opacity: pressed ? 0.7 : 1,
+          }
+        ]}
+        onPress={() => {
+          console.log('[FAB] Press detected');
+          openAddModal();
+        }}
+        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+      >
+        <Plus size={32} color="white" strokeWidth={3} pointerEvents="none" />
+      </Pressable>
     </>
   );
 };
@@ -2595,7 +2625,7 @@ const TasksScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { backgroundColor: 'white', borderBottomLeftRadius: 32, borderBottomRightRadius: 32, paddingBottom: Spacing.xl, elevation: 4, zIndex: 10 },
-  monthHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  monthHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 },
   monthSelectBtn: { flexDirection: 'row', alignItems: 'center' },
   monthText: { fontSize: 24, fontWeight: '800', color: '#1B254B' },
   viewToggleBtn: { padding: 8, backgroundColor: '#F4F7FE', borderRadius: 12 },
@@ -2628,10 +2658,10 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase' },
   sectionSubtitle: { fontSize: 22, fontWeight: '800', color: Colors.text, marginTop: 2 },
   taskList: { gap: 0 },
-  timeTreeListItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 12, 
+  timeTreeListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#F8FAFC'
@@ -2671,13 +2701,13 @@ const styles = StyleSheet.create({
 
   emptyState: { alignItems: 'center', marginTop: 40 },
   emptyText: { fontSize: 15, fontWeight: '600', color: Colors.textSecondary },
-  fabCircle: { 
-    width: 60, 
-    height: 60, 
-    borderRadius: 30, 
-    backgroundColor: '#111827', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  fabCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#111827',
+    justifyContent: 'center',
+    alignItems: 'center',
     elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -2697,11 +2727,11 @@ const styles = StyleSheet.create({
   wheelItemText: { fontSize: 18, color: Colors.outline, fontWeight: '600', lineHeight: ITEM_HEIGHT, includeFontPadding: false, textAlignVertical: 'center', textAlign: 'center' },
   activeWheelText: { color: '#1B254B', fontWeight: '800' },
   pickerFooter: { flexDirection: 'row', marginTop: 32, gap: 12 },
-  modalHeader: { 
+  modalHeader: {
     width: '100%',
     backgroundColor: 'white',
-    alignItems: 'center', 
-    paddingTop: 8, 
+    alignItems: 'center',
+    paddingTop: 8,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9'
@@ -2752,14 +2782,14 @@ const styles = StyleSheet.create({
   memoSection: { marginTop: 16, paddingHorizontal: 4 },
   memoHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
   memoLabel: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
-  timeTreeMemoFull: { 
-    fontSize: 16, 
-    fontWeight: '500', 
-    color: Colors.text, 
-    minHeight: 150, 
-    textAlignVertical: 'top', 
-    padding: 16, 
-    backgroundColor: '#F8FAFC', 
+  timeTreeMemoFull: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: Colors.text,
+    minHeight: 150,
+    textAlignVertical: 'top',
+    padding: 16,
+    backgroundColor: '#F8FAFC',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F1F5F9'
@@ -2790,9 +2820,9 @@ const styles = StyleSheet.create({
   },
   timeTreeSaveBtn: { backgroundColor: '#111827', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginTop: 40, marginBottom: 40 },
 
-  modalFooter: { 
-    flexDirection: 'row', 
-    paddingTop: 16, 
+  modalFooter: {
+    flexDirection: 'row',
+    paddingTop: 16,
     paddingBottom: Platform.OS === 'ios' ? 40 : 24,
     gap: 12,
     borderTopWidth: 1,
@@ -2800,23 +2830,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     paddingHorizontal: Spacing.xl,
   },
-  modalCancelBtn: { 
-    flex: 1, 
-    height: 56, 
-    borderRadius: 16, 
-    backgroundColor: '#F8FAFC', 
-    justifyContent: 'center', 
+  modalCancelBtn: {
+    flex: 1,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0'
   },
-  modalSaveBtn: { 
-    flex: 1, 
-    height: 56, 
-    borderRadius: 16, 
-    backgroundColor: '#111827', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  modalSaveBtn: {
+    flex: 1,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#111827',
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   cancelBtnText: { color: Colors.textSecondary, fontSize: 16, fontWeight: '700' },
   saveBtnText: { color: 'white', fontSize: 16, fontWeight: '800' },
@@ -2896,34 +2926,34 @@ const styles = StyleSheet.create({
   sheetSubtitle: { fontSize: 20, fontWeight: '800', color: Colors.text, marginTop: 0 },
   sheetCloseBtn: { position: 'absolute', right: 20, top: 18, padding: 6, backgroundColor: '#F4F7FE', borderRadius: 12 },
   sheetList: { flex: 1, marginTop: Spacing.sm, paddingHorizontal: Spacing.lg },
-  sheetAddBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    backgroundColor: '#111827', 
-    paddingVertical: 16, 
-    borderRadius: 20, 
+  sheetAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111827',
+    paddingVertical: 16,
+    borderRadius: 20,
     marginHorizontal: Spacing.lg,
     marginBottom: Platform.OS === 'ios' ? 40 : 24,
     marginTop: 12,
     gap: 8,
   },
   sheetAddBtnText: { color: 'white', fontSize: 15, fontWeight: '800' },
-  holidayHeaderBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#F8FAFC', 
-    paddingHorizontal: 10, 
-    paddingVertical: 6, 
+  holidayHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E2E8F0'
   },
-  holidayHeaderText: { 
-    fontSize: 12, 
-    fontWeight: '700', 
-    color: Colors.primary, 
-    marginLeft: 4 
+  holidayHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginLeft: 4
   },
   holidayHint: { fontSize: 12, color: Colors.textSecondary, marginBottom: 8 },
   holidaySection: { marginBottom: 12, gap: 8 },
@@ -3079,6 +3109,33 @@ const styles = StyleSheet.create({
     color: Colors.onBackground,
     fontSize: 22,
     fontWeight: '800',
+  },
+  adBannerWrapper: {
+    marginVertical: 12,
+    width: '100%',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  adBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    zIndex: 10,
+  },
+  adBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
 });
 

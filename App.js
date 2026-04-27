@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import React from 'react';
-import { Easing, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { Easing, StyleSheet, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -63,6 +63,18 @@ function TabNavigator() {
 export default function App() {
   const routeNameRef = React.useRef();
   const navigationRef = React.useRef();
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active') {
+        AdManager.showAppOpenAd();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   return (
     <GestureHandlerRootView style={styles.root}>
