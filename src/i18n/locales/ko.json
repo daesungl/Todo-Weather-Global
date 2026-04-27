@@ -161,6 +161,7 @@
     "today": "오늘",
     "tomorrow": "내일",
     "day_after_tomorrow": "모레",
+    "days_later": "{{count}}일 후",
     "uv_low": "낮음",
     "uv_moderate": "보통",
     "uv_high": "높음",

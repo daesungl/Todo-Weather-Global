@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
+import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 
 import HomeScreen from './src/screens/HomeScreen';
 import TasksScreen from './src/screens/TasksScreen';
@@ -56,29 +57,49 @@ function TabNavigator() {
 }
 
 export default function App() {
+  const routeNameRef = React.useRef();
+  const navigationRef = React.useRef();
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <UnitProvider>
-      <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <NavigationContainer>
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              gestureEnabled: true,
-              gestureDirection: 'horizontal',
-              ...slideFromRight,
+        <SafeAreaProvider>
+          <StatusBar style="dark" />
+          <NavigationContainer
+            ref={navigationRef}
+            onReady={() => {
+              routeNameRef.current = navigationRef.current.getCurrentRoute()?.name;
+            }}
+            onStateChange={async () => {
+              const previousRouteName = routeNameRef.current;
+              const currentRouteName = navigationRef.current.getCurrentRoute()?.name;
+
+              if (previousRouteName !== currentRouteName) {
+                await logEvent(getAnalytics(), 'screen_view', {
+                  firebase_screen: currentRouteName,
+                  firebase_screen_class: currentRouteName,
+                });
+              }
+              routeNameRef.current = currentRouteName;
             }}
           >
-            {/* 탭 화면 그룹 */}
-            <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
+            <Stack.Navigator
+              screenOptions={{
+                headerShown: false,
+                gestureEnabled: true,
+                gestureDirection: 'horizontal',
+                ...slideFromRight,
+              }}
+            >
+              {/* 탭 화면 그룹 */}
+              <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
 
-            {/* 상세 화면: 탭바 위에 오른쪽에서 슬라이드 인 */}
-            <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
-            <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </SafeAreaProvider>
+              {/* 상세 화면: 탭바 위에 오른쪽에서 슬라이드 인 */}
+              <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
+              <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaProvider>
       </UnitProvider>
     </GestureHandlerRootView>
   );

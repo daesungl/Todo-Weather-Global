@@ -104,12 +104,17 @@ export const fetchGlobalWeather = async (lat, lon) => {
       };
     });
 
-    // Build Hourly Forecast (Next 24 hours)
-    const allHours = [...today.hour, ...(data.forecast.forecastday[1]?.hour || [])];
+    // Build Hourly Forecast (Next 96 hours)
+    const allHours = [
+      ...today.hour,
+      ...(data.forecast.forecastday[1]?.hour || []),
+      ...(data.forecast.forecastday[2]?.hour || []),
+      ...(data.forecast.forecastday[3]?.hour || []),
+    ];
     const currentEpoch = current.last_updated_epoch;
     const hourlyForecast = allHours
       .filter(h => h.time_epoch >= currentEpoch)
-      .slice(0, 24)
+      .slice(0, 96)
       .map(h => {
         // Extract local hour from "2023-01-01 10:00" -> 10
         const localHour = parseInt(h.time.split(' ')[1].split(':')[0]);

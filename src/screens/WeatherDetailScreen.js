@@ -386,7 +386,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     onMoveShouldSetPanResponder: (_, gestureState) => {
       const { dx, dy, x0 } = gestureState;
       // Accept gesture only if starting from the left edge
-      return x0 < width * 0.15 && dx > 10 && Math.abs(dx) > Math.abs(dy);
+      return x0 < 24 && dx > 10 && Math.abs(dx) > Math.abs(dy);
     },
     onPanResponderMove: (_, gestureState) => {
       // Prevent swiping to the left
@@ -486,7 +486,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
         if (offset === 0) return t('weather.today', '오늘');
         if (offset === 1) return t('weather.tomorrow', '내일');
         if (offset === 2) return t('weather.day_after_tomorrow', '모레');
-        return `+${offset}`;
+        return t('weather.days_later', { count: offset, defaultValue: `${offset}일 후` });
       };
 
       // fullTime 필드 기준으로 현재 시간 이후 데이터만 필터링

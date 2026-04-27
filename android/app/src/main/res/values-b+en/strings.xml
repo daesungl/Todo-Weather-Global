@@ -1,0 +1,11 @@
+<resources>
+  <string name="common">"[object Object]"</string>
+  <string name="months">"Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"</string>
+  <string name="home">"[object Object]"</string>
+  <string name="management">"[object Object]"</string>
+  <string name="menu">"[object Object]"</string>
+  <string name="weather">"[object Object]"</string>
+  <string name="search">"[object Object]"</string>
+  <string name="tasks">"[object Object]"</string>
+  <string name="flow">"[object Object]"</string>
+</resources>

@@ -161,6 +161,7 @@
     "today": "Today",
     "tomorrow": "Tomorrow",
     "day_after_tomorrow": "Day After Tomorrow",
+    "days_later": "In {{count}} days",
     "uv_low": "Low",
     "uv_moderate": "Moderate",
     "uv_high": "High",

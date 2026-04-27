@@ -1,4 +1,4 @@
-package com.page78.todoweather
+package com.appswayd.TodoWeatherGlobal
 
 import android.os.Build
 import android.os.Bundle

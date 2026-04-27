@@ -1,0 +1,9 @@
+common = "[object Object]";
+months = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec";
+home = "[object Object]";
+management = "[object Object]";
+menu = "[object Object]";
+weather = "[object Object]";
+search = "[object Object]";
+tasks = "[object Object]";
+flow = "[object Object]";

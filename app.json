@@ -13,12 +13,12 @@
       "backgroundColor": "#f7f9ff"
     },
     "locales": {
-      "ko": "ko",
-      "en": "en"
+      "ko": "./src/i18n/locales/ko.json",
+      "en": "./src/i18n/locales/en.json"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.appswayd.todo-weather-global",
+      "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
       "buildNumber": "2",
       "infoPlist": {
         "CFBundleLocalizations": [
@@ -30,7 +30,8 @@
         "NSLocationWhenInUseUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다.",
         "NSLocationAlwaysUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다."
-      }
+      },
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
@@ -38,14 +39,30 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.appswayd.todo-weather-global"
+      "package": "com.appswayd.TodoWeatherGlobal",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-localization",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "@react-native-firebase/app",
+        {
+          "iosGoogleServicesFile": "./GoogleService-Info.plist",
+          "androidGoogleServicesFile": "./google-services.json"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
