@@ -12,6 +12,8 @@ import { useUnits } from '../contexts/UnitContext';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
+import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { BANNER_UNIT_ID } from '../constants/AdUnits';
 import AirService from '../services/weather/AirService';
 import WeatherService from '../services/weather/WeatherService';
 import { fetchExtraMetrics } from '../services/weather/GlobalService';
@@ -112,6 +114,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
   // WeatherService와 동일한 캐시키를 loadAsyncData에서 재사용하기 위한 ref
   const weatherCacheKeyRef = useRef('');
+  const [adError, setAdError] = useState(false);
 
   // Pulse animation for loading skeleton
   useEffect(() => {
@@ -808,6 +811,26 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </ScrollView>
         </View>
 
+        {/* Medium Rectangle Ad - Native Style between Hourly and Daily Forecast */}
+        {!adError && (
+          <View style={styles.detailAdWrapper}>
+            <View style={styles.adBadge}>
+              <Text style={styles.adBadgeText}>AD</Text>
+            </View>
+            <BannerAd
+              unitId={BANNER_UNIT_ID}
+              size={BannerAdSize.MEDIUM_RECTANGLE}
+              requestOptions={{
+                requestNonPersonalizedAdsOnly: true,
+              }}
+              onAdFailedToLoad={(error) => {
+                console.log('Weather Detail Ad Failed:', error);
+                setAdError(true);
+              }}
+            />
+          </View>
+        )}
+
         <View style={styles.moduleCard}>
           <View style={styles.moduleHeader}><Calendar size={16} color={Colors.primary} /><Text style={styles.moduleTitle}>{t('weather.daily_forecast', '10-Day Forecast')}</Text></View>
           <View style={styles.dailyTableHead}><Text style={[styles.headTxt, { width: 62 }]}>{t('weather.date', 'Date')}</Text><Text style={[styles.headTxt, { width: 50 }]}>{t('weather.am', 'AM')}</Text><Text style={[styles.headTxt, { width: 50 }]}>{t('weather.pm', 'PM')}</Text><Text style={[styles.headTxt, { flex: 1, textAlign: 'center', marginLeft: 10 }]}>{t('weather.temp_trend', 'Temp Trend')}</Text></View>
@@ -1039,7 +1062,41 @@ const styles = StyleSheet.create({
   alertSheetConfirmBtn: { backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 28, alignItems: 'center' },
   modalFooterBtnText: { color: 'white', fontSize: 16, fontWeight: '700' },
   dayBadge: { backgroundColor: Colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
-  dayBadgeText: { color: 'white', fontSize: 10, fontWeight: '800' }
+  dayBadgeText: { color: 'white', fontSize: 10, fontWeight: '800' },
+  detailAdWrapper: {
+    backgroundColor: 'white',
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+    borderRadius: Spacing.lg,
+    padding: Spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    minHeight: 260,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  adBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    zIndex: 10,
+  },
+  adBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+  },
 });
 
 export default WeatherDetailScreen;

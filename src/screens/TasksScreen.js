@@ -1375,7 +1375,7 @@ const TasksScreen = ({ navigation }) => {
                   <ScrollView
                     style={styles.sheetList}
                     showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 100 }}
+                    contentContainerStyle={{ paddingBottom: 20 }}
                   >
                     {(filteredTasks || []).length === 0 && !isPublicHoliday(dateStr(selectedDate), holidaysMap) ? (
                       <View style={styles.emptyState}>
@@ -1439,13 +1439,34 @@ const TasksScreen = ({ navigation }) => {
                     )}
                   </ScrollView>
 
-                  <TouchableOpacity
-                    style={[styles.sheetAddBtn, { position: 'absolute', bottom: 16, left: 0, right: 0 }]}
-                    onPress={() => { setIsTaskListVisible(false); openAddModal(); }}
-                  >
-                    <Plus size={20} color="white" strokeWidth={3} />
-                    <Text style={styles.sheetAddBtnText}>{t('tasks.addNew', 'Add New Task')}</Text>
-                  </TouchableOpacity>
+                  {/* Fixed Footer with Large Ad and Add Button (TimeTree Style) */}
+                  <View style={styles.modalFooter}>
+                    {!adError && (
+                      <View style={[styles.modalAdWrapper, { width: '100%', marginVertical: 0, marginBottom: 12, borderWidth: 0, padding: 0 }]}>
+                        <View style={styles.adBadge}>
+                          <Text style={styles.adBadgeText}>AD</Text>
+                        </View>
+                        <BannerAd
+                          unitId={BANNER_UNIT_ID}
+                          size={BannerAdSize.MEDIUM_RECTANGLE}
+                          requestOptions={{
+                            requestNonPersonalizedAdsOnly: true,
+                          }}
+                          onAdFailedToLoad={(error) => {
+                            console.log('Modal Fixed Large Ad Failed:', error);
+                            setAdError(true);
+                          }}
+                        />
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={styles.sheetAddBtn}
+                      onPress={() => { setIsTaskListVisible(false); openAddModal(); }}
+                    >
+                      <Plus size={20} color="white" strokeWidth={3} />
+                      <Text style={styles.sheetAddBtnText}>{t('tasks.addNew', 'Add New Task')}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* PAGE 2: Task Detail */}
@@ -3136,6 +3157,42 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
+  },
+  modalAdWrapper: {
+    marginVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    padding: 10,
+    width: width - 32,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
+    overflow: 'hidden',
+  },
+  modalFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16, // Respect safe area
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  sheetAddBtn: {
+    backgroundColor: '#1B254B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+  },
+  sheetAddBtnText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
   },
 });
 

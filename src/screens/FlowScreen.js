@@ -6,6 +6,8 @@ import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton 
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
+import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { BANNER_UNIT_ID } from '../constants/AdUnits';
 import { useTranslation } from 'react-i18next';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { 
@@ -64,6 +66,7 @@ const FlowScreen = ({ navigation }) => {
   
   const [flows, setFlows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [adError, setAdError] = useState(false);
 
   // Search Modal State
   const [searchModalVisible, setSearchModalVisible] = useState(false);
@@ -993,14 +996,36 @@ const FlowScreen = ({ navigation }) => {
                     </ScaleDecorator>
                   )}
                   ListHeaderComponent={
-                    <View style={styles.listHeader}>
-                      <View style={styles.headerTopRow}>
-                        <View>
-                          <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Flows')}</Text>
-                          <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Curated journeys')}</Text>
+                    <View>
+                      <View style={styles.listHeader}>
+                        <View style={styles.headerTopRow}>
+                          <View>
+                            <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Flows')}</Text>
+                            <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Curated journeys')}</Text>
+                          </View>
+                          <View style={{ width: 52 }} />
                         </View>
-                        <View style={{ width: 52 }} />
                       </View>
+
+                      {/* Top Banner Ad for Flow Screen */}
+                      {!adError && (
+                        <View style={styles.bannerAdWrapper}>
+                          <View style={styles.adBadge}>
+                            <Text style={styles.adBadgeText}>AD</Text>
+                          </View>
+                          <BannerAd
+                            unitId={BANNER_UNIT_ID}
+                            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+                            requestOptions={{
+                              requestNonPersonalizedAdsOnly: true,
+                            }}
+                            onAdFailedToLoad={(error) => {
+                              console.log('Flow Top Ad Failed:', error);
+                              setAdError(true);
+                            }}
+                          />
+                        </View>
+                      )}
                     </View>
                   }
                   contentContainerStyle={styles.listContent}
@@ -1227,7 +1252,25 @@ const FlowScreen = ({ navigation }) => {
                         />
                       </View>
 
-                      <View style={{ height: 60 }} />
+                      {!adError && (
+                        <View style={[styles.flowAdWrapper, { marginTop: 20, marginBottom: 20 }]}>
+                          <View style={styles.adBadge}>
+                            <Text style={styles.adBadgeText}>AD</Text>
+                          </View>
+                          <BannerAd
+                            unitId={BANNER_UNIT_ID}
+                            size={BannerAdSize.MEDIUM_RECTANGLE}
+                            requestOptions={{
+                              requestNonPersonalizedAdsOnly: true,
+                            }}
+                            onAdFailedToLoad={(error) => {
+                              console.log('Flow Step Modal Ad Failed:', error);
+                              setAdError(true);
+                            }}
+                          />
+                        </View>
+                      )}
+                      <View style={{ height: 120 }} />
                     </ScrollView>
                     </KeyboardAvoidingView>
 
@@ -1295,7 +1338,7 @@ const FlowScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   listContent: { paddingHorizontal: Spacing.lg, paddingBottom: 220, paddingTop: Spacing.md },
-  listHeader: { marginBottom: Spacing.xl, marginTop: Spacing.md },
+  listHeader: { marginBottom: 0, marginTop: Spacing.md },
   screenTitle: { ...Typography.h1, fontSize: 34, color: Colors.onBackground, letterSpacing: -0.5 },
   screenSubtitle: { ...Typography.body, color: Colors.onSurfaceVariant, marginTop: 4 },
   flowCardContainer: {
@@ -1322,7 +1365,7 @@ const styles = StyleSheet.create({
   progressBar: { height: '100%', backgroundColor: 'white', borderRadius: 2 },
   weatherSummary: { flexDirection: 'row', alignItems: 'center' },
   weatherText: { color: 'white', fontSize: 13, fontWeight: '600', flex: 1 },
-  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 4 },
+  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   headerAddBtn: {
     width: 52, height: 52, borderRadius: 26, backgroundColor: Colors.primary,
     alignItems: 'center', justifyContent: 'center',
@@ -1465,6 +1508,50 @@ const styles = StyleSheet.create({
   },
   pickerConfirmBtn: { backgroundColor: 'rgba(0, 191, 255, 0.1)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 },
   pickerConfirmText: { color: Colors.primary, fontWeight: '800', fontSize: 14 },
+  flowAdWrapper: {
+    backgroundColor: 'white',
+    marginBottom: Spacing.lg,
+    borderRadius: 32,
+    padding: Spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 270,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 15 },
+      android: { elevation: 6 }
+    }),
+  },
+  adBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    zIndex: 10,
+  },
+  adBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 0.5,
+  },
+  bannerAdWrapper: {
+    marginTop: 8,
+    marginBottom: 12,
+    width: '100%',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
+  },
 });
 
 export default FlowScreen;
