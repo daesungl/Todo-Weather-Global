@@ -59,7 +59,8 @@
     "upgrade": "업그레이드",
     "add_region": "지역 추가하기",
     "tasks_count": "오늘 할 일이 {{count}}개 있습니다",
-    "tasks_upcoming": "다음: {{task}} ({{time}})"
+    "tasks_upcoming": "다음: {{task}} ({{time}})",
+    "premium_only_limit": "더 많은 지역을 추가하려면 프리미엄 구독이 필요합니다. (최대 3개)"
   },
   "management": {
     "title": "날씨 관심 지역 관리",
@@ -289,6 +290,7 @@
       "invalid_time_msg": "HH:mm 형식을 사용해 주세요.",
       "limit_title": "플로우 한도 초과",
       "limit_msg": "플로우는 최대 50개까지 만들 수 있어요.",
+      "premium_limit_msg": "더 많은 플로우를 만들려면 프리미엄 구독이 필요합니다. (최대 5개)",
       "sharing_not_available": "공유 불가",
       "sharing_not_available_msg": "이 기기에서는 공유 기능을 사용할 수 없습니다.",
       "share_failed": "공유 실패",

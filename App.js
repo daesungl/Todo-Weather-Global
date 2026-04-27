@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
+import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
 
@@ -78,45 +79,47 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <UnitProvider>
-        <SafeAreaProvider>
-          <StatusBar style="dark" />
-          <NavigationContainer
-            ref={navigationRef}
-            onReady={() => {
-              routeNameRef.current = navigationRef.current.getCurrentRoute()?.name;
-            }}
-            onStateChange={async () => {
-              const previousRouteName = routeNameRef.current;
-              const currentRouteName = navigationRef.current.getCurrentRoute()?.name;
+      <SubscriptionProvider>
+        <UnitProvider>
+          <SafeAreaProvider>
+            <StatusBar style="dark" />
+            <NavigationContainer
+              ref={navigationRef}
+              onReady={() => {
+                routeNameRef.current = navigationRef.current.getCurrentRoute()?.name;
+              }}
+              onStateChange={async () => {
+                const previousRouteName = routeNameRef.current;
+                const currentRouteName = navigationRef.current.getCurrentRoute()?.name;
 
-              if (previousRouteName !== currentRouteName) {
-                await logEvent(getAnalytics(), 'screen_view', {
-                  firebase_screen: currentRouteName,
-                  firebase_screen_class: currentRouteName,
-                });
-              }
-              routeNameRef.current = currentRouteName;
-            }}
-          >
-            <Stack.Navigator
-              screenOptions={{
-                headerShown: false,
-                gestureEnabled: true,
-                gestureDirection: 'horizontal',
-                ...slideFromRight,
+                if (previousRouteName !== currentRouteName) {
+                  await logEvent(getAnalytics(), 'screen_view', {
+                    firebase_screen: currentRouteName,
+                    firebase_screen_class: currentRouteName,
+                  });
+                }
+                routeNameRef.current = currentRouteName;
               }}
             >
-              {/* 탭 화면 그룹 */}
-              <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
+              <Stack.Navigator
+                screenOptions={{
+                  headerShown: false,
+                  gestureEnabled: true,
+                  gestureDirection: 'horizontal',
+                  ...slideFromRight,
+                }}
+              >
+                {/* 탭 화면 그룹 */}
+                <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
 
-              {/* 상세 화면: 탭바 위에 오른쪽에서 슬라이드 인 */}
-              <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
-              <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
-            </Stack.Navigator>
-          </NavigationContainer>
-        </SafeAreaProvider>
-      </UnitProvider>
+                {/* 상세 화면: 탭바 위에 오른쪽에서 슬라이드 인 */}
+                <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
+                <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </SafeAreaProvider>
+        </UnitProvider>
+      </SubscriptionProvider>
     </GestureHandlerRootView>
   );
 }

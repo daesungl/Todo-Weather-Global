@@ -8,11 +8,14 @@ import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
 import { getWeather } from '../services/weather/WeatherService';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { Alert } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
 const RegionManagementScreen = ({ navigation }) => {
   const { t } = useTranslation();
+  const { isPremium } = useSubscription();
   const [regions, setRegions] = useState([]);
   const [weatherDataMap, setWeatherDataMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -50,7 +53,11 @@ const RegionManagementScreen = ({ navigation }) => {
   };
 
   const handleAddRegion = async (place) => {
-    // This would normally come from a search result
+    // Subscription check: Free users limit to 3 total regions
+    if (!isPremium && regions.length >= 3) {
+      Alert.alert(t('common.info', '알림'), t('home.premium_only_limit', '더 많은 지역을 추가하려면 프리미엄 구독이 필요합니다. (최대 3개)'));
+      return;
+    }
     const updated = await addRegion(place.name, place.address, place.lat, place.lon);
     setRegions(updated);
     setSearchModalVisible(false);

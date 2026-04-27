@@ -17,7 +17,8 @@ import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
 
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
-import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
+import AdBanner from '../components/AdBanner';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -32,7 +33,7 @@ const HomeScreen = ({ navigation }) => {
   const regionsRef = useRef([]);
   const scrollViewRef = useRef(null);
 
-  const [adError, setAdError] = useState(false);
+  const { isPremium } = useSubscription();
 
   const goToPage = (nextPage, direction) => {
     const dir = direction ?? (nextPage > currentPageRef.current ? -1 : 1);
@@ -287,6 +288,12 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleAddRegion = async (item) => {
+    // Subscription check: Free users limit to 3 total regions
+    if (!isPremium && regions.length >= 3) {
+      Alert.alert(t('common.info', '알림'), t('home.premium_only_limit', '더 많은 지역을 추가하려면 프리미엄 구독이 필요합니다. (최대 3개)'));
+      return;
+    }
+
     // Check if the current page has space (limit 3)
     const pageIndex = currentPage - 1;
     const pageRegionsCount = regions.filter(r => r.pageIndex === pageIndex).length;
@@ -358,7 +365,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const isPremium = false;
+
 
   return (
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
@@ -427,25 +434,10 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </TouchableOpacity>
 
-        {/* 배너 광고를 메인 카드와 리스트 사이로 이동 (정책 준수 및 UI 조화) */}
-        {!adError && (
-          <View style={styles.adBannerWrapper}>
-            <View style={styles.adBadge}>
-              <Text style={styles.adBadgeText}>AD</Text>
-            </View>
-            <BannerAd
-              unitId={BANNER_UNIT_ID}
-              size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-              requestOptions={{
-                requestNonPersonalizedAdsOnly: true,
-              }}
-              onAdFailedToLoad={(error) => {
-                console.error('Ad failed to load: ', error);
-                setAdError(true);
-              }}
-            />
-          </View>
-        )}
+        {/* 프리미엄 여백 및 광고 통합 배너 */}
+        <View style={styles.adBannerWrapper}>
+          <AdBanner />
+        </View>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t('home.interest_regions')}</Text>

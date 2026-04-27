@@ -52,7 +52,9 @@ import {
 } from '../services/task/HolidayService';
 
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
-import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
+import AdBanner from '../components/AdBanner';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { BannerAdSize } from 'react-native-google-mobile-ads';
 
 // Moved width/height inside component for logic, but need global for styles
 const { width, height } = Dimensions.get('window');
@@ -489,7 +491,7 @@ const TasksScreen = ({ navigation }) => {
   const [holidayCountries, setHolidayCountries] = useState(['KR']); // Default, will be updated from storage
   const [holidaysMap, setHolidaysMap] = useState({});
 
-  const [adError, setAdError] = useState(false);
+  const { isPremium } = useSubscription();
 
   // Picker Temporary State
   const [tempYear, setTempYear] = useState(new Date().getFullYear());
@@ -1250,24 +1252,9 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {!adError && (
-            <View style={styles.adBannerWrapper}>
-              <View style={styles.adBadge}>
-                <Text style={styles.adBadgeText}>AD</Text>
-              </View>
-              <BannerAd
-                unitId={BANNER_UNIT_ID}
-                size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                requestOptions={{
-                  requestNonPersonalizedAdsOnly: true,
-                }}
-                onAdFailedToLoad={(error) => {
-                  console.error('Ad failed to load: ', error);
-                  setAdError(true);
-                }}
-              />
-            </View>
-          )}
+          <View style={{ marginBottom: 10 }}>
+            <AdBanner />
+          </View>
 
           <View style={styles.calendarArea}>
             <View style={styles.weekdayLabels}>
@@ -1442,24 +1429,9 @@ const TasksScreen = ({ navigation }) => {
 
                   {/* Fixed Footer with Large Ad and Add Button (TimeTree Style) */}
                   <View style={styles.modalFooter}>
-                    {!adError && (
-                      <View style={[styles.modalAdWrapper, { width: '100%', marginVertical: 0, marginBottom: 12, borderWidth: 0, padding: 0 }]}>
-                        <View style={styles.adBadge}>
-                          <Text style={styles.adBadgeText}>AD</Text>
-                        </View>
-                        <BannerAd
-                          unitId={BANNER_UNIT_ID}
-                          size={BannerAdSize.MEDIUM_RECTANGLE}
-                          requestOptions={{
-                            requestNonPersonalizedAdsOnly: true,
-                          }}
-                          onAdFailedToLoad={(error) => {
-                            console.log('Modal Fixed Large Ad Failed:', error);
-                            setAdError(true);
-                          }}
-                        />
-                      </View>
-                    )}
+                    <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                      <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+                    </View>
                     <TouchableOpacity
                       style={styles.sheetAddBtn}
                       onPress={() => { setIsTaskListVisible(false); openAddModal(); }}

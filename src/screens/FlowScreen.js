@@ -6,8 +6,10 @@ import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton 
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import AdBanner from '../components/AdBanner';
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { BannerAdSize } from 'react-native-google-mobile-ads';
 import { useTranslation } from 'react-i18next';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { 
@@ -66,7 +68,7 @@ const FlowScreen = ({ navigation }) => {
   
   const [flows, setFlows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [adError, setAdError] = useState(false);
+  const { isPremium } = useSubscription();
 
   // Search Modal State
   const [searchModalVisible, setSearchModalVisible] = useState(false);
@@ -104,8 +106,14 @@ const FlowScreen = ({ navigation }) => {
   const [heroWeather, setHeroWeather] = useState(null);
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
+  const flowKeyboardOffset = useRef(new Animated.Value(0)).current;
   const searchPanY = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef(null);
+  const stepScrollRef = useRef(null);
+  const memoYRef = useRef(0);
+  const flowTitleRef = useRef(null);
+  const flowDescRef = useRef(null);
+  const focusedFlowInputRef = useRef(null);
 
   // --- Initialization ---
   useFocusEffect(
@@ -126,10 +134,30 @@ const FlowScreen = ({ navigation }) => {
     const showSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
       setIsKeyboardVisible(true);
       setKeyboardHeight(e.endCoordinates.height);
+      const kbTop = height - e.endCoordinates.height;
+      const focused = focusedFlowInputRef.current;
+      if (focused) {
+        focused.measure((_x, _y, _w, h, _px, pageY) => {
+          const inputBottom = pageY + h + 16; // 16px padding
+          const overlap = inputBottom - kbTop;
+          Animated.timing(flowKeyboardOffset, {
+            toValue: overlap > 0 ? overlap : 0,
+            duration: e.duration || 250,
+            useNativeDriver: true,
+          }).start();
+        });
+      } else {
+        Animated.timing(flowKeyboardOffset, { toValue: 0, duration: 0, useNativeDriver: true }).start();
+      }
     });
-    const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
+    const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', (e) => {
       setIsKeyboardVisible(false);
       setKeyboardHeight(0);
+      Animated.timing(flowKeyboardOffset, {
+        toValue: 0,
+        duration: e.duration || 200,
+        useNativeDriver: true,
+      }).start();
     });
 
     return () => {
@@ -199,6 +227,7 @@ const FlowScreen = ({ navigation }) => {
   const openEditModal = () => {
     panY.setValue(height);
     setEditModalVisible(true);
+    stepScrollRef.current?.scrollTo({ y: 0, animated: false });
     Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
 
@@ -332,7 +361,7 @@ const FlowScreen = ({ navigation }) => {
     }
   }, [selectedFlow]);
 
-  const MAX_FLOWS = 50;
+  const MAX_FLOWS = isPremium ? 50 : 5;
 
   const saveFlow = async () => {
     if (isSaving) return;
@@ -341,7 +370,8 @@ const FlowScreen = ({ navigation }) => {
       return;
     }
     if (!editingFlow && flows.length >= MAX_FLOWS) {
-      Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), t('flow.alert.limit_msg', `You can create up to ${MAX_FLOWS} flows.`));
+      const msg = isPremium ? t('flow.alert.limit_msg', `You can create up to ${MAX_FLOWS} flows.`) : t('flow.alert.premium_limit_msg', 'Premium subscription is required to create more flows.');
+      Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), msg);
       return;
     }
     
@@ -647,11 +677,11 @@ const FlowScreen = ({ navigation }) => {
 
     switch (key) {
       case 'sunny': case 'clear': return isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />;
-      case 'clear_night': return <Moon size={size} color={moonColor} />;
-      case 'partly_cloudy': case 'mostly_sunny': return isDay ? <CloudSun size={size} color={color} /> : <View><Moon size={size * 0.8} color={moonColor} /><Cloud size={size * 0.9} color={color} style={{ position: 'absolute', bottom: -2, right: -2 }} /></View>;
+      case 'clear_night': case 'mostly_clear_night': return <Moon size={size} color={moonColor} />;
+      case 'partly_cloudy': case 'mostly_sunny': return isDay ? <CloudSun size={size} color={color} /> : <CloudMoon size={size} color={moonColor} />;
       case 'cloudy': case 'overcast': return <Cloud size={size} color={color} />;
-      case 'rainy': case 'rain': return <CloudRain size={size} color={rainColor} />;
-      case 'snowy': case 'snow': return <CloudSnow size={size} color={snowColor} />;
+      case 'light_rain': case 'moderate_rain': case 'heavy_rain': case 'rainy': case 'rain': return <CloudRain size={size} color={rainColor} />;
+      case 'light_snow': case 'heavy_snow': case 'snowy': case 'snow': return <CloudSnow size={size} color={snowColor} />;
       case 'thunderstorm': case 'lightning': return <CloudLightning size={size} color={thunderColor} />;
       default: return isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />;
     }
@@ -785,11 +815,19 @@ const FlowScreen = ({ navigation }) => {
                 <Share2 size={22} color={Colors.primary} />
               )}
             </BorderlessButton>
-            <BorderlessButton 
-              style={styles.iconBtn} 
+            <BorderlessButton
+              style={styles.iconBtn}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                openFlowModal(selectedFlow);
+                Alert.alert(
+                  selectedFlow.title,
+                  null,
+                  [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    { text: t('common.edit', 'Edit'), onPress: () => openFlowModal(selectedFlow) },
+                    { text: t('common.delete', 'Delete'), style: 'destructive', onPress: () => handleDeleteFlow(selectedFlow.id) },
+                  ]
+                );
               }}
               hitSlop={{ top: 20, bottom: 20, left: 5, right: 20 }}
             >
@@ -807,7 +845,18 @@ const FlowScreen = ({ navigation }) => {
             </View>
 
             {selectedFlow.location && selectedFlow.location !== 'No Region' && (
-              <View style={[styles.heroLocationRow, { marginTop: 0, marginBottom: 24 }]}>
+              <Pressable
+                style={({ pressed }) => [styles.heroLocationRow, { marginTop: 0, marginBottom: 24 }, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  if (heroWeather) {
+                    navigation.navigate('WeatherDetail', {
+                      weatherData: { ...heroWeather, locationName: selectedFlow.location },
+                      isCurrentLocation: false,
+                      locationName: selectedFlow.location,
+                    });
+                  }
+                }}
+              >
                 <View style={styles.locationMain}>
                   <MapPin size={18} color={Colors.primary} />
                   <Text style={styles.detailLocationText} numberOfLines={1}>{selectedFlow.location}</Text>
@@ -818,7 +867,7 @@ const FlowScreen = ({ navigation }) => {
                     <Text style={styles.heroTemp}>{formatTemp(heroWeather.temp)}</Text>
                   </View>
                 )}
-              </View>
+              </Pressable>
             )}
 
             {sortedDates.length > 0 ? (
@@ -843,7 +892,10 @@ const FlowScreen = ({ navigation }) => {
                         <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted]} />
                         {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
                       </View>
-                      <View style={styles.stepInfoCard}>
+                      <Pressable
+                        style={({ pressed }) => [styles.stepInfoCard, pressed && { opacity: 0.7 }]}
+                        onPress={() => openEditStep(step)}
+                      >
                         <View style={styles.stepHeader}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.stepActivity} numberOfLines={1}>
@@ -857,7 +909,7 @@ const FlowScreen = ({ navigation }) => {
                             </View>
                           )}
                         </View>
-                      </View>
+                      </Pressable>
                     </View>
                   ))}
                 </View>
@@ -996,24 +1048,9 @@ const FlowScreen = ({ navigation }) => {
                       </View>
 
                       {/* Top Banner Ad for Flow Screen */}
-                      {!adError && (
-                        <View style={styles.bannerAdWrapper}>
-                          <View style={styles.adBadge}>
-                            <Text style={styles.adBadgeText}>AD</Text>
-                          </View>
-                          <BannerAd
-                            unitId={BANNER_UNIT_ID}
-                            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                            requestOptions={{
-                              requestNonPersonalizedAdsOnly: true,
-                            }}
-                            onAdFailedToLoad={(error) => {
-                              console.log('Flow Top Ad Failed:', error);
-                              setAdError(true);
-                            }}
-                          />
-                        </View>
-                      )}
+                      <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                        <AdBanner />
+                      </View>
                     </View>
                   }
                   contentContainerStyle={styles.listContent}
@@ -1062,7 +1099,7 @@ const FlowScreen = ({ navigation }) => {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeFlowModal} />
             <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View style={[styles.editModalContent, { transform: [{ translateY: flowPanY }] }]}>
+              <Animated.View style={[styles.editModalContent, { transform: [{ translateY: Animated.subtract(flowPanY, flowKeyboardOffset) }] }]}>
                     <View {...flowPanResponder.panHandlers} style={styles.handleArea}>
                       <View style={styles.modalHandle} />
                     </View>
@@ -1078,13 +1115,12 @@ const FlowScreen = ({ navigation }) => {
                       </Pressable>
                     </View>
 
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
                       <View style={styles.modalContentPadding}>
                         <Text style={styles.inputLabel}>{t('flow.flow_title', 'Flow Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !flowTitle && styles.compactInputRowRequired]}>
                           <Flag size={18} color={flowTitle ? Colors.primary : Colors.error} />
-                          <TextInput style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder={t('flow.flow_title_placeholder', 'e.g. Hawaii Trip, Morning Routine')} placeholderTextColor={Colors.outline} autoCapitalize="none" />
+                          <TextInput ref={flowTitleRef} style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder={t('flow.flow_title_placeholder', 'e.g. Hawaii Trip, Morning Routine')} placeholderTextColor={Colors.outline} autoCapitalize="none" onFocus={() => { focusedFlowInputRef.current = flowTitleRef.current; }} onBlur={() => { focusedFlowInputRef.current = null; }} />
                         </View>
                       </View>
 
@@ -1106,12 +1142,11 @@ const FlowScreen = ({ navigation }) => {
 
                       <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>{t('flow.description', 'Description')}</Text>
-                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder={t('flow.description_placeholder', 'What is this flow about?')} placeholderTextColor={Colors.outline} autoCapitalize="none" /></View>
+                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput ref={flowDescRef} style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder={t('flow.description_placeholder', 'What is this flow about?')} placeholderTextColor={Colors.outline} autoCapitalize="none" onFocus={() => { focusedFlowInputRef.current = flowDescRef.current; }} onBlur={() => { focusedFlowInputRef.current = null; }} /></View>
                       </View>
 
                       <View style={{ height: 100 }} />
                     </ScrollView>
-                    </KeyboardAvoidingView>
 
                     {searchModalVisible && searchMode === 'flow' && renderSearchLayer()}
               </Animated.View>
@@ -1165,8 +1200,7 @@ const FlowScreen = ({ navigation }) => {
                       </GHButton>
                     </View>
 
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+                    <ScrollView ref={stepScrollRef} showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
                       <View style={styles.modalContentPadding}>
                         <Text style={styles.inputLabel}>{t('flow.activity', 'Activity')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         <View style={[styles.compactInputRow, !editActivity && styles.compactInputRowRequired]}>
@@ -1280,7 +1314,10 @@ const FlowScreen = ({ navigation }) => {
                         </View>
                       </View>
 
-                      <View style={styles.inputGroup}>
+                      <View
+                        style={styles.inputGroup}
+                        onLayout={(e) => { memoYRef.current = e.nativeEvent.layout.y; }}
+                      >
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                           <Text style={styles.inputLabel}>{t('common.memo', 'Memo')}</Text>
                           <Text style={styles.charCount}>{editMemo.length}/500</Text>
@@ -1295,30 +1332,15 @@ const FlowScreen = ({ navigation }) => {
                           textAlignVertical="top"
                           maxLength={500}
                           autoCapitalize="none"
+                          onFocus={() => setTimeout(() => stepScrollRef.current?.scrollTo({ y: memoYRef.current - 12, animated: true }), 150)}
                         />
                       </View>
 
-                      {!adError && (
-                        <View style={[styles.flowAdWrapper, { marginTop: 20, marginBottom: 20 }]}>
-                          <View style={styles.adBadge}>
-                            <Text style={styles.adBadgeText}>AD</Text>
-                          </View>
-                          <BannerAd
-                            unitId={BANNER_UNIT_ID}
-                            size={BannerAdSize.MEDIUM_RECTANGLE}
-                            requestOptions={{
-                              requestNonPersonalizedAdsOnly: true,
-                            }}
-                            onAdFailedToLoad={(error) => {
-                              console.log('Flow Step Modal Ad Failed:', error);
-                              setAdError(true);
-                            }}
-                          />
-                        </View>
-                      )}
-                      <View style={{ height: 120 }} />
+                      <View style={{ marginVertical: 12, alignItems: 'center' }}>
+                        <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+                      </View>
+                      <View style={{ height: 12 }} />
                     </ScrollView>
-                    </KeyboardAvoidingView>
 
                     {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
               </Animated.View>
@@ -1566,7 +1588,7 @@ const styles = StyleSheet.create({
   regionDisplay: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceContainerLow, padding: 12, borderRadius: 16, gap: 10, borderWidth: 1, borderColor: Colors.outlineVariant, opacity: 0.9 },
   memoInlineInput: {
     backgroundColor: 'white', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 14,
-    minHeight: 90, borderWidth: 1.5, borderColor: Colors.surfaceContainerLow,
+    minHeight: 90, maxHeight: 180, borderWidth: 1.5, borderColor: Colors.surfaceContainerLow,
     ...Typography.body, fontSize: 15, color: Colors.onBackground, lineHeight: 22,
     ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 }, android: { elevation: 2 } })
   },

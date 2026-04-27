@@ -59,7 +59,8 @@
     "upgrade": "UPGRADE",
     "add_region": "Add Region",
     "tasks_count": "You have {{count}} tasks today",
-    "tasks_upcoming": "Next: {{task}} at {{time}}"
+    "tasks_upcoming": "Next: {{task}} at {{time}}",
+    "premium_only_limit": "Premium subscription is required to add more regions. (Max 3 for free)"
   },
   "management": {
     "title": "Manage Regions",
@@ -289,6 +290,7 @@
       "invalid_time_msg": "Please use HH:mm format",
       "limit_title": "Flow Limit Reached",
       "limit_msg": "You can create up to 50 flows.",
+      "premium_limit_msg": "Premium subscription is required to create more flows. (Max 5 for free)",
       "sharing_not_available": "Sharing Not Available",
       "sharing_not_available_msg": "Sharing is not available on this device",
       "share_failed": "Share Failed",
