@@ -799,38 +799,27 @@ const FlowScreen = ({ navigation }) => {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
-          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background }}>
-            <View style={styles.heroSection}>
+          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background, padding: 20, borderRadius: 24 }}>
+            {/* 공유 이미지 전용 헤더 (제목 추가) */}
+            <View style={{ marginBottom: 24 }}>
+              <Text style={{ ...Typography.h1, fontSize: 28, color: Colors.onBackground, marginBottom: 4 }}>{selectedFlow.title}</Text>
               <Text style={styles.heroDate}>{getLocalizedPeriod(selectedFlow.period)}</Text>
-              {selectedFlow.location && selectedFlow.location !== 'No Region' && (
-                <GHButton 
-                  style={styles.heroLocationRow}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    navigation.navigate('WeatherDetail', { 
-                      region: { 
-                        name: selectedFlow.location, 
-                        address: selectedFlow.address || '',
-                        lat: parseFloat(selectedFlow.lat), 
-                        lon: parseFloat(selectedFlow.lon) 
-                      } 
-                    });
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.locationMain}>
-                    <MapPin size={18} color={Colors.primary} />
-                    <Text style={styles.detailLocationText} numberOfLines={1}>{selectedFlow.location}</Text>
-                  </View>
-                  {heroWeather && (
-                    <View style={styles.heroWeather}>
-                      {renderWeatherIcon(heroWeather.condKey, 20, Colors.primary, heroWeather.isDay !== false)}
-                      <Text style={styles.heroTemp}>{formatTemp(heroWeather.temp)}</Text>
-                    </View>
-                  )}
-                </GHButton>
-              )}
             </View>
+
+            {selectedFlow.location && selectedFlow.location !== 'No Region' && (
+              <View style={[styles.heroLocationRow, { marginTop: 0, marginBottom: 24 }]}>
+                <View style={styles.locationMain}>
+                  <MapPin size={18} color={Colors.primary} />
+                  <Text style={styles.detailLocationText} numberOfLines={1}>{selectedFlow.location}</Text>
+                </View>
+                {heroWeather && (
+                  <View style={styles.heroWeather}>
+                    {renderWeatherIcon(heroWeather.condKey, 20, Colors.primary, heroWeather.isDay !== false)}
+                    <Text style={styles.heroTemp}>{formatTemp(heroWeather.temp)}</Text>
+                  </View>
+                )}
+              </View>
+            )}
 
             {sortedDates.length > 0 ? (
               sortedDates.map((date, dateIdx) => (
@@ -848,60 +837,26 @@ const FlowScreen = ({ navigation }) => {
                   {groupedSteps[date].map((step, index) => (
                     <View key={step.id} style={styles.stepRow}>
                       <View style={styles.timeCol}>
-                        {step.time ? (
-                          <GHButton onPress={() => openEditStep(step)} hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}>
-                            <Text style={styles.timeText}>{step.time}</Text>
-                          </GHButton>
-                        ) : null}
-                        {step.status === 'current' && <View style={styles.currentIndicator}><Navigation2 size={12} color="white" fill="white" style={{ transform: [{ rotate: '45deg' }] }} /></View>}
+                        <Text style={styles.timeText}>{step.time || '--:--'}</Text>
                       </View>
                       <View style={styles.timelineCol}>
-                        <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.status === 'current' && styles.dotCurrent]} />
+                        <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted]} />
                         {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
                       </View>
-                      <View 
-                        style={[
-                          styles.stepInfoCard, 
-                          step.status === 'current' && styles.activeStepCard, 
-                          step.warning && styles.warningStepCard,
-                        ]}
-                      >
+                      <View style={styles.stepInfoCard}>
                         <View style={styles.stepHeader}>
-                          <Pressable 
-                            onPress={() => openEditStep(step)} 
-                            style={({ pressed }) => [{ flex: 1, justifyContent: 'center' }, pressed && { opacity: 0.7 }]}
-                          >
+                          <View style={{ flex: 1 }}>
                             <Text style={styles.stepActivity} numberOfLines={1}>
                               {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
                             </Text>
                             {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
-                            {step.region && (
-                              <View style={styles.stepRegionRow}>
-                                <MapPin size={10} color={Colors.outline} />
-                                <Text style={styles.stepRegionLabel} numberOfLines={1}>{step.region.name}</Text>
-                              </View>
-                            )}
-                          </Pressable>
+                          </View>
                           {step.weather && (
-                            <Pressable 
-                              onPress={() => {
-                                if (step.region) {
-                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                  navigation.navigate('WeatherDetail', { 
-                                    region: step.region,
-                                    locationName: step.region.name,
-                                    regionId: step.region.id || step.region.place_id
-                                  });
-                                }
-                              }}
-                              style={({ pressed }) => [{ marginLeft: 8, padding: 12, marginRight: -12, marginTop: -8, justifyContent: 'center', alignItems: 'center' }, pressed && { opacity: 0.6 }]}
-                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            >
+                            <View style={{ marginLeft: 8 }}>
                               {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                            </Pressable>
+                            </View>
                           )}
                         </View>
-                        {step.warning && <View style={styles.warningBadge}><Text style={styles.warningText}>{t('flow.rain_alert', 'Rain alert: Indoor backup recommended')}</Text></View>}
                       </View>
                     </View>
                   ))}
@@ -913,6 +868,12 @@ const FlowScreen = ({ navigation }) => {
                 <Text style={styles.emptyFlowText}>{t('flow.no_schedules', 'No schedules added yet.')}</Text>
               </View>
             )}
+
+            {/* 공유 이미지 전용 푸터 (워터마크) */}
+            <View style={{ marginTop: 32, paddingVertical: 16, borderTopWidth: 1, borderTopColor: Colors.outlineVariant + '30', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, color: Colors.outline, fontWeight: '700', letterSpacing: 1 }}>TODO WEATHER</Text>
+              <Text style={{ fontSize: 10, color: Colors.outline, marginTop: 2, opacity: 0.6 }}>Your smart event-based weather planner</Text>
+            </View>
           </ViewShot>
 
           <View style={styles.centerButtonWrap}>
