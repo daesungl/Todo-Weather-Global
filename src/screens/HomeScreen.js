@@ -16,6 +16,9 @@ import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } 
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
 
+import { BANNER_UNIT_ID } from '../constants/AdUnits';
+import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
+
 const { width, height } = Dimensions.get('window');
 
 const HomeScreen = ({ navigation }) => {
@@ -28,6 +31,8 @@ const HomeScreen = ({ navigation }) => {
   const loadingPageRef = useRef(null);
   const regionsRef = useRef([]);
   const scrollViewRef = useRef(null);
+
+  const [adError, setAdError] = useState(false);
 
   const goToPage = (nextPage, direction) => {
     const dir = direction ?? (nextPage > currentPageRef.current ? -1 : 1);
@@ -268,13 +273,13 @@ const HomeScreen = ({ navigation }) => {
       t('home.delete_region_confirm', '관심 지역에서 삭제하시겠습니까?'),
       [
         { text: t('common.cancel', '취소'), style: 'cancel' },
-        { 
-          text: t('common.delete', '삭제'), 
+        {
+          text: t('common.delete', '삭제'),
           style: 'destructive',
           onPress: async () => {
-             const updated = await removeRegion(id);
-             regionsRef.current = updated;
-             setRegions(updated);
+            const updated = await removeRegion(id);
+            regionsRef.current = updated;
+            setRegions(updated);
           }
         }
       ]
@@ -285,7 +290,7 @@ const HomeScreen = ({ navigation }) => {
     // Check if the current page has space (limit 3)
     const pageIndex = currentPage - 1;
     const pageRegionsCount = regions.filter(r => r.pageIndex === pageIndex).length;
-    
+
     if (pageRegionsCount >= 3) {
       Alert.alert(t('common.info', '알림'), t('home.region_limit_guide', '한 페이지당 최대 3개의 지역만 추가할 수 있습니다.'));
       return;
@@ -361,8 +366,8 @@ const HomeScreen = ({ navigation }) => {
 
       <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Hero Section */}
-        <TouchableOpacity 
-          style={styles.heroSection} 
+        <TouchableOpacity
+          style={styles.heroSection}
           activeOpacity={0.9}
           onPress={() => currentWeather && navigation.navigate('WeatherDetail', { weatherData: currentWeather, isCurrentLocation: true })}
         >
@@ -375,10 +380,10 @@ const HomeScreen = ({ navigation }) => {
             >
               {loading ? (
                 <View style={styles.skeletonContent}>
-                    <Animated.View style={[styles.skeletonLocation, { opacity: pulseAnim }]} />
-                    <View style={styles.skeletonMainRow}>
-                        <Animated.View style={[styles.skeletonTemp, { opacity: pulseAnim }]} />
-                    </View>
+                  <Animated.View style={[styles.skeletonLocation, { opacity: pulseAnim }]} />
+                  <View style={styles.skeletonMainRow}>
+                    <Animated.View style={[styles.skeletonTemp, { opacity: pulseAnim }]} />
+                  </View>
                 </View>
               ) : (
                 <>
@@ -422,118 +427,138 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </TouchableOpacity>
 
+        {/* 배너 광고를 메인 카드와 리스트 사이로 이동 (정책 준수 및 UI 조화) */}
+        {!adError && (
+          <View style={styles.adBannerWrapper}>
+            <View style={styles.adBadge}>
+              <Text style={styles.adBadgeText}>AD</Text>
+            </View>
+            <BannerAd
+              unitId={BANNER_UNIT_ID}
+              size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+              requestOptions={{
+                requestNonPersonalizedAdsOnly: true,
+              }}
+              onAdFailedToLoad={(error) => {
+                console.error('Ad failed to load: ', error);
+                setAdError(true);
+              }}
+            />
+          </View>
+        )}
+
         <View style={styles.sectionHeader}>
-           <Text style={styles.sectionTitle}>{t('home.interest_regions')}</Text>
+          <Text style={styles.sectionTitle}>{t('home.interest_regions')}</Text>
         </View>
 
         <View style={styles.paginationArea} {...swipePanResponder.panHandlers}>
-            <Animated.View style={[styles.regionsList, { transform: [{ translateX: slideAnim }] }]}>
-              {(regions || []).filter(r => r.pageIndex === currentPage - 1).map(region => {
-                const weather = regionsWeather[region.id];
-                return (
-                  <TouchableOpacity 
-                    key={region.id} 
-                    style={styles.regionCard}
-                    onPress={() => {
-                      if (weather) {
-                        navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: region.name, regionId: region.id, region: region });
-                      }
-                    }}
-                  >
-                    {/* First Row: Name and Trash Icon */}
-                    <View style={styles.regionCardHeader}>
-                      <View style={styles.regionNameContainer}>
-                        {weather?.alert && <AlertTriangle size={18} color="#E53935" fill="#FFEB3B" style={{ marginRight: 8 }} />}
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.regionNameText} numberOfLines={1} ellipsizeMode="tail">
-                            {region.name}
+          <Animated.View style={[styles.regionsList, { transform: [{ translateX: slideAnim }] }]}>
+            {(regions || []).filter(r => r.pageIndex === currentPage - 1).map(region => {
+              const weather = regionsWeather[region.id];
+              return (
+                <TouchableOpacity
+                  key={region.id}
+                  style={styles.regionCard}
+                  onPress={() => {
+                    if (weather) {
+                      navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: region.name, regionId: region.id, region: region });
+                    }
+                  }}
+                >
+                  {/* First Row: Name and Trash Icon */}
+                  <View style={styles.regionCardHeader}>
+                    <View style={styles.regionNameContainer}>
+                      {weather?.alert && <AlertTriangle size={18} color="#E53935" fill="#FFEB3B" style={{ marginRight: 8 }} />}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.regionNameText} numberOfLines={1} ellipsizeMode="tail">
+                          {region.name}
+                        </Text>
+                        {region.address && (
+                          <Text style={styles.regionAddressText} numberOfLines={1} ellipsizeMode="tail">
+                            {region.address}
                           </Text>
-                          {region.address && (
-                            <Text style={styles.regionAddressText} numberOfLines={1} ellipsizeMode="tail">
-                              {region.address}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                      <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.trashBtn}>
-                        <Trash2 size={18} color={Colors.outline} />
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Second Row: Icon, Temp, and Metrics */}
-                    <View style={styles.regionCardMain}>
-                      <View style={styles.weatherInfoLeft}>
-                        {weather ? (
-                          renderWeatherIcon(liveCondKey(weather), 56, Colors.primary, weather?.isDay !== false)
-                        ) : (
-                          <ActivityIndicator size="small" color={Colors.outline} />
                         )}
-                        <Text style={styles.regionTempText}>{formatTemp(weather?.temp)}</Text>
-                      </View>
-
-                      <View style={styles.metricsContainer}>
-                        {/* 1. POP % */}
-                        <View style={styles.metricRow}>
-                          <Umbrella size={14} color={Colors.primary} />
-                          <Text style={styles.metricLabelText}>
-                            {weather?.hourlyForecast?.[0]?.pop || '0%'}
-                          </Text>
-                        </View>
-                        {/* 2. Rainfall mm */}
-                        <View style={styles.metricRow}>
-                          <Umbrella size={14} color={(weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline} />
-                          <Text style={[styles.metricLabelText, { color: (weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline }]}>
-                            {weather?.pcp || '0mm'}
-                          </Text>
-                        </View>
-                        {/* 3. Wind speed + Direction Arrow */}
-                        <View style={styles.metricRow}>
-                          <View style={{ transform: [{ rotate: `${(weather?.windDeg || 0) - 45}deg` }] }}>
-                            <Navigation size={14} color={Colors.outline} />
-                          </View>
-                          <Text style={styles.metricLabelText}>
-                            {weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}
-                          </Text>
-                        </View>
-                        {/* 4. Humidity % */}
-                        <View style={styles.metricRow}>
-                          <Droplets size={14} color={Colors.outline} />
-                          <Text style={styles.metricLabelText}>
-                            {weather?.humidity || '0%'}
-                          </Text>
-                        </View>
                       </View>
                     </View>
-                  </TouchableOpacity>
-                );
-              })}
-              
-              {(regions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 && (
-                <TouchableOpacity style={styles.addSlotCard} onPress={openSearchModal}>
-                   <View style={styles.addIconCircle}>
-                      <Plus size={24} color={Colors.primary} strokeWidth={3} />
-                   </View>
-                   <Text style={styles.addSlotText}>{t('home.add_region')}</Text>
+                    <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.trashBtn}>
+                      <Trash2 size={18} color={Colors.outline} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Second Row: Icon, Temp, and Metrics */}
+                  <View style={styles.regionCardMain}>
+                    <View style={styles.weatherInfoLeft}>
+                      {weather ? (
+                        renderWeatherIcon(liveCondKey(weather), 56, Colors.primary, weather?.isDay !== false)
+                      ) : (
+                        <ActivityIndicator size="small" color={Colors.outline} />
+                      )}
+                      <Text style={styles.regionTempText}>{formatTemp(weather?.temp)}</Text>
+                    </View>
+
+                    <View style={styles.metricsContainer}>
+                      {/* 1. POP % */}
+                      <View style={styles.metricRow}>
+                        <Umbrella size={14} color={Colors.primary} />
+                        <Text style={styles.metricLabelText}>
+                          {weather?.hourlyForecast?.[0]?.pop || '0%'}
+                        </Text>
+                      </View>
+                      {/* 2. Rainfall mm */}
+                      <View style={styles.metricRow}>
+                        <Umbrella size={14} color={(weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline} />
+                        <Text style={[styles.metricLabelText, { color: (weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline }]}>
+                          {weather?.pcp || '0mm'}
+                        </Text>
+                      </View>
+                      {/* 3. Wind speed + Direction Arrow */}
+                      <View style={styles.metricRow}>
+                        <View style={{ transform: [{ rotate: `${(weather?.windDeg || 0) - 45}deg` }] }}>
+                          <Navigation size={14} color={Colors.outline} />
+                        </View>
+                        <Text style={styles.metricLabelText}>
+                          {weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}
+                        </Text>
+                      </View>
+                      {/* 4. Humidity % */}
+                      <View style={styles.metricRow}>
+                        <Droplets size={14} color={Colors.outline} />
+                        <Text style={styles.metricLabelText}>
+                          {weather?.humidity || '0%'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </TouchableOpacity>
-              )}
-            </Animated.View>
+              );
+            })}
+
+            {(regions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 && (
+              <TouchableOpacity style={styles.addSlotCard} onPress={openSearchModal}>
+                <View style={styles.addIconCircle}>
+                  <Plus size={24} color={Colors.primary} strokeWidth={3} />
+                </View>
+                <Text style={styles.addSlotText}>{t('home.add_region')}</Text>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
         </View>
 
         <View style={styles.pageIndicator}>
-           {[1, 2, 3, 4, 5].map(num => (
-             <TouchableOpacity
-               key={num}
-               onPress={() => goToPage(num)}
-               style={[styles.indicatorCircle, currentPage === num && styles.activeIndicator]}
-             >
-                <Text style={[styles.indicatorText, currentPage === num && styles.activeIndicatorText]}>{num}</Text>
-             </TouchableOpacity>
-           ))}
+          {[1, 2, 3, 4, 5].map(num => (
+            <TouchableOpacity
+              key={num}
+              onPress={() => goToPage(num)}
+              style={[styles.indicatorCircle, currentPage === num && styles.activeIndicator]}
+            >
+              <Text style={[styles.indicatorText, currentPage === num && styles.activeIndicatorText]}>{num}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </ScrollView>
 
       <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} />
-      
+
       <Modal animationType="none" transparent={true} visible={searchModalVisible} onRequestClose={closeSearchModal}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={closeSearchModal} />
@@ -639,7 +664,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   heroSection: {
-    marginBottom: 30,
+    marginBottom: 4,
     marginTop: 10,
   },
   weatherCard: {
@@ -692,6 +717,11 @@ const styles = StyleSheet.create({
     color: 'white',
     letterSpacing: -3,
     marginLeft: -4,
+  },
+  adBannerWrapper: {
+    marginVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroVisualWrap: {
     width: 120,
@@ -912,16 +942,16 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 4,
   },
-  
+
   // Modal Styles
   modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalHandleArea: { alignItems: 'center', paddingTop: 4, paddingBottom: 12 },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, opacity: 0.5 },
-  modalContent: { 
-    height: height * 0.8, 
-    backgroundColor: Colors.background, 
-    borderTopLeftRadius: 32, 
-    borderTopRightRadius: 32, 
+  modalContent: {
+    height: height * 0.8,
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: Spacing.lg,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -10 },
@@ -930,27 +960,27 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   searchHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.xl },
-  searchInputWrap: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.surfaceContainerLow, 
-    borderRadius: 20, 
-    paddingHorizontal: 12, 
-    height: 48 
+  searchInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    height: 48
   },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.text },
   closeBtn: { paddingVertical: 8 },
   closeBtnText: { fontSize: 15, fontWeight: '700', color: Colors.primary },
   searchResultWrap: { flex: 1 },
-  resultItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 16, 
-    borderBottomWidth: 1, 
-    borderBottomColor: Colors.outlineVariant, 
-    gap: 14 
+  resultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.outlineVariant,
+    gap: 14
   },
   resultTextCol: { flex: 1 },
   resultName: { fontSize: 16, fontWeight: '700', color: Colors.text },
@@ -993,6 +1023,24 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: Colors.primary,
+  },
+  adBannerWrapper: {
+    marginVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adBadge: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 6,
+  },
+  adBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
   },
 });
 

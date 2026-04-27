@@ -10,6 +10,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
+import AdManager from './src/services/ad/AdManager';
+
+// AdMob 초기화 (AdManager 사용)
+AdManager.initialize();
 
 import HomeScreen from './src/screens/HomeScreen';
 import TasksScreen from './src/screens/TasksScreen';
