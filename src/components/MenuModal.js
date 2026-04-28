@@ -15,7 +15,7 @@ const DRAWER_WIDTH = width * 0.82;
 const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const { t, i18n } = useTranslation();
   const { tempUnit, windUnit, setTempUnit, setWindUnit } = useUnits();
-  const { isPremium, updateSubscriptionStatus } = useSubscription();
+  const { isPremium, devTogglePremium } = useSubscription();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   // Use internal state to keep modal alive during closing animation
@@ -339,6 +339,17 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                     </TouchableOpacity>
                   </View>
 
+                  {/* Premium CTA */}
+                  <TouchableOpacity
+                    style={[styles.premiumCta, isPremium && styles.premiumCtaActive]}
+                    onPress={() => { onClose(); navigation.navigate('Paywall'); }}
+                  >
+                    <Crown size={16} color={isPremium ? '#f59e0b' : 'white'} />
+                    <Text style={[styles.premiumCtaText, isPremium && { color: '#f59e0b' }]}>
+                      {isPremium ? '프리미엄 구독 중' : '프리미엄 구독하기'}
+                    </Text>
+                  </TouchableOpacity>
+
                   {/* Dev: Premium Toggle */}
                   <View style={styles.devSection}>
                     <View style={styles.devRow}>
@@ -348,7 +359,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                       </Text>
                       <Switch
                         value={isPremium}
-                        onValueChange={(val) => updateSubscriptionStatus(val)}
+                        onValueChange={(val) => devTogglePremium(val)}
                         trackColor={{ false: Colors.outlineVariant, true: '#fde68a' }}
                         thumbColor={isPremium ? '#f59e0b' : Colors.outline}
                         style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
@@ -450,6 +461,25 @@ const styles = StyleSheet.create({
     marginTop: Spacing.huge,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.xl,
+  },
+  premiumCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#00BFFF',
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginTop: 20,
+    marginHorizontal: 4,
+  },
+  premiumCtaActive: {
+    backgroundColor: '#FFF8E1',
+  },
+  premiumCtaText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'white',
   },
   devSection: {
     marginTop: 24,

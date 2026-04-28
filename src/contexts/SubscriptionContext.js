@@ -1,9 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+import { RC_API_KEY, RC_ENTITLEMENT_ID } from '../constants/RevenueCat';
 
 const SubscriptionContext = createContext();
-
-const PREMIUM_STORAGE_KEY = '@is_premium_user';
 
 export const LIMITS = {
   FREE: {
@@ -21,37 +20,86 @@ export const LIMITS = {
 export const SubscriptionProvider = ({ children }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [offerings, setOfferings] = useState(null);
 
   useEffect(() => {
-    loadSubscriptionStatus();
+    initPurchases();
   }, []);
 
-  const loadSubscriptionStatus = async () => {
+  const initPurchases = async () => {
     try {
-      const value = await AsyncStorage.getItem(PREMIUM_STORAGE_KEY);
-      if (value !== null) {
-        setIsPremium(JSON.parse(value));
-      }
+      if (__DEV__) Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+      await Purchases.configure({ apiKey: RC_API_KEY });
+      await checkSubscriptionStatus();
+      await loadOfferings();
     } catch (e) {
-      console.error('Failed to load subscription status', e);
+      console.error('[RC] Init error:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const updateSubscriptionStatus = async (status) => {
+  const checkSubscriptionStatus = async () => {
     try {
-      await AsyncStorage.setItem(PREMIUM_STORAGE_KEY, JSON.stringify(status));
-      setIsPremium(status);
+      const info = await Purchases.getCustomerInfo();
+      const active = info.entitlements.active[RC_ENTITLEMENT_ID];
+      setIsPremium(!!active);
     } catch (e) {
-      console.error('Failed to save subscription status', e);
+      console.error('[RC] checkSubscriptionStatus error:', e);
     }
+  };
+
+  const loadOfferings = async () => {
+    try {
+      const result = await Purchases.getOfferings();
+      if (result.current) setOfferings(result.current);
+    } catch (e) {
+      console.error('[RC] loadOfferings error:', e);
+    }
+  };
+
+  const purchasePackage = async (pkg) => {
+    try {
+      const { customerInfo } = await Purchases.purchasePackage(pkg);
+      const active = customerInfo.entitlements.active[RC_ENTITLEMENT_ID];
+      setIsPremium(!!active);
+      return { success: true };
+    } catch (e) {
+      if (!e.userCancelled) console.error('[RC] purchasePackage error:', e);
+      return { success: false, userCancelled: e.userCancelled };
+    }
+  };
+
+  const restorePurchases = async () => {
+    try {
+      const info = await Purchases.restorePurchases();
+      const active = info.entitlements.active[RC_ENTITLEMENT_ID];
+      setIsPremium(!!active);
+      return !!active;
+    } catch (e) {
+      console.error('[RC] restorePurchases error:', e);
+      return false;
+    }
+  };
+
+  // 개발용 토글 (dev only)
+  const devTogglePremium = (val) => {
+    if (__DEV__) setIsPremium(val);
   };
 
   const limits = isPremium ? LIMITS.PREMIUM : LIMITS.FREE;
 
   return (
-    <SubscriptionContext.Provider value={{ isPremium, updateSubscriptionStatus, loading, limits }}>
+    <SubscriptionContext.Provider value={{
+      isPremium,
+      loading,
+      limits,
+      offerings,
+      purchasePackage,
+      restorePurchases,
+      checkSubscriptionStatus,
+      devTogglePremium,
+    }}>
       {children}
     </SubscriptionContext.Provider>
   );

@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#f7f9ff"
+      "backgroundColor": "#b2ebf2"
     },
     "locales": {
       "ko": "./src/i18n/locales/ko.json",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "2",
+      "buildNumber": "4",
       "infoPlist": {
         "CFBundleLocalizations": [
           "ko",

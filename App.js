@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
 import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
+import { useSubscription } from './src/contexts/SubscriptionContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
 
@@ -21,6 +22,7 @@ import TasksScreen from './src/screens/TasksScreen';
 import FlowScreen from './src/screens/FlowScreen';
 import RegionManagementScreen from './src/screens/RegionManagementScreen';
 import WeatherDetailScreen from './src/screens/WeatherDetailScreen';
+import PaywallScreen from './src/screens/PaywallScreen';
 import CustomTabBar from './src/components/CustomTabBar';
 
 const Stack = createStackNavigator();
@@ -61,27 +63,31 @@ function TabNavigator() {
   );
 }
 
-export default function App() {
-  const routeNameRef = React.useRef();
-  const navigationRef = React.useRef();
+function AppOpenAdHandler() {
+  const { isPremium } = useSubscription();
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
-      if (nextAppState === 'active') {
+      if (nextAppState === 'active' && !isPremium) {
         AdManager.showAppOpenAd();
       }
     });
+    return () => subscription.remove();
+  }, [isPremium]);
 
-    return () => {
-      subscription.remove();
-    };
-  }, []);
+  return null;
+}
+
+export default function App() {
+  const routeNameRef = React.useRef();
+  const navigationRef = React.useRef();
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <SubscriptionProvider>
         <UnitProvider>
           <SafeAreaProvider>
+            <AppOpenAdHandler />
             <StatusBar style="dark" />
             <NavigationContainer
               ref={navigationRef}
@@ -115,6 +121,7 @@ export default function App() {
                 {/* 상세 화면: 탭바 위에 오른쪽에서 슬라이드 인 */}
                 <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
                 <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
+                <Stack.Screen name="Paywall" component={PaywallScreen} />
               </Stack.Navigator>
             </NavigationContainer>
           </SafeAreaProvider>
