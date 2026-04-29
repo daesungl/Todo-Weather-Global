@@ -109,6 +109,8 @@ const FlowScreen = ({ navigation }) => {
   const [topAdHidden, setTopAdHidden] = useState(false);
   const [detailAdHidden, setDetailAdHidden] = useState(false);
   const [showRangePicker, setShowRangePicker] = useState(false);
+  const [flowModalHeight, setFlowModalHeight] = useState(0);
+  const [editModalHeight, setEditModalHeight] = useState(0);
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
   const flowKeyboardOffset = useRef(new Animated.Value(0)).current;
@@ -139,27 +141,35 @@ const FlowScreen = ({ navigation }) => {
   useEffect(() => {
     const showSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
       setIsKeyboardVisible(true);
-      setKeyboardHeight(e.endCoordinates.height);
-      const kbTop = height - e.endCoordinates.height;
-      const focused = focusedFlowInputRef.current;
-      if (focused) {
-        focused.measure((_x, _y, _w, h, _px, pageY) => {
-          const inputBottom = pageY + h + 16; // 16px padding
-          const overlap = inputBottom - kbTop;
+      const kbHeight = e.endCoordinates.height;
+      setKeyboardHeight(kbHeight);
+      
+      // Calculate offset based on modal height and keyboard height
+      const currentModalHeight = flowModalVisible ? flowModalHeight : (editModalVisible ? editModalHeight : 0);
+      if (currentModalHeight > 0) {
+        const maxShift = height - currentModalHeight - (Platform.OS === 'ios' ? 60 : 40);
+        const shift = Math.min(kbHeight, Math.max(0, maxShift));
+        
+        if (flowModalVisible) {
           Animated.timing(flowKeyboardOffset, {
-            toValue: overlap > 0 ? overlap : 0,
+            toValue: shift, // flowKeyboardOffset is subtracted, so positive moves UP
             duration: e.duration || 250,
             useNativeDriver: true,
           }).start();
-        });
-      } else {
-        Animated.timing(flowKeyboardOffset, { toValue: 0, duration: 0, useNativeDriver: true }).start();
+        } else if (editModalVisible) {
+          Animated.timing(panY, {
+            toValue: -shift, // panY is directly used, so negative moves UP
+            duration: e.duration || 250,
+            useNativeDriver: true,
+          }).start();
+        }
       }
     });
     const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', (e) => {
       setIsKeyboardVisible(false);
       setKeyboardHeight(0);
-      Animated.timing(flowKeyboardOffset, {
+      const targetAnim = flowModalVisible ? flowKeyboardOffset : panY;
+      Animated.timing(targetAnim, {
         toValue: 0,
         duration: e.duration || 200,
         useNativeDriver: true,
@@ -616,7 +626,13 @@ const FlowScreen = ({ navigation }) => {
     } catch (e) { return dateStr; }
   };
 
-  const openSearch = (mode) => { searchPanY.setValue(0); setSearchMode(mode); setSearchModalVisible(true); };
+  const openSearch = (mode) => { 
+    setSearchQuery(''); 
+    setSearchResults([]); 
+    searchPanY.setValue(0); 
+    setSearchMode(mode); 
+    setSearchModalVisible(true); 
+  };
   const closeSearch = () => { setSearchModalVisible(false); setSearchQuery(''); setSearchResults([]); };
 
   const openFlowModal = (flow = null) => {
@@ -660,19 +676,19 @@ const FlowScreen = ({ navigation }) => {
     ]);
   };
 
-  const handleWeatherIconPress = async (step) => {
+  const handleWeatherIconPress = (step) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const lat = step.lat || selectedFlow?.lat;
     const lon = step.lon || selectedFlow?.lon;
     const name = (step.region && step.region.name) || selectedFlow?.location;
     if (!lat || !lon) return;
-    try {
-      const weather = await WeatherService.getWeather(lat, lon, false, name, name);
-      if (weather) {
-        navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: name });
-      }
-    } catch (e) {
-      console.error(e);
-    }
+
+    // 즉시 이동 (상세 데이터는 WeatherDetailScreen에서 needsFullLoad로 처리됨)
+    navigation.navigate('WeatherDetail', { 
+      weatherData: { lat, lon, locationName: name }, 
+      isCurrentLocation: false, 
+      locationName: name 
+    });
   };
 
   // 실시간 스와이프 애니메이션을 위한 변수
@@ -952,13 +968,16 @@ const FlowScreen = ({ navigation }) => {
               <Pressable
                 style={({ pressed }) => [styles.heroLocationRow, { marginTop: 0, marginBottom: 24 }, pressed && { opacity: 0.7 }]}
                 onPress={() => {
-                  if (heroWeather) {
-                    navigation.navigate('WeatherDetail', {
-                      weatherData: { ...heroWeather, locationName: selectedFlow.location },
-                      isCurrentLocation: false,
-                      locationName: selectedFlow.location,
-                    });
-                  }
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  const navData = heroWeather 
+                    ? { ...heroWeather, locationName: selectedFlow.location }
+                    : { lat: selectedFlow.lat, lon: selectedFlow.lon, locationName: selectedFlow.location };
+                  
+                  navigation.navigate('WeatherDetail', {
+                    weatherData: navData,
+                    isCurrentLocation: false,
+                    locationName: selectedFlow.location,
+                  });
                 }}
               >
                 <View style={styles.locationMain}>
@@ -1277,7 +1296,10 @@ const FlowScreen = ({ navigation }) => {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeFlowModal} />
             <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View style={[styles.editModalContent, { transform: [{ translateY: Animated.subtract(flowPanY, flowKeyboardOffset) }] }]}>
+              <Animated.View 
+                onLayout={(e) => setFlowModalHeight(e.nativeEvent.layout.height)}
+                style={[styles.editModalContent, { transform: [{ translateY: Animated.subtract(flowPanY, flowKeyboardOffset) }] }]}
+              >
                     <View {...flowPanResponder.panHandlers} style={styles.handleArea}>
                       <View style={styles.modalHandle} />
                     </View>
@@ -1289,16 +1311,23 @@ const FlowScreen = ({ navigation }) => {
                       </Text>
 
                       <View style={{ width: 80, alignItems: 'flex-end' }}>
-                        <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveFlow} style={styles.headerActionBtn}>
+                        <GHButton 
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            isKeyboardVisible ? Keyboard.dismiss() : saveFlow();
+                          }} 
+                          style={styles.headerActionBtn}
+                          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                        >
                           {isKeyboardVisible ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} pointerEvents="none">
                               <KeyboardIcon size={18} color={Colors.primary} />
                               <ChevronDown size={14} color={Colors.primary} />
                             </View>
                           ) : (
-                            <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
+                            <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
                           )}
-                        </Pressable>
+                        </GHButton>
                       </View>
                     </View>
 
@@ -1312,7 +1341,20 @@ const FlowScreen = ({ navigation }) => {
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}><Text style={styles.inputLabel}>{t('flow.base_region', 'Base Region')}</Text><Pressable onPress={() => openSearch('flow')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>{t('common.find', 'Find')}</Text></Pressable></View>
+                        <View style={styles.labelRow}>
+                          <Text style={styles.inputLabel}>{t('flow.base_region', 'Base Region')}</Text>
+                          <GHButton 
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              openSearch('flow');
+                            }} 
+                            style={styles.searchAccessoryBtn}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <Search size={14} color={Colors.primary} pointerEvents="none" />
+                            <Text style={styles.searchAccessoryText} pointerEvents="none">{t('common.find', 'Find')}</Text>
+                          </GHButton>
+                        </View>
                         <View style={styles.regionDisplay}>
                           {(() => { const hasLocation = flowLocation && flowLocation !== 'No Region'; return (<>
                           <MapPin size={18} color={hasLocation ? Colors.primary : Colors.outline} />
@@ -1320,9 +1362,15 @@ const FlowScreen = ({ navigation }) => {
                             {hasLocation ? flowLocation : t('flow.not_set_global', 'Not set (Global)')}
                           </Text>
                           {hasLocation && (
-                            <Pressable onPress={() => { setFlowLocation(''); setFlowLat(null); setFlowLon(null); }}>
-                              <X size={16} color={Colors.outline} />
-                            </Pressable>
+                            <GHButton 
+                              onPress={() => { 
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                setFlowLocation(''); setFlowLat(null); setFlowLon(null); 
+                              }}
+                              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                            >
+                              <X size={16} color={Colors.outline} pointerEvents="none" />
+                            </GHButton>
                           )}</>); })()}
                         </View>
                       </View>
@@ -1351,7 +1399,10 @@ const FlowScreen = ({ navigation }) => {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeEditModal} />
             <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View style={[styles.editModalContent, { transform: [{ translateY: panY }] }]}>
+              <Animated.View 
+                onLayout={(e) => setEditModalHeight(e.nativeEvent.layout.height)}
+                style={[styles.editModalContent, { transform: [{ translateY: panY }] }]}
+              >
                     <View {...panResponder.panHandlers} style={styles.handleArea}>
                       <View style={styles.modalHandle} />
                     </View>
@@ -1406,49 +1457,101 @@ const FlowScreen = ({ navigation }) => {
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}><Text style={styles.inputLabel}>{t('flow.weather_region', 'Weather Region')}</Text><Pressable onPress={() => openSearch('step')} style={({ pressed }) => [styles.searchAccessoryBtn, pressed && { opacity: 0.7 }]}><Search size={14} color={Colors.primary} /><Text style={styles.searchAccessoryText}>{t('common.find', 'Find')}</Text></Pressable></View>
-                        <View style={styles.regionDisplay}><MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} /><Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]}>{selectedRegion ? selectedRegion.name : t('flow.no_region', 'No region selected')}</Text>{selectedRegion && <Pressable onPress={() => setSelectedRegion(null)}><X size={16} color={Colors.outline} /></Pressable>}</View>
+                        <View style={styles.labelRow}>
+                          <Text style={styles.inputLabel}>{t('flow.weather_region', 'Weather Region')}</Text>
+                          <GHButton 
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              openSearch('step');
+                            }} 
+                            style={styles.searchAccessoryBtn}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <Search size={14} color={Colors.primary} pointerEvents="none" />
+                            <Text style={styles.searchAccessoryText} pointerEvents="none">{t('common.find', 'Find')}</Text>
+                          </GHButton>
+                        </View>
+                        <View style={styles.regionDisplay}>
+                          <MapPin size={18} color={selectedRegion ? Colors.primary : Colors.outline} pointerEvents="none" />
+                          <Text style={[styles.regionDisplayText, !selectedRegion && { color: Colors.outline }]} pointerEvents="none">
+                            {selectedRegion ? selectedRegion.name : t('flow.no_region', 'No region selected')}
+                          </Text>
+                          {selectedRegion && (
+                            <GHButton 
+                              onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                setSelectedRegion(null);
+                              }}
+                              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                            >
+                              <X size={16} color={Colors.outline} pointerEvents="none" />
+                            </GHButton>
+                          )}
+                        </View>
                       </View>
 
                       <View style={styles.rowInputs}>
                         <View style={[styles.inputGroup, { flex: 1.3, marginRight: 10 }]}>
                           <View style={styles.labelRow}>
                             <Text style={styles.inputLabel}>{t('flow.start_date', 'Start Date')}</Text>
-                            {editDate ? (
-                              <Pressable onPress={() => setEditDate('')} hitSlop={10}>
-                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
-                              </Pressable>
-                            ) : null}
+                             {editDate ? (
+                               <GHButton 
+                                 onPress={() => {
+                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                   setEditDate('');
+                                 }} 
+                                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                               >
+                                 <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
+                               </GHButton>
+                             ) : null}
                           </View>
-                          <Pressable
-                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); setShowRangePicker(true); }}
-                          >
-                            <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
-                            <Text style={[styles.editInputText, !editDate && { color: Colors.outline }]} numberOfLines={1}>
-                              {editDate || '--/--'}
-                            </Text>
-                          </Pressable>
+                           <GHButton
+                             style={styles.editInputWrap}
+                             onPress={() => { 
+                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                               Keyboard.dismiss(); 
+                               setShowRangePicker(true); 
+                             }}
+                             activeOpacity={0.6}
+                           >
+                             <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} pointerEvents="none" />
+                             <Text style={[styles.editInputText, !editDate && { color: Colors.outline }]} numberOfLines={1} pointerEvents="none">
+                               {editDate || '--/--'}
+                             </Text>
+                           </GHButton>
                         </View>
 
                         <View style={[styles.inputGroup, { flex: 1 }]}>
                           <View style={styles.labelRow}>
                             <Text style={styles.inputLabel}>{t('common.start_time', 'Time')}</Text>
-                            {editTime ? (
-                              <Pressable onPress={() => setEditTime('')} hitSlop={10}>
-                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
-                              </Pressable>
-                            ) : null}
+                             {editTime ? (
+                               <GHButton 
+                                 onPress={() => {
+                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                   setEditTime('');
+                                 }} 
+                                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                               >
+                                 <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
+                               </GHButton>
+                             ) : null}
                           </View>
-                          <Pressable
-                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('startTime'); }}
-                          >
-                            <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} />
-                            <Text style={[styles.editInputText, !editTime && { color: Colors.outline }]} numberOfLines={1}>
-                              {editTime || '--:--'}
-                            </Text>
-                          </Pressable>
+                           <GHButton
+                             style={styles.editInputWrap}
+                             onPress={() => { 
+                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                               Keyboard.dismiss(); 
+                               pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; 
+                               setPickerType('startTime'); 
+                             }}
+                             activeOpacity={0.6}
+                           >
+                             <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} pointerEvents="none" />
+                             <Text style={[styles.editInputText, !editTime && { color: Colors.outline }]} numberOfLines={1} pointerEvents="none">
+                               {editTime || '--:--'}
+                             </Text>
+                           </GHButton>
                         </View>
                       </View>
 
@@ -1472,41 +1575,66 @@ const FlowScreen = ({ navigation }) => {
                         <View style={[styles.inputGroup, { flex: 1.3, marginRight: 10 }]}>
                           <View style={styles.labelRow}>
                             <Text style={styles.inputLabel}>{t('flow.end_date', 'End Date')}</Text>
-                            {editEndDate ? (
-                              <Pressable onPress={() => { setEditEndDate(''); setMatchStartDate(false); }} hitSlop={10}>
-                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
-                              </Pressable>
-                            ) : null}
+                             {editEndDate ? (
+                               <GHButton 
+                                 onPress={() => {
+                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                   setEditEndDate(''); 
+                                   setMatchStartDate(false);
+                                 }} 
+                                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                               >
+                                 <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
+                               </GHButton>
+                             ) : null}
                           </View>
-                          <Pressable
-                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); setShowRangePicker(true); }}
-                          >
-                            <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
-                            <Text style={[styles.editInputText, !editEndDate && { color: Colors.outline }]} numberOfLines={1}>
-                              {editEndDate || '--/--'}
-                            </Text>
-                          </Pressable>
+                           <GHButton
+                             style={styles.editInputWrap}
+                             onPress={() => { 
+                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                               Keyboard.dismiss(); 
+                               setShowRangePicker(true); 
+                             }}
+                             activeOpacity={0.6}
+                           >
+                             <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} pointerEvents="none" />
+                             <Text style={[styles.editInputText, !editEndDate && { color: Colors.outline }]} numberOfLines={1} pointerEvents="none">
+                               {editEndDate || '--/--'}
+                             </Text>
+                           </GHButton>
                         </View>
 
                         <View style={[styles.inputGroup, { flex: 1 }]}>
                           <View style={styles.labelRow}>
                             <Text style={styles.inputLabel}>{t('common.end_time', 'Time')}</Text>
-                            {editEndTime ? (
-                              <Pressable onPress={() => { setEditEndTime(''); setMatchStartDate(false); }} hitSlop={10}>
-                                <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
-                              </Pressable>
-                            ) : null}
+                             {editEndTime ? (
+                               <GHButton 
+                                 onPress={() => {
+                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                   setEditEndTime(''); 
+                                   setMatchStartDate(false);
+                                 }} 
+                                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                               >
+                                 <Text style={styles.resetText}>{t('common.reset', 'Reset')}</Text>
+                               </GHButton>
+                             ) : null}
                           </View>
-                          <Pressable
-                            style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('endTime'); }}
-                          >
-                            <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} />
-                            <Text style={[styles.editInputText, !editEndTime && { color: Colors.outline }]} numberOfLines={1}>
-                              {editEndTime || '--:--'}
-                            </Text>
-                          </Pressable>
+                           <GHButton
+                             style={styles.editInputWrap}
+                             onPress={() => { 
+                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                               Keyboard.dismiss(); 
+                               pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; 
+                               setPickerType('endTime'); 
+                             }}
+                             activeOpacity={0.6}
+                           >
+                             <Clock size={18} color={Colors.primary} style={{ marginRight: 8 }} pointerEvents="none" />
+                             <Text style={[styles.editInputText, !editEndTime && { color: Colors.outline }]} numberOfLines={1} pointerEvents="none">
+                               {editEndTime || '--:--'}
+                             </Text>
+                           </GHButton>
                         </View>
                       </View>
 

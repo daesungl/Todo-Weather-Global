@@ -400,7 +400,12 @@ const HomeScreen = ({ navigation }) => {
         <TouchableOpacity
           style={styles.heroSection}
           activeOpacity={0.9}
-          onPress={() => currentWeather && navigation.navigate('WeatherDetail', { weatherData: currentWeather, isCurrentLocation: true })}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (currentWeather) {
+              navigation.navigate('WeatherDetail', { weatherData: currentWeather, isCurrentLocation: true });
+            }
+          }}
         >
           <View style={styles.weatherCard}>
             <LinearGradient
@@ -509,9 +514,15 @@ const HomeScreen = ({ navigation }) => {
                       <TouchableOpacity
                         style={[styles.regionCard, isActive && { opacity: 0.85, transform: [{ scale: 1.02 }] }]}
                         onPress={() => {
-                          if (weather) {
-                            navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: region.name, regionId: region.id, region: region });
-                          }
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          const navData = weather || { lat: region.lat, lon: region.lon, locationName: region.name };
+                          navigation.navigate('WeatherDetail', { 
+                            weatherData: navData, 
+                            isCurrentLocation: false, 
+                            locationName: region.name, 
+                            regionId: region.id, 
+                            region: region 
+                          });
                         }}
                         onLongPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
