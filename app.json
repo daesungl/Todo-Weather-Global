@@ -8,7 +8,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash-icon-v5.png",
+      "image": "./assets/splash-icon-v6.png",
       "resizeMode": "contain",
       "backgroundColor": "#b2ebf2"
     },
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "10",
+      "buildNumber": "12",
       "infoPlist": {
         "CFBundleLocalizations": [
           "ko",

@@ -998,7 +998,6 @@ const FlowScreen = ({ navigation }) => {
                 <View key={date} style={styles.dayGroup}>
                   {date !== 'Unscheduled' ? (
                     <View style={styles.dayHeader}>
-                      <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>{t('flow.day_n', { n: dateIdx + 1 }, `DAY ${dateIdx + 1}`)}</Text></View>
                       <Text style={styles.dayDateText}>{formatDateLabel(date)}</Text>
                     </View>
                   ) : (
@@ -1046,15 +1045,15 @@ const FlowScreen = ({ navigation }) => {
                               </View>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                 {step.weather && (
-                                  <Pressable
-                                    onPress={(e) => {
-                                      e.stopPropagation();
-                                      handleWeatherIconPress(step);
-                                    }}
-                                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                                  <GHButton
+                                    onPress={() => handleWeatherIconPress(step)}
+                                    hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                                    style={{ padding: 4 }}
                                   >
-                                    {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                                  </Pressable>
+                                    <View pointerEvents="none">
+                                      {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, step.weather?.isDay !== false)}
+                                    </View>
+                                  </GHButton>
                                 )}
                                   {/* List deletion removed for accidental tap prevention */}
                               </View>

@@ -109,12 +109,16 @@ const RangeCalendarModal = ({ visible, onClose, onApply, initialStartDate, initi
       <View style={styles.overlay}>
         <View style={styles.modalContainer}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <X size={24} color={Colors.text} />
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}>
+              <View pointerEvents="none">
+                <X size={24} color={Colors.text} />
+              </View>
             </TouchableOpacity>
             <Text style={styles.title}>{t('tasks.select_period', 'Select Period')}</Text>
-            <TouchableOpacity onPress={handleApply} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Check size={24} color={Colors.primary} />
+            <TouchableOpacity onPress={handleApply} hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}>
+              <View pointerEvents="none">
+                <Check size={24} color={Colors.primary} />
+              </View>
             </TouchableOpacity>
           </View>
           

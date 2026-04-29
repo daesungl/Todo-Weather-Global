@@ -58,8 +58,11 @@ const HomeScreen = ({ navigation }) => {
 
   const swipePanResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 30,
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // 가로 스와이프가 세로 스크롤보다 확실히 우세할 때만 캡처
+        return Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
       onPanResponderMove: (_, gestureState) => {
         slideAnim.setValue(gestureState.dx * 0.4);
       },
