@@ -114,7 +114,9 @@
     "pref_wind_kmh": "km/h",
     "pref_wind_kmh_desc": "유럽 및 한국에서 주로 사용",
     "pref_wind_mph": "mph",
-    "pref_wind_mph_desc": "미국, 영국에서 사용"
+    "pref_wind_mph_desc": "미국, 영국에서 사용",
+    "premium_cta": "프리미엄으로 전환",
+    "premium_active": "프리미엄 구독 중입니다 ✓"
   },
   "weather": {
     "sunny": "맑음",

@@ -2598,6 +2598,7 @@ const TasksScreen = ({ navigation }) => {
           visible={menuVisible}
           onClose={() => setMenuVisible(false)}
           onReset={() => loadData()}
+          navigation={navigation}
         />
 
       </View>

@@ -114,7 +114,9 @@
     "pref_wind_kmh": "km/h",
     "pref_wind_kmh_desc": "Commonly used in Europe & Korea",
     "pref_wind_mph": "mph",
-    "pref_wind_mph_desc": "Used in the US and UK"
+    "pref_wind_mph_desc": "Used in the US and UK",
+    "premium_cta": "Go Premium",
+    "premium_active": "Premium Active ✓"
   },
   "weather": {
     "sunny": "Sunny",

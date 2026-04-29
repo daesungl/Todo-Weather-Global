@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch, Platform } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind, Crown } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
@@ -18,7 +19,6 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const { isPremium, devTogglePremium } = useSubscription();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
-  // Use internal state to keep modal alive during closing animation
   const [isShowing, setIsShowing] = useState(visible);
   const [activeSubMenu, setActiveSubMenu] = useState(null);
 
@@ -38,7 +38,6 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
       return;
     }
     if (id === 'reset') {
-      // Show multiple reset options
       Alert.alert(
         t('menu.reset') || 'Data Management',
         t('menu.reset_sub') || 'Select the data you want to reset',
@@ -113,7 +112,6 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   };
 
   useEffect(() => {
-    // ... animation logic ...
     if (visible) {
       setIsShowing(true);
       Animated.parallel([
@@ -294,15 +292,12 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
               </>
             ) : (
               <>
-                {/* Header - Minimalist Editorial Style */}
-                <View style={styles.header}>
-                  <View>
-                    <Text style={Typography.h1}>{t('common.appName')}</Text>
-                    <Text style={[Typography.bodySmall, { color: Colors.textSecondary, marginTop: 4, letterSpacing: 0.8 }]}>{t('menu.companion_tag', 'YOUR ATMOSPHERIC COMPANION')}</Text>
-                  </View>
-                </View>
-
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                  {/* Header - Now part of ScrollView */}
+                  <View style={styles.header}>
+                    <Text style={Typography.h1}>{t('common.appName')}</Text>
+                  </View>
+ 
                   <View style={styles.menuList}>
                     {menuItems.map((item, index) => (
                       <TouchableOpacity 
@@ -319,7 +314,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                       </TouchableOpacity>
                     ))}
 
-                    {/* Inline Language Selector - Same size as other items */}
+                    {/* Inline Language Selector */}
                     <TouchableOpacity style={styles.menuItem} onPress={toggleLanguage}>
                       <View style={styles.iconWrap}>
                         <Languages size={20} color={Colors.primary} />
@@ -339,46 +334,54 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Premium CTA */}
-                  <TouchableOpacity
-                    style={[styles.premiumCta, isPremium && styles.premiumCtaActive]}
-                    onPress={() => { onClose(); navigation.navigate('Paywall'); }}
-                  >
-                    <Crown size={16} color={isPremium ? '#f59e0b' : 'white'} />
-                    <Text style={[styles.premiumCtaText, isPremium && { color: '#f59e0b' }]}>
-                      {isPremium ? '프리미엄 구독 중' : '프리미엄 구독하기'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Dev: Premium Toggle */}
+                  {/* Dev: Premium Toggle - Slightly hidden in scroll */}
                   <View style={styles.devSection}>
                     <View style={styles.devRow}>
-                      <Crown size={16} color={isPremium ? '#f59e0b' : Colors.outline} />
+                      <Crown size={14} color={isPremium ? '#f59e0b' : Colors.outline} />
                       <Text style={[styles.devLabel, isPremium && { color: '#f59e0b' }]}>
-                        {isPremium ? 'Premium ON' : 'Premium OFF'}
+                        {isPremium ? 'Premium Dev Mode ON' : 'Premium Dev Mode OFF'}
                       </Text>
                       <Switch
                         value={isPremium}
                         onValueChange={(val) => devTogglePremium(val)}
                         trackColor={{ false: Colors.outlineVariant, true: '#fde68a' }}
                         thumbColor={isPremium ? '#f59e0b' : Colors.outline}
-                        style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+                        style={{ transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] }}
                       />
                     </View>
                   </View>
-
-                  {/* Identity Section */}
-                  <View style={styles.footer}>
-                    <View style={styles.profileBox}>
-                        <View style={styles.avatar} />
-                        <View style={{ flex: 1 }}>
-                            <Text style={[Typography.bodySmall, { fontWeight: '700' }]}>{t('menu.curator_beta', 'Curator Beta')}</Text>
-                            <Text style={styles.statusText}>{t('menu.active_global', 'Active Now • Global')}</Text>
-                        </View>
-                    </View>
-                    <Text style={styles.versionText}>{t('menu.version')}</Text>
-                  </View>
                 </ScrollView>
+
+                {/* Fixed Bottom Premium CTA & Copyright */}
+                <View style={styles.fixedFooter}>
+                  <TouchableOpacity
+                    style={isPremium ? [styles.premiumCta, styles.premiumCtaActive] : { width: '100%' }}
+                    onPress={() => { if (!isPremium) { onClose(); navigation.navigate('Paywall'); } }}
+                    activeOpacity={isPremium ? 1 : 0.8}
+                  >
+                    {!isPremium ? (
+                      <LinearGradient
+                        colors={['#00BFFF', '#0095CC']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.premiumCta}
+                      >
+                        <Crown size={18} color="white" fill="white" />
+                        <Text style={styles.premiumCtaText}>
+                          {t('menu.premium_cta')}
+                        </Text>
+                      </LinearGradient>
+                    ) : (
+                      <>
+                        <Crown size={18} color="#B45309" fill="#B45309" />
+                        <Text style={[styles.premiumCtaText, { color: '#B45309' }]}>
+                          {t('menu.premium_active')}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <Text style={styles.copyrightText}>© 2026 PellongSoft. All rights reserved.</Text>
+                </View>
               </>
             )}
           </View>
@@ -418,7 +421,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    padding: Spacing.xl,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -462,24 +466,48 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.xl,
   },
+  copyrightText: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 9,
+    color: Colors.outline,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    opacity: 0.8,
+  },
+  fixedFooter: {
+    padding: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceContainer,
+    backgroundColor: 'white',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24, // Consider safe area
+  },
   premiumCta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
     backgroundColor: '#00BFFF',
-    borderRadius: 14,
-    paddingVertical: 13,
-    marginTop: 20,
-    marginHorizontal: 4,
+    borderRadius: 18,
+    paddingVertical: 16,
+    shadowColor: '#00BFFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   premiumCtaActive: {
     backgroundColor: '#FFF8E1',
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   premiumCtaText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: 'white',
+    letterSpacing: -0.3,
   },
   devSection: {
     marginTop: 24,

@@ -63,18 +63,23 @@ const PaywallScreen = ({ navigation }) => {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {/* Hero */}
-          <LinearGradient colors={['#00BFFF', '#0080CC']} style={styles.hero}>
-            <Crown size={48} color="#FFD700" />
-            <Text style={styles.heroTitle}>Todo Weather Premium</Text>
-            <Text style={styles.heroSub}>광고 없이, 제한 없이</Text>
+          <LinearGradient 
+            colors={['#00BFFF', '#0095CC']} 
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.hero}
+          >
+            <Crown size={56} color="white" fill="white" />
+            <Text style={[styles.heroTitle, { color: 'white' }]}>Todo Weather Premium</Text>
+            <Text style={[styles.heroSub, { color: 'rgba(255,255,255,0.8)' }]}>광고 없이, 더 많은 지역과 플로우를</Text>
           </LinearGradient>
 
           {/* Benefits */}
           <View style={styles.benefitBox}>
             {BENEFITS.map((b, i) => (
               <View key={i} style={styles.benefitRow}>
-                <View style={styles.checkCircle}>
-                  <Check size={14} color="white" strokeWidth={3} />
+                <View style={[styles.checkCircle, { backgroundColor: '#E1F5FE' }]}>
+                  <Check size={16} color="#00BFFF" strokeWidth={4} />
                 </View>
                 <Text style={styles.benefitText}>{b.label}</Text>
               </View>
@@ -117,21 +122,28 @@ const PaywallScreen = ({ navigation }) => {
             </View>
           ) : (
             <TouchableOpacity
-              style={[styles.ctaBtn, (loading || packages.length === 0) && { opacity: 0.5 }]}
+              style={[styles.ctaBtnContainer, (loading || packages.length === 0) && { opacity: 0.8 }]}
               onPress={handlePurchase}
               disabled={loading || packages.length === 0}
             >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.ctaBtnText}>구독 시작하기</Text>
-              )}
+              <LinearGradient
+                colors={['#00BFFF', '#0077AA']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.ctaBtn}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.ctaBtnText}>구독 시작하기</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
           )}
 
           {/* Restore */}
           <TouchableOpacity style={styles.restoreBtn} onPress={handleRestore} disabled={loading}>
-            <RotateCcw size={14} color={Colors.outline} />
+            <RotateCcw size={14} color={Colors.textSecondary} />
             <Text style={styles.restoreText}>구독 복원</Text>
           </TouchableOpacity>
 
@@ -145,89 +157,100 @@ const PaywallScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.md,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFFFFF',
   },
   iconBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: Colors.text },
+  headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: Colors.text, letterSpacing: -0.3 },
 
-  content: { paddingBottom: 40 },
+  content: { paddingBottom: 60 },
 
   hero: {
     marginHorizontal: Spacing.md,
-    borderRadius: 24,
-    padding: 32,
+    borderRadius: 32,
+    paddingVertical: 40,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 24,
+    marginBottom: 32,
+    shadowColor: '#81d4fa',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 8,
   },
-  heroTitle: { fontSize: 22, fontWeight: '800', color: 'white' },
-  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.85)' },
+  heroTitle: { fontSize: 26, fontWeight: '900', color: Colors.text, marginTop: 16, letterSpacing: -0.5 },
+  heroSub: { fontSize: 15, color: Colors.textSecondary, fontWeight: '600', marginTop: 4 },
 
   benefitBox: {
-    marginHorizontal: Spacing.md,
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    gap: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    marginHorizontal: Spacing.xl,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 24,
+    padding: 24,
+    gap: 16,
+    marginBottom: 32,
   },
-  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   checkCircle: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: Colors.primary,
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: '#E1F5FE',
     justifyContent: 'center', alignItems: 'center',
   },
-  benefitText: { fontSize: 15, fontWeight: '600', color: Colors.text },
+  benefitText: { fontSize: 15, fontWeight: '700', color: Colors.text, letterSpacing: -0.2 },
 
-  packageList: { marginHorizontal: Spacing.md, gap: 10, marginBottom: 20 },
+  packageList: { marginHorizontal: Spacing.md, gap: 12, marginBottom: 32 },
   packageCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'white',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#F1F3F5',
   },
-  packageCardSelected: { borderColor: Colors.primary, backgroundColor: '#E8F7FF' },
-  packageTitle: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  packageDesc: { fontSize: 12, color: Colors.outline, marginTop: 2 },
-  packagePrice: { fontSize: 17, fontWeight: '800', color: Colors.text },
+  packageCardSelected: { borderColor: '#00BFFF', backgroundColor: '#F0F9FF' },
+  packageTitle: { fontSize: 16, fontWeight: '800', color: Colors.text },
+  packageDesc: { fontSize: 13, color: Colors.textSecondary, marginTop: 4, lineHeight: 18 },
+  packagePrice: { fontSize: 18, fontWeight: '900', color: Colors.text, marginLeft: 16 },
 
   alreadyPremium: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, marginHorizontal: Spacing.md, marginBottom: 12,
-    backgroundColor: '#FFF8E1', borderRadius: 12, padding: 14,
+    gap: 8, marginHorizontal: Spacing.md, marginBottom: 16,
+    backgroundColor: '#FFFBEB', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: '#FEF3C7',
   },
-  alreadyPremiumText: { fontSize: 14, fontWeight: '700', color: '#f59e0b' },
+  alreadyPremiumText: { fontSize: 15, fontWeight: '700', color: '#B45309' },
 
   ctaBtn: {
-    marginHorizontal: Spacing.md,
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 20,
+    paddingVertical: 18,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
+    shadowColor: '#00BFFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  ctaBtnText: { fontSize: 16, fontWeight: '800', color: 'white' },
+  ctaBtnContainer: {
+    marginHorizontal: Spacing.md,
+    marginBottom: 16,
+  },
+  ctaBtnText: { fontSize: 17, fontWeight: '800', color: 'white' },
 
   restoreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 12,
+    gap: 6, paddingVertical: 12, marginBottom: 8,
   },
-  restoreText: { fontSize: 13, color: Colors.outline },
+  restoreText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', textDecorationLine: 'underline' },
 
   legal: {
-    fontSize: 11, color: Colors.outline, textAlign: 'center',
-    marginHorizontal: Spacing.xl, lineHeight: 16,
+    fontSize: 11, color: Colors.textSecondary, textAlign: 'center',
+    marginHorizontal: Spacing.xl, lineHeight: 17, opacity: 0.7,
   },
 });
 

@@ -1517,7 +1517,7 @@ const FlowScreen = ({ navigation }) => {
           </GestureHandlerRootView>
         </Modal>
 
-        <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { loadInitialData(); }} />
+        <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { loadInitialData(); }} navigation={navigation} />
       </View>
     </GestureHandlerRootView>
   );

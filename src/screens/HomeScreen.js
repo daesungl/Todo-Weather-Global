@@ -570,7 +570,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} />
+      <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} navigation={navigation} />
 
       <Modal animationType="none" transparent={true} visible={searchModalVisible} onRequestClose={closeSearchModal}>
         <GestureHandlerRootView style={{ flex: 1 }}>
