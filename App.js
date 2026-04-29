@@ -102,7 +102,7 @@ export default function App() {
         setAppIsReady(true);
         // 네이티브 스플래시를 숨김 (가짜 스플래시가 뒤를 받쳐줌)
         await SplashScreen.hideAsync();
-        
+
         // 페이드아웃 애니메이션 시작
         Animated.timing(splashOpacity, {
           toValue: 0,
@@ -159,35 +159,35 @@ export default function App() {
                 <Stack.Screen name="Paywall" component={PaywallScreen} />
               </Stack.Navigator>
             </NavigationContainer>
-
-            {/* 가짜 스플래시 레이어 (페이드아웃용) */}
-            {showSplash && (
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFill,
-                  {
-                    backgroundColor: '#b2ebf2', 
-                    opacity: splashOpacity,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    zIndex: 9999,
-                  },
-                ]}
-              >
-                <Animated.Image
-                  source={require('./assets/splash-icon.png')}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    resizeMode: 'contain',
-                  }}
-                />
-              </Animated.View>
-            )}
           </SafeAreaProvider>
         </UnitProvider>
       </SubscriptionProvider>
+
+      {/* 가짜 스플래시 레이어 (페이드아웃용) - 최상위 레벨로 이동 */}
+      {showSplash && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: '#b2ebf2', 
+              opacity: splashOpacity,
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 9999,
+            },
+          ]}
+        >
+          <Animated.Image
+            source={require('./assets/splash-icon-v3.png')}
+            style={{
+              width: '100%',
+              height: '100%',
+              resizeMode: 'contain',
+            }}
+          />
+        </Animated.View>
+      )}
     </GestureHandlerRootView>
   );
 }

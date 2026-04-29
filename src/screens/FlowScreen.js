@@ -969,13 +969,7 @@ const FlowScreen = ({ navigation }) => {
                                     {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
                                   </View>
                                 )}
-                                <GHButton 
-                                  onPress={() => deleteStepById(step.id)} 
-                                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} 
-                                  style={styles.deleteBtnInner}
-                                >
-                                  <Trash2 size={16} color={Colors.outlineVariant} />
-                                </GHButton>
+                                  {/* List deletion removed for accidental tap prevention */}
                               </View>
                             </View>
                           </Pressable>

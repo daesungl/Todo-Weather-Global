@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
+import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
+import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
@@ -274,6 +276,17 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  const handleRegionDragEnd = ({ data }) => {
+    const page = currentPageRef.current - 1;
+    const otherRegions = regions.filter(r => r.pageIndex !== page);
+    const reorderedIds = data.map(r => r.id);
+    const reorderedRegions = reorderedIds.map(id => regions.find(r => r.id === id));
+    const updated = [...otherRegions, ...reorderedRegions];
+    regionsRef.current = updated;
+    setRegions(updated);
+    saveBookmarkedRegions(updated);
+  };
+
   const handleDeleteRegion = (id) => {
     Alert.alert(
       t('common.confirm', '확인'),
@@ -458,104 +471,113 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.paginationArea} {...swipePanResponder.panHandlers}>
           <Animated.View style={[styles.regionsList, { transform: [{ translateX: slideAnim }] }]}>
-            {(displayRegions || []).filter(r => r.pageIndex === currentPage - 1).map(region => {
-              if (region.inactive) {
+            <DraggableFlatList
+              data={(displayRegions || []).filter(r => r.pageIndex === currentPage - 1)}
+              keyExtractor={(item) => item.id}
+              onDragEnd={handleRegionDragEnd}
+              scrollEnabled={false}
+              activationDistance={20}
+              renderItem={({ item: region, drag, isActive }) => {
+                const weather = regionsWeather[region.id];
                 return (
-                  <View key={region.id} style={[styles.regionCard, { backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed' }]}>
-                    <View style={styles.regionCardHeader}>
-                      <View style={styles.regionNameContainer}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.regionNameText, { color: Colors.outline }]} numberOfLines={1}>{region.name}</Text>
-                          {region.address && <Text style={[styles.regionAddressText, { color: Colors.outlineVariant }]} numberOfLines={1}>{region.address}</Text>}
+                  <ScaleDecorator>
+                    {region.inactive ? (
+                      <View style={[styles.regionCard, { backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed' }]}>
+                        <View style={styles.regionCardHeader}>
+                          <View style={styles.regionNameContainer}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.regionNameText, { color: Colors.outline }]} numberOfLines={1}>{region.name}</Text>
+                              {region.address && <Text style={[styles.regionAddressText, { color: Colors.outlineVariant }]} numberOfLines={1}>{region.address}</Text>}
+                            </View>
+                          </View>
+                          <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.trashBtn}>
+                            <Trash2 size={18} color={Colors.outlineVariant} />
+                          </TouchableOpacity>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                          <Lock size={16} color={Colors.outline} />
+                          <Text style={{ fontSize: 13, color: Colors.outline }}>구독 해지로 비활성화 — 재구독 시 복원</Text>
                         </View>
                       </View>
-                      <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.trashBtn}>
-                        <Trash2 size={18} color={Colors.outlineVariant} />
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.regionCard, isActive && { opacity: 0.85, transform: [{ scale: 1.02 }] }]}
+                        onPress={() => {
+                          if (weather) {
+                            navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: region.name, regionId: region.id, region: region });
+                          }
+                        }}
+                        onLongPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          drag();
+                        }}
+                      >
+                        <View style={styles.regionCardHeader}>
+                          <View style={styles.regionNameContainer}>
+                            {weather?.alert && <AlertTriangle size={18} color="#E53935" fill="#FFEB3B" style={{ marginRight: 8 }} />}
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.regionNameText} numberOfLines={1} ellipsizeMode="tail">
+                                {region.name}
+                              </Text>
+                              {region.address && (
+                                <Text style={styles.regionAddressText} numberOfLines={1} ellipsizeMode="tail">
+                                  {region.address}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.trashBtn}>
+                            <Trash2 size={18} color={Colors.outline} />
+                          </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.regionCardMain}>
+                          <View style={styles.weatherInfoLeft}>
+                            {weather ? (
+                              renderWeatherIcon(liveCondKey(weather), 56, Colors.primary, weather?.isDay !== false)
+                            ) : (
+                              <ActivityIndicator size="small" color={Colors.outline} />
+                            )}
+                            <Text style={styles.regionTempText}>{formatTemp(weather?.temp)}</Text>
+                          </View>
+
+                          <View style={styles.metricsContainer}>
+                            <View style={styles.metricRow}>
+                              <Umbrella size={14} color={Colors.primary} />
+                              <Text style={styles.metricLabelText}>{weather?.hourlyForecast?.[0]?.pop || '0%'}</Text>
+                            </View>
+                            <View style={styles.metricRow}>
+                              <Umbrella size={14} color={(weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline} />
+                              <Text style={[styles.metricLabelText, { color: (weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline }]}>{weather?.pcp || '0mm'}</Text>
+                            </View>
+                            <View style={styles.metricRow}>
+                              <View style={{ transform: [{ rotate: `${(weather?.windDeg || 0) - 45}deg` }] }}>
+                                <Navigation size={14} color={Colors.outline} />
+                              </View>
+                              <Text style={styles.metricLabelText}>{weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}</Text>
+                            </View>
+                            <View style={styles.metricRow}>
+                              <Droplets size={14} color={Colors.outline} />
+                              <Text style={styles.metricLabelText}>{weather?.humidity || '0%'}</Text>
+                            </View>
+                          </View>
+                        </View>
                       </TouchableOpacity>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                      <Lock size={16} color={Colors.outline} />
-                      <Text style={{ fontSize: 13, color: Colors.outline }}>구독 해지로 비활성화 — 재구독 시 복원</Text>
-                    </View>
-                  </View>
+                    )}
+                  </ScaleDecorator>
                 );
+              }}
+              ListFooterComponent={
+                (displayRegions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 ? (
+                  <TouchableOpacity style={styles.addSlotCard} onPress={openSearchModal}>
+                    <View style={styles.addIconCircle}>
+                      <Plus size={24} color={Colors.primary} strokeWidth={3} />
+                    </View>
+                    <Text style={styles.addSlotText}>{t('home.add_region')}</Text>
+                  </TouchableOpacity>
+                ) : null
               }
-
-              const weather = regionsWeather[region.id];
-              return (
-                <TouchableOpacity
-                  key={region.id}
-                  style={styles.regionCard}
-                  onPress={() => {
-                    if (weather) {
-                      navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: region.name, regionId: region.id, region: region });
-                    }
-                  }}
-                >
-                  {/* First Row: Name and Trash Icon */}
-                  <View style={styles.regionCardHeader}>
-                    <View style={styles.regionNameContainer}>
-                      {weather?.alert && <AlertTriangle size={18} color="#E53935" fill="#FFEB3B" style={{ marginRight: 8 }} />}
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.regionNameText} numberOfLines={1} ellipsizeMode="tail">
-                          {region.name}
-                        </Text>
-                        {region.address && (
-                          <Text style={styles.regionAddressText} numberOfLines={1} ellipsizeMode="tail">
-                            {region.address}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                    <TouchableOpacity onPress={() => handleDeleteRegion(region.id)} style={styles.trashBtn}>
-                      <Trash2 size={18} color={Colors.outline} />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Second Row: Icon, Temp, and Metrics */}
-                  <View style={styles.regionCardMain}>
-                    <View style={styles.weatherInfoLeft}>
-                      {weather ? (
-                        renderWeatherIcon(liveCondKey(weather), 56, Colors.primary, weather?.isDay !== false)
-                      ) : (
-                        <ActivityIndicator size="small" color={Colors.outline} />
-                      )}
-                      <Text style={styles.regionTempText}>{formatTemp(weather?.temp)}</Text>
-                    </View>
-
-                    <View style={styles.metricsContainer}>
-                      <View style={styles.metricRow}>
-                        <Umbrella size={14} color={Colors.primary} />
-                        <Text style={styles.metricLabelText}>{weather?.hourlyForecast?.[0]?.pop || '0%'}</Text>
-                      </View>
-                      <View style={styles.metricRow}>
-                        <Umbrella size={14} color={(weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline} />
-                        <Text style={[styles.metricLabelText, { color: (weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline }]}>{weather?.pcp || '0mm'}</Text>
-                      </View>
-                      <View style={styles.metricRow}>
-                        <View style={{ transform: [{ rotate: `${(weather?.windDeg || 0) - 45}deg` }] }}>
-                          <Navigation size={14} color={Colors.outline} />
-                        </View>
-                        <Text style={styles.metricLabelText}>{weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}</Text>
-                      </View>
-                      <View style={styles.metricRow}>
-                        <Droplets size={14} color={Colors.outline} />
-                        <Text style={styles.metricLabelText}>{weather?.humidity || '0%'}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-
-            {(displayRegions || []).filter(r => r.pageIndex === currentPage - 1).length < 3 && (
-              <TouchableOpacity style={styles.addSlotCard} onPress={openSearchModal}>
-                <View style={styles.addIconCircle}>
-                  <Plus size={24} color={Colors.primary} strokeWidth={3} />
-                </View>
-                <Text style={styles.addSlotText}>{t('home.add_region')}</Text>
-              </TouchableOpacity>
-            )}
+            />
           </Animated.View>
         </View>
 

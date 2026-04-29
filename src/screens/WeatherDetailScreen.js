@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, Animated, Easing, InteractionManager, PanResponder } from 'react-native';
-import { TouchableOpacity } from 'react-native-gesture-handler';
+import { TouchableOpacity, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import {
   ChevronLeft, Sun, Moon, Cloud, CloudRain, Wind, Droplets,
   SunMedium, AlertTriangle, Calendar, Navigation,
@@ -782,7 +782,15 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             <Activity size={16} color={Colors.primary} />
             <Text style={styles.moduleTitle}>{t('weather.hourly_forecast', '시간별 예보')} {currentHourlyOffset > 0 ? `- ${hourlyForecast.find(h => h.dayOffset === currentHourlyOffset)?.dayLabel ?? ''}` : ''}</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -Spacing.md }} contentContainerStyle={[styles.hourlyList, { paddingHorizontal: Spacing.md }]}
+          <GHScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            showsVerticalScrollIndicator={false}
+            alwaysBounceVertical={false}
+            directionalLockEnabled={true}
+            disallowInterruption={true}
+            style={{ marginHorizontal: -Spacing.md }} 
+            contentContainerStyle={[styles.hourlyList, { paddingHorizontal: Spacing.md }]}
             onScroll={(event) => {
               const scrollPos = event.nativeEvent.contentOffset.x;
               const activeIndex = Math.max(0, Math.floor((scrollPos + 60) / 88));
@@ -810,7 +818,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
                 </View>
               );
             })}
-          </ScrollView>
+          </GHScrollView>
         </View>
 
         {!isPremium && !adHidden && (
