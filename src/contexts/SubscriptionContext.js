@@ -87,7 +87,9 @@ export const SubscriptionProvider = ({ children }) => {
     if (__DEV__) setIsPremium(val);
   };
 
-  const limits = isPremium ? LIMITS.PREMIUM : LIMITS.FREE;
+  // 사업자 등록 전까지 임시로 모든 제한 해제 (광고는 유지)
+  const limits = LIMITS.PREMIUM; 
+  // const limits = isPremium ? LIMITS.PREMIUM : LIMITS.FREE;
 
   return (
     <SubscriptionContext.Provider value={{

@@ -356,32 +356,35 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
 
                 {/* Fixed Bottom Premium CTA & Copyright */}
                 <View style={styles.fixedFooter}>
-                  <TouchableOpacity
-                    style={isPremium ? [styles.premiumCta, styles.premiumCtaActive] : { width: '100%' }}
-                    onPress={() => { if (!isPremium) { onClose(); navigation.navigate('Paywall'); } }}
-                    activeOpacity={isPremium ? 1 : 0.8}
-                  >
-                    {!isPremium ? (
-                      <LinearGradient
-                        colors={['#00BFFF', '#0095CC']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.premiumCta}
-                      >
-                        <Crown size={18} color="white" fill="white" />
-                        <Text style={styles.premiumCtaText}>
-                          {t('menu.premium_cta')}
-                        </Text>
-                      </LinearGradient>
-                    ) : (
-                      <>
-                        <Crown size={18} color="#B45309" fill="#B45309" />
-                        <Text style={[styles.premiumCtaText, { color: '#B45309' }]}>
-                          {t('menu.premium_active')}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                  {/* 사업자 등록 전까지 프리미엄 전환 버튼 숨김 */}
+                  {false && (
+                    <TouchableOpacity
+                      style={isPremium ? [styles.premiumCta, styles.premiumCtaActive] : { width: '100%' }}
+                      onPress={() => { if (!isPremium) { onClose(); navigation.navigate('Paywall'); } }}
+                      activeOpacity={isPremium ? 1 : 0.8}
+                    >
+                      {!isPremium ? (
+                        <LinearGradient
+                          colors={['#00BFFF', '#0095CC']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.premiumCta}
+                        >
+                          <Crown size={18} color="white" fill="white" />
+                          <Text style={styles.premiumCtaText}>
+                            {t('menu.premium_cta')}
+                          </Text>
+                        </LinearGradient>
+                      ) : (
+                        <>
+                          <Crown size={18} color="#B45309" fill="#B45309" />
+                          <Text style={[styles.premiumCtaText, { color: '#B45309' }]}>
+                            {t('menu.premium_active')}
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
                   <Text style={styles.copyrightText}>© 2026 PellongSoft. All rights reserved.</Text>
                 </View>
               </>

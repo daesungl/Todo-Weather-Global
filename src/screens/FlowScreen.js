@@ -377,7 +377,8 @@ const FlowScreen = ({ navigation }) => {
 
   // inactive 플래그를 렌더 시점에 계산 — AsyncStorage 타이밍 이슈 없이 isPremium 즉시 반영
   const displayFlows = React.useMemo(() => {
-    if (isPremium) return flows.map(f => ({ ...f, inactive: false }));
+    // 임시: 모든 플로우 활성화
+    if (true) return flows.map(f => ({ ...f, inactive: false }));
     const sorted = [...flows].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
     const activeIds = new Set(sorted.slice(0, MAX_FLOWS).map(f => f.id));
     return flows.map(f => ({ ...f, inactive: !activeIds.has(f.id) }));
@@ -821,7 +822,8 @@ const FlowScreen = ({ navigation }) => {
   const renderTimelineDetail = () => {
     const allSteps = selectedFlow.steps || [];
     const displaySteps = (() => {
-      if (isPremium) return allSteps;
+      // 임시: 모든 스텝 활성화
+      if (true) return allSteps;
       const sorted = [...allSteps].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
       const activeIds = new Set(sorted.slice(0, MAX_STEPS).map(s => s.id));
       return allSteps.map(s => ({ ...s, inactive: !activeIds.has(s.id) }));
@@ -925,9 +927,6 @@ const FlowScreen = ({ navigation }) => {
                   )}
                   {groupedSteps[date].map((step, index) => (
                     <View key={step.id} style={styles.stepRow}>
-                      <View style={styles.timeCol}>
-                        <Text style={[styles.timeText, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
-                      </View>
                       <View style={styles.timelineCol}>
                         <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.inactive && { backgroundColor: Colors.outline }]} />
                         {index < groupedSteps[date].length - 1 && <View style={styles.timelineLine} />}
@@ -936,12 +935,20 @@ const FlowScreen = ({ navigation }) => {
                         {step.inactive ? (
                           <View style={[styles.stepInfoCard, { backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', flex: 1 }]}>
                             <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, color: Colors.outline, fontWeight: '700', marginBottom: 2 }}>{step.time || '--:--'}</Text>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                 <Lock size={13} color={Colors.outline} />
                                 <Text style={{ fontSize: 13, color: Colors.outline }} numberOfLines={1}>{step.activity || t('flow.untitled_schedule', 'Untitled Schedule')}</Text>
                               </View>
                               <Text style={{ fontSize: 11, color: Colors.outlineVariant, marginTop: 4 }}>{t('flow.locked_premium', '재구독 시 복원')}</Text>
                             </View>
+                            <GHButton 
+                              onPress={() => deleteStepById(step.id)} 
+                              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} 
+                              style={styles.deleteBtnInner}
+                            >
+                              <Trash2 size={16} color={Colors.outlineVariant} />
+                            </GHButton>
                           </View>
                         ) : (
                           <Pressable
@@ -950,28 +957,29 @@ const FlowScreen = ({ navigation }) => {
                           >
                             <View style={styles.stepHeader}>
                               <View style={{ flex: 1 }}>
-                                <Text style={styles.stepActivity} numberOfLines={1}>
+                                <Text style={[styles.stepTime, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
+                                <Text style={styles.stepActivity} numberOfLines={2}>
                                   {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
                                 </Text>
-                                {step.memo ? <Text style={styles.stepMemo} numberOfLines={2}>{step.memo}</Text> : null}
+                                {step.memo ? <Text style={styles.stepMemo} numberOfLines={2} ellipsizeMode="tail">{step.memo}</Text> : null}
                               </View>
-                              {step.weather && (
-                                <View style={{ marginLeft: 8 }}>
-                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                                </View>
-                              )}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                {step.weather && (
+                                  <View>
+                                    {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
+                                  </View>
+                                )}
+                                <GHButton 
+                                  onPress={() => deleteStepById(step.id)} 
+                                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} 
+                                  style={styles.deleteBtnInner}
+                                >
+                                  <Trash2 size={16} color={Colors.outlineVariant} />
+                                </GHButton>
+                              </View>
                             </View>
                           </Pressable>
                         )}
-                        
-                        {/* 쓰레기통 버튼을 버블 밖으로 이동 */}
-                        <GHButton 
-                          onPress={() => deleteStepById(step.id)} 
-                          hitSlop={{ top: 20, bottom: 20, left: 10, right: 20 }} 
-                          style={styles.deleteBtnOuter}
-                        >
-                          <Trash2 size={18} color={Colors.outlineVariant} />
-                        </GHButton>
                       </View>
                     </View>
                   ))}
@@ -1596,7 +1604,7 @@ const styles = StyleSheet.create({
   headerRight: { width: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   detailHeaderTitle: { ...Typography.h3, fontSize: 17, color: Colors.onBackground, textAlign: 'center' },
   iconBtn: { padding: 8 },
-  detailContent: { paddingHorizontal: Spacing.lg, paddingBottom: 200, paddingTop: Spacing.sm },
+  detailContent: { paddingHorizontal: 12, paddingBottom: 200, paddingTop: Spacing.sm },
   heroSection: { marginBottom: Spacing.xl },
   heroDate: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
   heroLocationRow: { 
@@ -1612,31 +1620,30 @@ const styles = StyleSheet.create({
   dayBadge: { backgroundColor: Colors.primary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginRight: 8 },
   dayBadgeText: { ...Typography.labelSmall, color: 'white', fontWeight: '800' },
   dayDateText: { ...Typography.bodyLarge, fontWeight: '800', color: Colors.onBackground },
-  stepRow: { flexDirection: 'row', paddingLeft: 12, paddingRight: 4, marginBottom: 8 },
-  timeCol: { width: 45, alignItems: 'flex-end', paddingTop: 8 },
-  timeText: { ...Typography.labelMedium, fontWeight: '800', color: Colors.onBackground },
-  timelineCol: { width: 32, alignItems: 'center' },
-  timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.outlineVariant, marginTop: 14, borderWidth: 2, borderColor: 'white' },
-  dotCurrent: { backgroundColor: Colors.primary, width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: 'rgba(0, 102, 138, 0.2)' },
+  stepRow: { flexDirection: 'row', paddingLeft: 8, paddingRight: 0, marginBottom: 14 },
+  timelineCol: { width: 18, alignItems: 'center' },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.outlineVariant, marginTop: 18, borderWidth: 2, borderColor: 'white' },
+  dotCurrent: { backgroundColor: Colors.primary, width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: 'rgba(0, 102, 138, 0.2)' },
   dotCompleted: { backgroundColor: Colors.secondary },
-  timelineLine: { width: 1.5, flex: 1, backgroundColor: Colors.outlineVariant, opacity: 0.3, marginVertical: 4 },
+  timelineLine: { width: 2, flex: 1, backgroundColor: Colors.outlineVariant, opacity: 0.3, marginVertical: 4 },
   stepInfoCard: {
-    backgroundColor: 'white', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 14, marginLeft: 12, marginBottom: Spacing.sm, minHeight: 68, justifyContent: 'center',
+    backgroundColor: 'white', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 14, marginLeft: 6, marginBottom: Spacing.sm, minHeight: 68, justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)',
     ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 8 }, android: { elevation: 2 } })
   },
-  deleteBtnOuter: {
-    padding: 10,
-    marginLeft: 4,
+  deleteBtnInner: {
+    padding: 6,
+    marginLeft: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    opacity: 0.6,
+    opacity: 0.4,
   },
   activeStepCard: { borderColor: 'rgba(0, 102, 138, 0.15)', ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20 }, android: { elevation: 6 } }) },
   warningStepCard: { borderWidth: 1.5, borderColor: 'rgba(239, 68, 68, 0.2)' },
   stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  stepActivity: { ...Typography.h3, fontSize: 16, color: Colors.onBackground, fontWeight: '700', letterSpacing: -0.3 },
-  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 4, lineHeight: 16 },
+  stepActivity: { ...Typography.h3, fontSize: 16, color: Colors.onBackground, fontWeight: '700', letterSpacing: -0.3, marginTop: 2 },
+  stepTime: { fontSize: 12, color: Colors.primary, fontWeight: '800', letterSpacing: 0.5 },
+  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 6, lineHeight: 18 },
   stepRegionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   stepRegionLabel: { fontSize: 11, color: Colors.outline, fontWeight: '600', maxWidth: 120 },
   warningBadge: { backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: 10, borderRadius: 12, marginTop: 12 },

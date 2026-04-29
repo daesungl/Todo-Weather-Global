@@ -118,7 +118,8 @@ const HomeScreen = ({ navigation }) => {
   // Real Regions Data
   const [regions, setRegions] = useState([]);
   const displayRegions = useMemo(() => {
-    if (isPremium) return regions.map(r => ({ ...r, inactive: false }));
+    // 임시: 모든 지역 활성화
+    if (true) return regions.map(r => ({ ...r, inactive: false }));
     return regions.map((r, i) => ({ ...r, inactive: i >= limits.regions }));
   }, [regions, isPremium, limits.regions]);
   const [regionsWeather, setRegionsWeather] = useState({});
