@@ -127,6 +127,7 @@ const HomeScreen = ({ navigation }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const modalPanY = useRef(new Animated.Value(height)).current;
+  const [adHidden, setAdHidden] = useState(false);
 
   const openSearchModal = () => {
     setSearchModalVisible(true);
@@ -442,12 +443,12 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </TouchableOpacity>
 
-        {isPremium ? (
-          <View style={{ height: 24 }} />
-        ) : (
+        {!isPremium && !adHidden ? (
           <View style={styles.adBannerWrapper}>
-            <AdBanner />
+            <AdBanner onFail={() => setAdHidden(true)} />
           </View>
+        ) : (
+          <View style={{ height: 12 }} />
         )}
 
         <View style={styles.sectionHeader}>
@@ -731,11 +732,6 @@ const styles = StyleSheet.create({
     letterSpacing: -3,
     marginLeft: -4,
   },
-  adBannerWrapper: {
-    marginVertical: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   heroVisualWrap: {
     width: 120,
     height: 120,
@@ -777,21 +773,25 @@ const styles = StyleSheet.create({
   },
   paginationArea: {
     minHeight: 100,
-    overflow: 'hidden',
+    backgroundColor: 'transparent',
+    overflow: 'visible',
   },
   regionsList: {
     gap: 10,
+    overflow: 'visible',
   },
   regionCard: {
     backgroundColor: Colors.surfaceContainerLowest,
     padding: 24,
     borderRadius: 32,
     shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 4,
-    marginBottom: 0,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    elevation: 3,
+    minHeight: 160, // 높이 통일
+    marginBottom: 16,
+    marginHorizontal: 2,
   },
   regionCardHeader: {
     flexDirection: 'row',
@@ -854,7 +854,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   addSlotCard: {
-    height: 140,
+    height: 160, // 일반 카드와 높이 통일
     borderRadius: 32,
     borderWidth: 2,
     borderStyle: 'dashed',
@@ -1038,7 +1038,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   adBannerWrapper: {
-    marginVertical: 12,
+    marginVertical: 10,
     width: '100%',
     backgroundColor: '#F8F9FA',
     borderRadius: 12,

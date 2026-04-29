@@ -266,6 +266,7 @@
     "rain_alert": "우천 경보: 실내 일정 추천",
     "no_schedules": "아직 추가된 일정이 없습니다.",
     "add_schedule": "일정 추가",
+    "share_as_image": "이미지로 공유",
     "edit_flow": "플로우 편집",
     "new_flow": "새 플로우",
     "flow_title": "플로우 이름",

@@ -116,6 +116,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
   // WeatherService와 동일한 캐시키를 loadAsyncData에서 재사용하기 위한 ref
   const weatherCacheKeyRef = useRef('');
+  const [adHidden, setAdHidden] = useState(false);
 
   // Pulse animation for loading skeleton
   useEffect(() => {
@@ -812,9 +813,12 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </ScrollView>
         </View>
 
-        {!isPremium && (
+        {!isPremium && !adHidden && (
           <View style={styles.detailAdWrapper}>
-            <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+            <AdBanner 
+              size={BannerAdSize.MEDIUM_RECTANGLE} 
+              onFail={() => setAdHidden(true)}
+            />
           </View>
         )}
 
@@ -1051,22 +1055,9 @@ const styles = StyleSheet.create({
   dayBadge: { backgroundColor: Colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
   dayBadgeText: { color: 'white', fontSize: 10, fontWeight: '800' },
   detailAdWrapper: {
-    backgroundColor: 'white',
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
-    borderRadius: Spacing.lg,
-    padding: Spacing.xs,
+    marginVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    minHeight: 260,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
   },
   adBadge: {
     position: 'absolute',

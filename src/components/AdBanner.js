@@ -4,7 +4,7 @@ import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
 
-const AdBanner = ({ unitId = BANNER_UNIT_ID, size = BannerAdSize.ANCHORED_ADAPTIVE_BANNER }) => {
+const AdBanner = ({ unitId = BANNER_UNIT_ID, size = BannerAdSize.ANCHORED_ADAPTIVE_BANNER, onLoad, onFail }) => {
   const { isPremium } = useSubscription();
   const [adLoaded, setAdLoaded] = useState(false);
   const [adError, setAdError] = useState(false);
@@ -24,11 +24,13 @@ const AdBanner = ({ unitId = BANNER_UNIT_ID, size = BannerAdSize.ANCHORED_ADAPTI
         onAdLoaded={() => {
           setAdLoaded(true);
           setAdError(false);
+          if (onLoad) onLoad();
         }}
         onAdFailedToLoad={(error) => {
           console.log('[AdBanner] Failed to load ad:', error);
           setAdError(true);
           setAdLoaded(false);
+          if (onFail) onFail(error);
         }}
       />
     </View>

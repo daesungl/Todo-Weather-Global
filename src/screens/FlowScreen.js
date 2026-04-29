@@ -105,6 +105,8 @@ const FlowScreen = ({ navigation }) => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [heroWeather, setHeroWeather] = useState(null);
+  const [topAdHidden, setTopAdHidden] = useState(false);
+  const [detailAdHidden, setDetailAdHidden] = useState(false);
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
   const flowKeyboardOffset = useRef(new Animated.Value(0)).current;
@@ -232,7 +234,11 @@ const FlowScreen = ({ navigation }) => {
     stepScrollRef.current?.scrollTo({ y: 0, animated: false });
     Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
     if (isNew) {
-      setTimeout(() => activityInputRef.current?.focus(), 320);
+      setTimeout(() => {
+        activityInputRef.current?.focus();
+        // 포커스 후 스크롤이 튀는 것을 방지하기 위해 다시 한번 상단으로 스크롤
+        setTimeout(() => stepScrollRef.current?.scrollTo({ y: 0, animated: true }), 100);
+      }, 350);
     }
   };
 
@@ -848,18 +854,6 @@ const FlowScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.headerRight}>
-            <BorderlessButton 
-              onPress={handleShareFlowImage}
-              style={styles.iconBtn}
-              hitSlop={{ top: 20, bottom: 20, left: 10, right: 5 }}
-              disabled={isSharingImage}
-            >
-              {isSharingImage ? (
-                <ActivityIndicator size="small" color={Colors.primary} />
-              ) : (
-                <Share2 size={22} color={Colors.primary} />
-              )}
-            </BorderlessButton>
             <BorderlessButton
               style={styles.iconBtn}
               onPress={() => {
@@ -869,12 +863,13 @@ const FlowScreen = ({ navigation }) => {
                   null,
                   [
                     { text: t('common.cancel'), style: 'cancel' },
+                    { text: t('flow.share_as_image', '이미지로 공유'), onPress: handleShareFlowImage },
                     { text: t('common.edit', 'Edit'), onPress: () => openFlowModal(selectedFlow) },
                     { text: t('common.delete', 'Delete'), style: 'destructive', onPress: () => handleDeleteFlow(selectedFlow.id) },
                   ]
                 );
               }}
-              hitSlop={{ top: 20, bottom: 20, left: 5, right: 20 }}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
             >
               <MoreVertical size={20} color={Colors.onBackground} />
             </BorderlessButton>
@@ -996,26 +991,41 @@ const FlowScreen = ({ navigation }) => {
             </View>
           </ViewShot>
 
-          <View style={styles.centerButtonWrap}>
-            <Pressable 
-              style={({ pressed }) => [styles.addStepDetail, pressed && { opacity: 0.7, backgroundColor: 'rgba(0, 102, 138, 0.08)' }]} 
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setEditingStep(null);
-                setEditActivity('');
-                setEditMemo('');
-                setEditDate(new Date().toISOString().split('T')[0]);
-                setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
-                setSelectedRegion(null);
-                openEditModal(true);
-              }}
-              hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-            >
-              <Plus size={20} color={Colors.primary} />
-              <Text style={styles.addStepText}>{t('flow.add_schedule', 'Add Schedule')}</Text>
-            </Pressable>
-          </View>
         </ScrollView>
+
+        {/* Floating Add Step Button */}
+        <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
+          <Pressable
+            style={({ pressed }) => [
+              {
+                position: 'absolute',
+                bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16,
+                right: 30,
+                width: 64, height: 64, borderRadius: 32,
+                backgroundColor: '#111827', // Add Flow 버튼과 동일한 블랙 계열
+                justifyContent: 'center', alignItems: 'center',
+                shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.35, shadowRadius: 10, elevation: 12,
+              },
+              pressed && { opacity: 0.8, transform: [{ scale: 0.92 }] }
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setEditingStep(null);
+              setEditActivity('');
+              setEditMemo('');
+              setEditDate(new Date().toISOString().split('T')[0]);
+              setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+              setSelectedRegion(null);
+              openEditModal(true);
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <View pointerEvents="none">
+              <Plus size={32} color="white" strokeWidth={3} />
+            </View>
+          </Pressable>
+        </View>
       </View>
     );
   };
@@ -1142,12 +1152,12 @@ const FlowScreen = ({ navigation }) => {
                         </View>
                       </View>
 
-                      {isPremium ? (
-                        <View style={{ height: 18 }} />
-                      ) : (
-                        <View style={{ marginBottom: 12, alignItems: 'center' }}>
-                          <AdBanner />
+                      {!isPremium && !topAdHidden ? (
+                        <View style={{ marginVertical: 10, alignItems: 'center' }}>
+                          <AdBanner onFail={() => setTopAdHidden(true)} />
                         </View>
+                      ) : (
+                        <View style={{ height: 12 }} />
                       )}
                     </View>
                   }
@@ -1202,15 +1212,24 @@ const FlowScreen = ({ navigation }) => {
                       <View style={styles.modalHandle} />
                     </View>
                     <View style={styles.editHeader}>
-                      <View style={{ width: 40 }} />
-                      <Text style={styles.editTitle}>{editingFlow ? t('flow.edit_flow', 'Edit Flow') : t('flow.new_flow', 'New Flow')}</Text>
-                      <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveFlow} style={styles.headerActionBtn}>
-                        {isKeyboardVisible ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
-                        ) : (
-                          <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
-                        )}
-                      </Pressable>
+                      <View style={{ width: 80, alignItems: 'flex-start' }} />
+                      
+                      <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
+                        {editingFlow ? t('flow.edit_flow', 'Edit Flow') : t('flow.new_flow', 'New Flow')}
+                      </Text>
+
+                      <View style={{ width: 80, alignItems: 'flex-end' }}>
+                        <Pressable onPress={isKeyboardVisible ? Keyboard.dismiss : saveFlow} style={styles.headerActionBtn}>
+                          {isKeyboardVisible ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <KeyboardIcon size={18} color={Colors.primary} />
+                              <ChevronDown size={14} color={Colors.primary} />
+                            </View>
+                          ) : (
+                            <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
+                          )}
+                        </Pressable>
+                      </View>
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
@@ -1267,35 +1286,44 @@ const FlowScreen = ({ navigation }) => {
                       <View style={styles.modalHandle} />
                     </View>
                     <View style={styles.editHeader}>
-                      {editingStep ? (
+                      <View style={{ width: 80, alignItems: 'flex-start' }}>
+                        {editingStep && (
+                          <GHButton 
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              deleteStep();
+                            }} 
+                            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} 
+                            style={styles.headerDeleteBtn}
+                          >
+                            <Trash2 size={20} color={Colors.error} />
+                          </GHButton>
+                        )}
+                      </View>
+                      
+                      <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
+                        {editingStep ? t('flow.edit_schedule', 'Edit Schedule') : t('flow.new_schedule', 'New Schedule')}
+                      </Text>
+
+                      <View style={{ width: 80, alignItems: 'flex-end' }}>
                         <GHButton 
                           onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                            deleteStep();
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            isKeyboardVisible ? Keyboard.dismiss() : saveStep();
                           }} 
-                          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} 
-                          style={styles.headerDeleteBtn}
+                          style={styles.headerActionBtn}
+                          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                         >
-                          <Trash2 size={22} color={Colors.error} />
+                          {isKeyboardVisible ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <KeyboardIcon size={18} color={Colors.primary} />
+                              <ChevronDown size={14} color={Colors.primary} />
+                            </View>
+                          ) : (
+                            <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
+                          )}
                         </GHButton>
-                      ) : (
-                        <View style={{ width: 44 }} />
-                      )}
-                      <Text style={styles.editTitle}>{editingStep ? t('flow.edit_schedule', 'Edit Schedule') : t('flow.new_schedule', 'New Schedule')}</Text>
-                      <GHButton 
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          isKeyboardVisible ? Keyboard.dismiss() : saveStep();
-                        }} 
-                        style={styles.headerActionBtn}
-                        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-                      >
-                        {isKeyboardVisible ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><KeyboardIcon size={18} color={Colors.primary} /><ChevronDown size={14} color={Colors.primary} /></View>
-                        ) : (
-                          <Text style={styles.headerSaveText}>{t('common.save', 'Save')}</Text>
-                        )}
-                      </GHButton>
+                      </View>
                     </View>
 
                     <ScrollView ref={stepScrollRef} showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
@@ -1434,11 +1462,12 @@ const FlowScreen = ({ navigation }) => {
                         />
                       </View>
 
-                      {isPremium ? (
-                        <View style={{ height: 18 }} />
-                      ) : (
+                      {!isPremium && !detailAdHidden && (
                         <View style={{ marginVertical: 12, alignItems: 'center' }}>
-                          <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+                          <AdBanner 
+                            size={BannerAdSize.MEDIUM_RECTANGLE} 
+                            onFail={() => setDetailAdHidden(true)}
+                          />
                         </View>
                       )}
                       <View style={{ height: 12 }} />

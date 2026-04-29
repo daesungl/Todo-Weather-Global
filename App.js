@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { Easing, StyleSheet, AppState } from 'react-native';
+import { Easing, StyleSheet, AppState, Animated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -87,16 +87,30 @@ function AppOpenAdHandler() {
 export default function App() {
   const routeNameRef = React.useRef();
   const navigationRef = React.useRef();
+  const [appIsReady, setAppIsReady] = React.useState(false);
+  const splashOpacity = React.useRef(new Animated.Value(1)).current;
+  const [showSplash, setShowSplash] = React.useState(true);
 
   useEffect(() => {
-    // 앱이 로드된 후 최소 1.5초간 스플래시 유지
     const prepare = async () => {
       try {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // 앱 준비 및 데이터 로딩 (최소 1.5초 유지)
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (e) {
         console.warn(e);
       } finally {
+        setAppIsReady(true);
+        // 네이티브 스플래시를 숨김 (가짜 스플래시가 뒤를 받쳐줌)
         await SplashScreen.hideAsync();
+        
+        // 페이드아웃 애니메이션 시작
+        Animated.timing(splashOpacity, {
+          toValue: 0,
+          duration: 500, // 0.5초 동안 페이드아웃
+          useNativeDriver: true,
+        }).start(() => {
+          setShowSplash(false);
+        });
       }
     };
 
@@ -145,6 +159,32 @@ export default function App() {
                 <Stack.Screen name="Paywall" component={PaywallScreen} />
               </Stack.Navigator>
             </NavigationContainer>
+
+            {/* 가짜 스플래시 레이어 (페이드아웃용) */}
+            {showSplash && (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    backgroundColor: '#b2ebf2', 
+                    opacity: splashOpacity,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 9999,
+                  },
+                ]}
+              >
+                <Animated.Image
+                  source={require('./assets/splash-icon.png')}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    resizeMode: 'contain',
+                  }}
+                />
+              </Animated.View>
+            )}
           </SafeAreaProvider>
         </UnitProvider>
       </SubscriptionProvider>

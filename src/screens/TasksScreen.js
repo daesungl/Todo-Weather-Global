@@ -485,6 +485,8 @@ const TasksScreen = ({ navigation }) => {
 
   const [taskWeather, setTaskWeather] = useState({});
   const [loading, setLoading] = useState(true);
+  const [topAdHidden, setTopAdHidden] = useState(false);
+  const [footerAdHidden, setFooterAdHidden] = useState(false);
   const insets = useSafeAreaInsets();
 
   // Holiday State
@@ -1252,12 +1254,12 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {isPremium ? (
-            <View style={{ height: 18 }} />
-          ) : (
-            <View style={{ marginBottom: 10 }}>
-              <AdBanner />
+          {!isPremium && !topAdHidden ? (
+            <View style={{ marginVertical: 10 }}>
+              <AdBanner onFail={() => setTopAdHidden(true)} />
             </View>
+          ) : (
+            <View style={{ height: 12 }} />
           )}
 
           <View style={styles.calendarArea}>
@@ -1433,11 +1435,12 @@ const TasksScreen = ({ navigation }) => {
 
                   {/* Fixed Footer with Large Ad and Add Button (TimeTree Style) */}
                   <View style={styles.modalFooter}>
-                    {isPremium ? (
-                      <View style={{ height: 18 }} />
-                    ) : (
+                    {!isPremium && !footerAdHidden && (
                       <View style={{ marginBottom: 12, alignItems: 'center' }}>
-                        <AdBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
+                        <AdBanner 
+                          size={BannerAdSize.MEDIUM_RECTANGLE} 
+                          onFail={() => setFooterAdHidden(true)}
+                        />
                       </View>
                     )}
                     <TouchableOpacity
