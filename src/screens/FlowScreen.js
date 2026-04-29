@@ -1031,34 +1031,33 @@ const FlowScreen = ({ navigation }) => {
                             </GHButton>
                           </View>
                         ) : (
-                          <Pressable
-                            style={({ pressed }) => [styles.stepInfoCard, pressed && { opacity: 0.7 }, { flex: 1 }]}
-                            onPress={() => openEditStep(step)}
-                          >
-                            <View style={styles.stepHeader}>
-                              <View style={{ flex: 1 }}>
-                                <Text style={[styles.stepTime, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
-                                <Text style={styles.stepActivity} numberOfLines={2}>
-                                  {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
-                                </Text>
-                                {step.memo ? <Text style={styles.stepMemo} numberOfLines={2} ellipsizeMode="tail">{step.memo}</Text> : null}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Pressable
+                              style={({ pressed }) => [styles.stepInfoCard, pressed && { opacity: 0.7 }, { flex: 1 }]}
+                              onPress={() => openEditStep(step)}
+                            >
+                              <View style={styles.stepHeader}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={[styles.stepTime, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
+                                  <Text style={styles.stepActivity} numberOfLines={2}>
+                                    {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
+                                  </Text>
+                                  {step.memo ? <Text style={styles.stepMemo} numberOfLines={2} ellipsizeMode="tail">{step.memo}</Text> : null}
+                                </View>
                               </View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                {step.weather && (
-                                  <GHButton
-                                    onPress={() => handleWeatherIconPress(step)}
-                                    hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-                                    style={{ padding: 4 }}
-                                  >
-                                    <View pointerEvents="none">
-                                      {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, step.weather?.isDay !== false)}
-                                    </View>
-                                  </GHButton>
-                                )}
-                                  {/* List deletion removed for accidental tap prevention */}
-                              </View>
-                            </View>
-                          </Pressable>
+                            </Pressable>
+                            {step.weather && (
+                              <GHButton
+                                onPress={() => handleWeatherIconPress(step)}
+                                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                                style={{ paddingHorizontal: 10, paddingVertical: 8, marginLeft: 4 }}
+                              >
+                                <View pointerEvents="none">
+                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, step.weather?.isDay !== false)}
+                                </View>
+                              </GHButton>
+                            )}
+                          </View>
                         )}
                       </View>
                     </View>

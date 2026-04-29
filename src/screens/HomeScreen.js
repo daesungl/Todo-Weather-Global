@@ -34,6 +34,7 @@ const HomeScreen = ({ navigation }) => {
   const loadingPageRef = useRef(null);
   const regionsRef = useRef([]);
   const scrollViewRef = useRef(null);
+  const isSwipingRef = useRef(false); // 스와이프 중 탭 무시용 플래그
 
   const { isPremium, limits } = useSubscription();
 
@@ -60,8 +61,11 @@ const HomeScreen = ({ navigation }) => {
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // 가로 스와이프가 세로 스크롤보다 확실히 우세할 때만 캡처
-        return Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        const isHorizontal =
+          Math.abs(gestureState.dx) > 12 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+        if (isHorizontal) isSwipingRef.current = true;
+        return isHorizontal;
       },
       onPanResponderMove: (_, gestureState) => {
         slideAnim.setValue(gestureState.dx * 0.4);
@@ -69,22 +73,21 @@ const HomeScreen = ({ navigation }) => {
       onPanResponderRelease: (_, gestureState) => {
         const page = currentPageRef.current;
         if (gestureState.dx < -50) {
-          // 왼쪽 스와이프 → 다음 페이지 (5 → 1 순환)
           const next = page === 5 ? 1 : page + 1;
           goToPage(next, -1);
         } else if (gestureState.dx > 50) {
-          // 오른쪽 스와이프 → 이전 페이지 (1 → 5 순환)
           const next = page === 1 ? 5 : page - 1;
           goToPage(next, 1);
         } else {
           Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
         }
+        // 스와이프 종료 후 짧은 딜레이 뒤 플래그 해제 (onPress 보다 늦게 해제)
+        setTimeout(() => { isSwipingRef.current = false; }, 300);
       },
-      // iOS에서 ScrollView 등 부모가 responder를 강제로 가져가는 경우 방지
       onPanResponderTerminationRequest: () => false,
-      // 혹시 terminate 되더라도 원래 위치로 복귀
       onPanResponderTerminate: () => {
         Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
+        setTimeout(() => { isSwipingRef.current = false; }, 300);
       },
     })
   ).current;
@@ -517,6 +520,8 @@ const HomeScreen = ({ navigation }) => {
                       <TouchableOpacity
                         style={[styles.regionCard, isActive && { opacity: 0.85, transform: [{ scale: 1.02 }] }]}
                         onPress={() => {
+                          // 스와이프 직후 탭이 함께 발동되는 것을 방지
+                          if (isSwipingRef.current) return;
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           const navData = weather || { lat: region.lat, lon: region.lon, locationName: region.name };
                           navigation.navigate('WeatherDetail', { 
