@@ -387,8 +387,11 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const swipeX = useRef(new Animated.Value(0)).current;
 
   // Swipe to go back gesture logic with visual tracking
+  const preventSwipeBackRef = useRef(false);
+  
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gestureState) => {
+      if (preventSwipeBackRef.current) return false;
       const { dx, dy, x0 } = gestureState;
       // Accept gesture only if starting from the left edge
       return x0 < 24 && dx > 10 && Math.abs(dx) > Math.abs(dy);
@@ -777,7 +780,21 @@ const WeatherDetailScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         )}
 
-        <View style={styles.moduleCard}>
+        <View 
+          style={styles.moduleCard}
+          onTouchStart={() => {
+            preventSwipeBackRef.current = true;
+            navigation.setOptions({ gestureEnabled: false });
+          }}
+          onTouchEnd={() => {
+            preventSwipeBackRef.current = false;
+            navigation.setOptions({ gestureEnabled: true });
+          }}
+          onTouchCancel={() => {
+            preventSwipeBackRef.current = false;
+            navigation.setOptions({ gestureEnabled: true });
+          }}
+        >
           <View style={styles.moduleHeader}>
             <Activity size={16} color={Colors.primary} />
             <Text style={styles.moduleTitle}>{t('weather.hourly_forecast', '시간별 예보')} {currentHourlyOffset > 0 ? `- ${hourlyForecast.find(h => h.dayOffset === currentHourlyOffset)?.dayLabel ?? ''}` : ''}</Text>

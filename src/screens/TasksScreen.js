@@ -42,6 +42,7 @@ import { getFlows } from '../services/FlowService';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import RangeCalendarModal from '../components/RangeCalendarModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getHolidaysForYear,
@@ -107,6 +108,8 @@ const getDateFromIndex = (index) => {
 };
 
 const dateStr = (date) => {
+  if (typeof date === 'string') return date;
+  if (!date || isNaN(date.getTime())) return '';
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -558,9 +561,8 @@ const TasksScreen = ({ navigation }) => {
     setShowColorPicker(false);
     setSearchMode(null);
     // 날짜/시간 피커가 열린 채 모달을 닫을 경우 피커 상태 초기화
-    setShowDatePicker(false);
+    setShowRangePicker(false);
     setShowTimePicker(false);
-    setShowEndDatePicker(false);
     setShowEndTimePicker(false);
     setIsAdding(false);
     if (typeof onAfterClose === 'function') {
@@ -687,10 +689,9 @@ const TasksScreen = ({ navigation }) => {
     });
     return unsubscribe;
   }, [navigation]);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [showRangePicker, setShowRangePicker] = useState(false);
   // 취소 시 원복을 위한 백업 ref
   const pickerBackupRef = useRef({ taskDate: null, endDate: null, newTime: null, endTime: null });
   const [showHolidaySettings, setShowHolidaySettings] = useState(false);
@@ -877,9 +878,8 @@ const TasksScreen = ({ navigation }) => {
 
 
   const closeAllPickers = () => {
-    setShowDatePicker(false);
+    setShowRangePicker(false);
     setShowTimePicker(false);
-    setShowEndDatePicker(false);
     setShowEndTimePicker(false);
   };
 
@@ -893,15 +893,6 @@ const TasksScreen = ({ navigation }) => {
     closeAllPickers();
   };
 
-  const onDateChange = (event, date) => {
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (date) setTaskDate(date);
-  };
-
-  const onEndDateChange = (event, date) => {
-    if (Platform.OS === 'android') setShowEndDatePicker(false);
-    if (date) setEndDate(date);
-  };
 
   const onTimeChange = (event, date) => {
     if (Platform.OS === 'android') setShowTimePicker(false);
@@ -1005,9 +996,8 @@ const TasksScreen = ({ navigation }) => {
     Keyboard.dismiss();
     setShowColorPicker(false);
     setSearchMode(null);
-    setShowDatePicker(false);
+    setShowRangePicker(false);
     setShowTimePicker(false);
-    setShowEndDatePicker(false);
     setShowEndTimePicker(false);
     setIsMemoEditing(false);
     Animated.timing(editSheetX, {
@@ -1086,8 +1076,10 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const formatDisplayDate = (date) => {
+    if (!date) return '';
+    const d = typeof date === 'string' ? new Date(date) : date;
     const locale = isKorean ? 'ko-KR' : 'en-US';
-    return date.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+    return d.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   };
 
   const formatDetailDate = (dateStr) => {
@@ -1520,7 +1512,7 @@ const TasksScreen = ({ navigation }) => {
                               <Text style={styles.detailInfoText}>{t('tasks.allDay', '종일')}</Text>
                             </View>
                           )}
-                          {(selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion) && (
+                          {!!(selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion) && (
                             <View style={styles.detailInfoItem}>
                               <MapPin size={20} color={Colors.outline} />
                               <Text style={styles.detailInfoText}>
@@ -1712,38 +1704,33 @@ const TasksScreen = ({ navigation }) => {
                             <Switch value={isAllDay} onValueChange={setIsAllDay} trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }} thumbColor={isAllDay ? Colors.primary : '#F4F7FE'} />
                           </View>
                           <View style={styles.timeTreeDivider} />
+                          {/* Date/Time Range */}
                           <View style={styles.timeTreeRow}>
                             <View style={styles.rowLead}>
                               <Calendar size={20} color={Colors.textSecondary} />
-                              <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
+                              <Text style={styles.timeTreeLabel}>{t('tasks.date', 'Date')}</Text>
                             </View>
-                            <View style={styles.rowTail}>
-                              <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
-                                <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
-                              </TouchableOpacity>
-                              {!isAllDay && (
+                            <TouchableOpacity style={{ flexShrink: 1, paddingLeft: 10 }} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowRangePicker(true); }}>
+                              <Text style={[styles.timeTreePickerText, { fontSize: 13 }]} numberOfLines={1} adjustsFontSizeToFit>{formatDisplayDate(taskDate)} - {formatDisplayDate(endDate)}</Text>
+                            </TouchableOpacity>
+                          </View>
+                          {!isAllDay && (
+                            <View style={styles.timeTreeRow}>
+                              <View style={styles.rowLead}>
+                                <Clock size={20} color={Colors.textSecondary} />
+                                <Text style={styles.timeTreeLabel}>{t('tasks.time', 'Time')}</Text>
+                              </View>
+                              <View style={styles.rowTail}>
                                 <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
                                   <Text style={styles.timeTreeTimeText}>{newTime}</Text>
                                 </TouchableOpacity>
-                              )}
-                            </View>
-                          </View>
-                          <View style={styles.timeTreeRow}>
-                            <View style={styles.rowLead}>
-                              <View style={{ width: 22 }} />
-                              <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
-                            </View>
-                            <View style={styles.rowTail}>
-                              <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
-                                <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
-                              </TouchableOpacity>
-                              {!isAllDay && (
+                                <Text style={{ marginHorizontal: 8, color: Colors.outline }}>-</Text>
                                 <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
                                   <Text style={styles.timeTreeTimeText}>{endTime}</Text>
                                 </TouchableOpacity>
-                              )}
+                              </View>
                             </View>
-                          </View>
+                          )}
                           <View style={styles.timeTreeDivider} />
                           <View style={styles.timeTreeRow}>
                             <View style={styles.rowLead}>
@@ -1775,56 +1762,35 @@ const TasksScreen = ({ navigation }) => {
                   </KeyboardAvoidingView>
 
                   {/* Date / Time Picker Overlay */}
-                  {Platform.OS === 'ios' && (showDatePicker || showTimePicker || showEndDatePicker || showEndTimePicker) && (
+                  {Platform.OS === 'ios' && (showTimePicker || showEndTimePicker) && (
                     <View style={styles.iosPickerOverlay}>
                       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeAllPickers} />
-                      <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
+                      <View style={[styles.iosPickerCard]}>
                         <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
                         <View style={styles.iosPickerHeader}>
                           <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
                             <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>{t('common.cancel', '취소')}</Text>
                           </TouchableOpacity>
                           <Text style={styles.iosPickerTitle}>
-                            {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
+                            {t('tasks.time', '시간')}
                           </Text>
                           <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
                             <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
                           </TouchableOpacity>
                         </View>
-                        {(showDatePicker || showEndDatePicker) ? (
+                        <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
                           <DateTimePicker
                             key={i18n.language}
                             value={(() => {
                               try {
-                                if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
-                                if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
-                              } catch (e) { return new Date(); }
-                              return new Date();
-                            })()}
-                            mode="date"
-                            display="inline"
-                            locale={i18n.language}
-                            accentColor={Colors.primary}
-                            onChange={(event, date) => {
-                              if (showDatePicker) onDateChange(event, date);
-                              else if (showEndDatePicker) onEndDateChange(event, date);
-                            }}
-                            style={{ width: width - 32, height: 360, alignSelf: 'center' }}
-                          />
-                        ) : (
-                          <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
-                            <DateTimePicker
-                              key={i18n.language}
-                              value={(() => {
-                                try {
-                                  if (showTimePicker) {
-                                    const [h, m] = newTime.split(':').map(Number);
-                                    const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
-                                  }
-                                  if (showEndTimePicker) {
-                                    const [h, m] = endTime.split(':').map(Number);
-                                    const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
-                                  }
+                                if (showTimePicker) {
+                                  const [h, m] = newTime.split(':').map(Number);
+                                  const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
+                                }
+                                if (showEndTimePicker) {
+                                  const [h, m] = endTime.split(':').map(Number);
+                                  const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
+                                }
                                 } catch (e) { return new Date(); }
                                 return new Date();
                               })()}
@@ -1839,8 +1805,7 @@ const TasksScreen = ({ navigation }) => {
                               }}
                               style={{ height: 216, width: width - 32, alignSelf: 'center' }}
                             />
-                          </View>
-                        )}
+                        </View>
                       </View>
                     </View>
                   )}
@@ -1894,7 +1859,17 @@ const TasksScreen = ({ navigation }) => {
                   )}
                 </Animated.View>
               )}
-            </Animated.View>
+              <RangeCalendarModal
+              visible={showRangePicker}
+              onClose={() => setShowRangePicker(false)}
+              initialStartDate={taskDate}
+              initialEndDate={endDate}
+              onApply={(start, end) => {
+                if (start) setTaskDate(start);
+                if (end) setEndDate(end);
+              }}
+            />
+          </Animated.View>
             {renderToast('isTaskListVisible')}
           </View>
 
@@ -2150,42 +2125,32 @@ const TasksScreen = ({ navigation }) => {
 
                       <View style={styles.timeTreeDivider} />
 
-                      {/* Start Date/Time */}
                       <View style={styles.timeTreeRow}>
                         <View style={styles.rowLead}>
                           <Calendar size={20} color={Colors.textSecondary} />
-                          <Text style={styles.timeTreeLabel}>{t('tasks.start', 'Start')}</Text>
+                          <Text style={styles.timeTreeLabel}>{t('tasks.date', 'Date')}</Text>
                         </View>
-                        <View style={styles.rowTail}>
-                          <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowDatePicker(true); }}>
-                            <Text style={styles.timeTreePickerText}>{formatDisplayDate(taskDate)}</Text>
-                          </TouchableOpacity>
-                          {!isAllDay && (
+                        <TouchableOpacity style={{ flexShrink: 1, paddingLeft: 10 }} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowRangePicker(true); }}>
+                          <Text style={[styles.timeTreePickerText, { fontSize: 13 }]} numberOfLines={1} adjustsFontSizeToFit>{formatDisplayDate(taskDate)} - {formatDisplayDate(endDate)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {!isAllDay && (
+                        <View style={styles.timeTreeRow}>
+                          <View style={styles.rowLead}>
+                            <Clock size={20} color={Colors.textSecondary} />
+                            <Text style={styles.timeTreeLabel}>{t('tasks.time', 'Time')}</Text>
+                          </View>
+                          <View style={styles.rowTail}>
                             <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowTimePicker(true); }}>
                               <Text style={styles.timeTreeTimeText}>{newTime}</Text>
                             </TouchableOpacity>
-                          )}
-                        </View>
-                      </View>
-
-                      {/* End Date/Time */}
-                      <View style={styles.timeTreeRow}>
-                        <View style={styles.rowLead}>
-                          <View style={{ width: 22 }} />
-                          <Text style={styles.timeTreeLabel}>{t('tasks.end', 'End')}</Text>
-                        </View>
-                        <View style={styles.rowTail}>
-                          <TouchableOpacity onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndDatePicker(true); }}>
-                            <Text style={styles.timeTreePickerText}>{formatDisplayDate(endDate)}</Text>
-                          </TouchableOpacity>
-                          {!isAllDay && (
+                            <Text style={{ marginHorizontal: 8, color: Colors.outline }}>-</Text>
                             <TouchableOpacity style={styles.timeLabelSmall} onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { taskDate: new Date(taskDate), endDate: new Date(endDate), newTime, endTime }; setShowEndTimePicker(true); }}>
                               <Text style={styles.timeTreeTimeText}>{endTime}</Text>
                             </TouchableOpacity>
-                          )}
+                          </View>
                         </View>
-                      </View>
-
+                      )}
                       <View style={styles.timeTreeDivider} />
 
                       {/* Location & Weather */}
@@ -2201,8 +2166,6 @@ const TasksScreen = ({ navigation }) => {
                           />
                         </View>
                       </View>
-
-
 
                       <View style={styles.timeTreeDivider} />
 
@@ -2232,6 +2195,18 @@ const TasksScreen = ({ navigation }) => {
                 )}
               </KeyboardAvoidingView>
             </View>
+
+            {/* Range Calendar Modal */}
+            <RangeCalendarModal
+              visible={showRangePicker}
+              onClose={() => setShowRangePicker(false)}
+              initialStartDate={taskDate}
+              initialEndDate={endDate}
+              onApply={(start, end) => {
+                if (start) setTaskDate(new Date(start));
+                if (end) setEndDate(new Date(end));
+              }}
+            />
 
             {/* Color Picker Overlay */}
             {showColorPicker && (
@@ -2348,14 +2323,9 @@ const TasksScreen = ({ navigation }) => {
               </View>
             )}
 
-            {/* Date / Time Pickers */}
+            {/* Time Pickers (Android) */}
             {Platform.OS === 'android' && (
               <>
-                {showDatePicker && (
-                  <View style={styles.inlinePickerContainer}>
-                    <DateTimePicker value={taskDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onDateChange} />
-                  </View>
-                )}
                 {showTimePicker && (
                   <View style={styles.customWheelContainer}>
                     <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select Start Time</Text></View>
@@ -2371,11 +2341,6 @@ const TasksScreen = ({ navigation }) => {
                       display="spinner"
                       onChange={onTimeChange}
                     />
-                  </View>
-                )}
-                {showEndDatePicker && (
-                  <View style={styles.inlinePickerContainer}>
-                    <DateTimePicker value={endDate} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={onEndDateChange} />
                   </View>
                 )}
                 {showEndTimePicker && (
@@ -2398,15 +2363,14 @@ const TasksScreen = ({ navigation }) => {
               </>
             )}
 
-            {Platform.OS === 'ios' && (showDatePicker || showTimePicker || showEndDatePicker || showEndTimePicker) && (
+            {Platform.OS === 'ios' && (showTimePicker || showEndTimePicker) && (
               <View style={styles.iosPickerOverlay}>
                 <TouchableOpacity
                   style={StyleSheet.absoluteFill}
                   activeOpacity={1}
                   onPress={closeAllPickers}
                 />
-                <View style={[styles.iosPickerCard, (showDatePicker || showEndDatePicker) && { height: 490 }]}>
-                  {/* 핸들바 */}
+                <View style={styles.iosPickerCard}>
                   <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
                   <View style={styles.iosPickerHeader}>
                     <TouchableOpacity onPress={cancelPickers} style={{ padding: 4 }}>
@@ -2415,58 +2379,39 @@ const TasksScreen = ({ navigation }) => {
                       </Text>
                     </TouchableOpacity>
                     <Text style={styles.iosPickerTitle}>
-                      {(showDatePicker || showEndDatePicker) ? t('tasks.date', '날짜') : t('tasks.time', '시간')}
+                      {t('tasks.time', '시간')}
                     </Text>
                     <TouchableOpacity onPress={closeAllPickers} style={{ padding: 4 }}>
                       <Text style={[styles.iosPickerDone, { color: Colors.primary }]}>{t('common.done', '완료')}</Text>
                     </TouchableOpacity>
                   </View>
-                  {(showDatePicker || showEndDatePicker) ? (
+                  <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
                     <DateTimePicker
+                      key={i18n.language}
                       value={(() => {
                         try {
-                          if (showDatePicker) return taskDate instanceof Date ? taskDate : new Date(taskDate);
-                          if (showEndDatePicker) return endDate instanceof Date ? endDate : new Date(endDate);
+                          if (showTimePicker) {
+                            const [h, m] = newTime.split(':').map(Number);
+                            const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
+                          }
+                          if (showEndTimePicker) {
+                            const [h, m] = endTime.split(':').map(Number);
+                            const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
+                          }
                         } catch (e) { return new Date(); }
                         return new Date();
                       })()}
-                      mode="date"
-                      display="inline"
-                      accentColor={Colors.primary}
+                      mode="time"
+                      display="spinner"
+                      is24Hour={true}
+                      textColor="black"
                       onChange={(event, date) => {
-                        if (showDatePicker) onDateChange(event, date);
-                        else if (showEndDatePicker) onEndDateChange(event, date);
+                        if (showTimePicker) onTimeChange(event, date);
+                        else if (showEndTimePicker) onEndTimeChange(event, date);
                       }}
-                      style={{ width: width - 32, height: 360, alignSelf: 'center' }}
+                      style={{ height: 216, width: width - 32, alignSelf: 'center' }}
                     />
-                  ) : (
-                    <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
-                      <DateTimePicker
-                        value={(() => {
-                          try {
-                            if (showTimePicker) {
-                              const [h, m] = newTime.split(':').map(Number);
-                              const d = new Date(taskDate); d.setHours(h); d.setMinutes(m); return d;
-                            }
-                            if (showEndTimePicker) {
-                              const [h, m] = endTime.split(':').map(Number);
-                              const d = new Date(endDate); d.setHours(h); d.setMinutes(m); return d;
-                            }
-                          } catch (e) { return new Date(); }
-                          return new Date();
-                        })()}
-                        mode="time"
-                        display="spinner"
-                        is24Hour={true}
-                        textColor="black"
-                        onChange={(event, date) => {
-                          if (showTimePicker) onTimeChange(event, date);
-                          else if (showEndTimePicker) onEndTimeChange(event, date);
-                        }}
-                        style={{ height: 216, width: width - 32, alignSelf: 'center' }}
-                      />
-                    </View>
-                  )}
+                  </View>
                 </View>
               </View>
             )}

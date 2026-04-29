@@ -12,6 +12,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { BannerAdSize } from 'react-native-google-mobile-ads';
 import { useTranslation } from 'react-i18next';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import RangeCalendarModal from '../components/RangeCalendarModal';
 import { 
   Plus, 
   MapPin, 
@@ -107,6 +108,7 @@ const FlowScreen = ({ navigation }) => {
   const [heroWeather, setHeroWeather] = useState(null);
   const [topAdHidden, setTopAdHidden] = useState(false);
   const [detailAdHidden, setDetailAdHidden] = useState(false);
+  const [showRangePicker, setShowRangePicker] = useState(false);
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
   const flowKeyboardOffset = useRef(new Animated.Value(0)).current;
@@ -248,15 +250,14 @@ const FlowScreen = ({ navigation }) => {
     setEditingStep(null);
     setEditActivity('');
     setEditMemo('');
-    const today = new Date().toISOString().split('T')[0];
-    const nowTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    setEditDate(today);
-    setEditTime(nowTime);
-    setEditEndDate(today);
-    setEditEndTime(nowTime);
+    setEditDate('');
+    setEditTime('');
+    setEditEndDate('');
+    setEditEndTime('');
     setMatchStartDate(true);
-    setSelectedRegion(null);
     setPickerType(null);
+    setShowRangePicker(false);
+    setSelectedRegion(null);
   };
 
   const closeFlowModal = () => {
@@ -659,6 +660,61 @@ const FlowScreen = ({ navigation }) => {
     ]);
   };
 
+  const handleWeatherIconPress = async (step) => {
+    const lat = step.lat || selectedFlow?.lat;
+    const lon = step.lon || selectedFlow?.lon;
+    const name = (step.region && step.region.name) || selectedFlow?.location;
+    if (!lat || !lon) return;
+    try {
+      const weather = await WeatherService.getWeather(lat, lon, false, name, name);
+      if (weather) {
+        navigation.navigate('WeatherDetail', { weatherData: weather, isCurrentLocation: false, locationName: name });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // 실시간 스와이프 애니메이션을 위한 변수
+  const swipeBackX = useRef(new Animated.Value(0)).current;
+
+  const swipeBackPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // 왼쪽 가장자리(x < 50)에서 시작해 오른쪽으로 밀 때 인식
+        return gestureState.dx > 5 && Math.abs(gestureState.dy) < 15 && gestureState.x0 < 50;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // 오른쪽으로 밀 때만 애니메이션 값 업데이트
+        if (gestureState.dx > 0) {
+          swipeBackX.setValue(gestureState.dx);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > width * 0.25) {
+          // 일정 거리 이상 밀면 화면 밖으로 날리고 상태 변경
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          Animated.timing(swipeBackX, {
+            toValue: width,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            setSelectedFlow(null);
+            swipeBackX.setValue(0); // 다음 진입을 위해 초기화
+          });
+        } else {
+          // 아니면 다시 제자리로 스프링 효과와 함께 복귀
+          Animated.spring(swipeBackX, {
+            toValue: 0,
+            useNativeDriver: true,
+            friction: 8,
+            tension: 40
+          }).start();
+        }
+      }
+    })
+  ).current;
+
   const getFlowGradient = (existingFlows = []) => {
     // 1. 지능형 랜덤 컬러 생성기 (가독성 보장 + 무한한 다양성)
     const generateSafeGradient = () => {
@@ -836,7 +892,13 @@ const FlowScreen = ({ navigation }) => {
     });
 
     return (
-      <View style={styles.detailContainer}>
+      <Animated.View 
+        style={[
+          styles.detailContainer, 
+          { transform: [{ translateX: swipeBackX }] }
+        ]} 
+        {...swipeBackPanResponder.panHandlers}
+      >
         <View style={styles.detailHeader}>
           <View style={styles.headerLeft}>
             <BorderlessButton 
@@ -886,7 +948,7 @@ const FlowScreen = ({ navigation }) => {
               <Text style={styles.heroDate}>{getLocalizedPeriod(selectedFlow.period)}</Text>
             </View>
 
-            {selectedFlow.location && selectedFlow.location !== 'No Region' && (
+            {!!selectedFlow.location && selectedFlow.location !== 'No Region' && (
               <Pressable
                 style={({ pressed }) => [styles.heroLocationRow, { marginTop: 0, marginBottom: 24 }, pressed && { opacity: 0.7 }]}
                 onPress={() => {
@@ -965,9 +1027,15 @@ const FlowScreen = ({ navigation }) => {
                               </View>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                 {step.weather && (
-                                  <View>
+                                  <Pressable
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleWeatherIconPress(step);
+                                    }}
+                                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                                  >
                                     {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 20, Colors.primary, step.weather?.isDay !== false)}
-                                  </View>
+                                  </Pressable>
                                 )}
                                   {/* List deletion removed for accidental tap prevention */}
                               </View>
@@ -1028,7 +1096,7 @@ const FlowScreen = ({ navigation }) => {
             </View>
           </Pressable>
         </View>
-      </View>
+        </Animated.View>
     );
   };
 
@@ -1354,7 +1422,7 @@ const FlowScreen = ({ navigation }) => {
                           </View>
                           <Pressable
                             style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('startDate'); }}
+                            onPress={() => { Keyboard.dismiss(); setShowRangePicker(true); }}
                           >
                             <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                             <Text style={[styles.editInputText, !editDate && { color: Colors.outline }]} numberOfLines={1}>
@@ -1412,7 +1480,7 @@ const FlowScreen = ({ navigation }) => {
                           </View>
                           <Pressable
                             style={({ pressed }) => [styles.editInputWrap, pressed && { opacity: 0.7 }]}
-                            onPress={() => { Keyboard.dismiss(); pickerBackupRef.current = { editDate, editTime, editEndDate, editEndTime }; setPickerType('endDate'); }}
+                            onPress={() => { Keyboard.dismiss(); setShowRangePicker(true); }}
                           >
                             <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                             <Text style={[styles.editInputText, !editEndDate && { color: Colors.outline }]} numberOfLines={1}>
@@ -1480,7 +1548,7 @@ const FlowScreen = ({ navigation }) => {
             </View>
 
             {/* Date / Time Picker Overlay */}
-            {(pickerType) && (
+            {!!pickerType && (
               <View style={[StyleSheet.absoluteFillObject, styles.pickerOverlay]}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={() => { 
                   setEditDate(pickerBackupRef.current.editDate); 
@@ -1489,7 +1557,7 @@ const FlowScreen = ({ navigation }) => {
                   setEditEndTime(pickerBackupRef.current.editEndTime);
                   setPickerType(null); 
                 }} />
-                <View style={[styles.pickerSheet, (pickerType === 'startDate' || pickerType === 'endDate') && { height: 490 }]}>
+                <View style={[styles.pickerSheet]}>
                   <View style={{ width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 }} />
                   <View style={styles.pickerHeader}>
                     <Pressable onPress={() => { 
@@ -1502,49 +1570,48 @@ const FlowScreen = ({ navigation }) => {
                       <Text style={{ fontSize: 15, fontWeight: '600', color: Colors.textSecondary }}>{t('common.cancel', 'Cancel')}</Text>
                     </Pressable>
                     <Text style={styles.pickerTitle}>
-                      {pickerType === 'startDate' ? t('flow.start_date', 'Start Date') : 
-                       pickerType === 'endDate' ? t('flow.end_date', 'End Date') : 
-                       pickerType === 'startTime' ? t('common.start_time', 'Start Time') : 
-                       t('common.end_time', 'End Time')}
+                      {pickerType === 'startTime' ? t('common.start_time', 'Start Time') : t('common.end_time', 'End Time')}
                     </Text>
                     <Pressable onPress={() => setPickerType(null)} style={styles.pickerDoneBtn}>
                       <Text style={styles.pickerDoneText}>{t('common.done', 'Done')}</Text>
                     </Pressable>
                   </View>
-                  {(pickerType === 'startDate' || pickerType === 'endDate') ? (
+                  <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
                     <DateTimePicker
-                      value={new Date((pickerType === 'startDate' ? editDate : editEndDate) || Date.now())}
-                      mode="date"
-                      display="inline"
-                      accentColor={Colors.primary}
-                      onChange={onDateChange}
-                      minimumDate={new Date(2020, 0, 1)}
-                      style={{ width: width - 32, height: 360, alignSelf: 'center' }}
+                      value={(() => {
+                        const timeVal = pickerType === 'startTime' ? editTime : editEndTime;
+                        const [h, m] = (timeVal || '00:00').split(':');
+                        const d = new Date(); d.setHours(parseInt(h), parseInt(m)); return d;
+                      })()}
+                      mode="time"
+                      display="spinner"
+                      is24Hour={true}
+                      textColor="black"
+                      onChange={onTimeChange}
+                      style={{ height: 216, width: width - 32, alignSelf: 'center' }}
                       locale={i18n.language}
-                      key={`date-${i18n.language}-${pickerType}`}
+                      key={`time-${i18n.language}-${pickerType}`}
                     />
-                  ) : (
-                    <View style={{ height: 216, justifyContent: 'center', backgroundColor: 'white' }}>
-                      <DateTimePicker
-                        value={(() => {
-                          const timeVal = pickerType === 'startTime' ? editTime : editEndTime;
-                          const [h, m] = (timeVal || '00:00').split(':');
-                          const d = new Date(); d.setHours(parseInt(h), parseInt(m)); return d;
-                        })()}
-                        mode="time"
-                        display="spinner"
-                        is24Hour={true}
-                        textColor="black"
-                        onChange={onTimeChange}
-                        style={{ height: 216, width: width - 32, alignSelf: 'center' }}
-                        locale={i18n.language}
-                        key={`time-${i18n.language}-${pickerType}`}
-                      />
-                    </View>
-                  )}
+                  </View>
                 </View>
               </View>
             )}
+
+            <RangeCalendarModal
+              visible={showRangePicker}
+              onClose={() => setShowRangePicker(false)}
+              initialStartDate={editDate}
+              initialEndDate={editEndDate}
+              onApply={(start, end) => {
+                if (start) setEditDate(start);
+                if (end) {
+                  setEditEndDate(end);
+                  if (start && start !== end) {
+                    setMatchStartDate(false);
+                  }
+                }
+              }}
+            />
           </GestureHandlerRootView>
         </Modal>
 

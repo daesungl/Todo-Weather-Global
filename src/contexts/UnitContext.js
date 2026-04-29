@@ -57,8 +57,8 @@ export const UnitProvider = ({ children }) => {
     if (typeof val === 'number') ms = val;
     else ms = parseFloat(String(val));
     if (val === '--' || isNaN(ms)) return '--';
-    if (windUnit === 'kmh') return `${(ms * 3.6).toFixed(1)}km/h`;
-    if (windUnit === 'mph') return `${(ms * 2.237).toFixed(1)}mph`;
+    if (windUnit === 'kmh') return `${Math.round(ms * 3.6)}km/h`;
+    if (windUnit === 'mph') return `${Math.round(ms * 2.237)}mph`;
     return `${ms.toFixed(1)}m/s`;
   };
 

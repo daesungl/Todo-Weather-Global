@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable } from 'react-native';
-import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { TouchableOpacity, GestureHandlerRootView, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
@@ -131,8 +131,11 @@ const HomeScreen = ({ navigation }) => {
   const [isSearching, setIsSearching] = useState(false);
   const modalPanY = useRef(new Animated.Value(height)).current;
   const [adHidden, setAdHidden] = useState(false);
+  const [isScrollEnabled, setIsScrollEnabled] = useState(true);
 
   const openSearchModal = () => {
+    setSearchQuery('');
+    setSearchResults([]);
     setSearchModalVisible(true);
     Animated.spring(modalPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
@@ -331,9 +334,7 @@ const HomeScreen = ({ navigation }) => {
     setRegions(updated);
     const newest = updated[updated.length - 1];
     fetchRegionWeather(newest);
-    setSearchModalVisible(false);
-    setSearchQuery('');
-    setSearchResults([]);
+    closeSearchModal();
   };
 
   // tzOffsetMs 기반으로 condKey의 낮/밤을 실시간 교정
@@ -394,7 +395,7 @@ const HomeScreen = ({ navigation }) => {
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
       <MainHeader onMenuPress={() => setMenuVisible(true)} />
 
-      <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <GHScrollView ref={scrollViewRef} scrollEnabled={isScrollEnabled} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Hero Section */}
         <TouchableOpacity
           style={styles.heroSection}
@@ -475,6 +476,11 @@ const HomeScreen = ({ navigation }) => {
               data={(displayRegions || []).filter(r => r.pageIndex === currentPage - 1)}
               keyExtractor={(item) => item.id}
               onDragEnd={handleRegionDragEnd}
+              onDragBegin={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                setIsScrollEnabled(false);
+              }}
+              onRelease={() => setIsScrollEnabled(true)}
               scrollEnabled={false}
               activationDistance={20}
               renderItem={({ item: region, drag, isActive }) => {
@@ -592,7 +598,7 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           ))}
         </View>
-      </ScrollView>
+      </GHScrollView>
 
       <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { fetchMainWeather(); loadRegions(); }} navigation={navigation} />
 

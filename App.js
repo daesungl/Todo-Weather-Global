@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { Easing, StyleSheet, AppState, Animated } from 'react-native';
+import { Easing, StyleSheet, AppState, Animated, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -8,6 +8,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
 import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
@@ -94,6 +95,16 @@ export default function App() {
   useEffect(() => {
     const prepare = async () => {
       try {
+        // iOS 광고 추적 권한 요청
+        if (Platform.OS === 'ios') {
+          const { status } = await requestTrackingPermissionsAsync();
+          if (status === 'granted') {
+            console.log('Tracking permission granted');
+            // 권한 허용 후 AdMob 다시 초기화 시도 (선택 사항)
+            AdManager.initialize();
+          }
+        }
+
         // 앱 준비 및 데이터 로딩 (최소 1.5초 유지)
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (e) {
@@ -179,7 +190,7 @@ export default function App() {
           ]}
         >
           <Animated.Image
-            source={require('./assets/splash-icon-v3.png')}
+            source={require('./assets/splash-icon-v5.png')}
             style={{
               width: '100%',
               height: '100%',
