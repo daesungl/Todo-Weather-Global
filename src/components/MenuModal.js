@@ -334,22 +334,24 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Dev: Premium Toggle - Slightly hidden in scroll */}
-                  <View style={styles.devSection}>
-                    <View style={styles.devRow}>
-                      <Crown size={14} color={isPremium ? '#f59e0b' : Colors.outline} />
-                      <Text style={[styles.devLabel, isPremium && { color: '#f59e0b' }]}>
-                        {isPremium ? 'Premium Dev Mode ON' : 'Premium Dev Mode OFF'}
-                      </Text>
-                      <Switch
-                        value={isPremium}
-                        onValueChange={(val) => devTogglePremium(val)}
-                        trackColor={{ false: Colors.outlineVariant, true: '#fde68a' }}
-                        thumbColor={isPremium ? '#f59e0b' : Colors.outline}
-                        style={{ transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] }}
-                      />
+                  {/* Dev: Premium Toggle - Only visible in development mode */}
+                  {__DEV__ && (
+                    <View style={styles.devSection}>
+                      <View style={styles.devRow}>
+                        <Crown size={14} color={isPremium ? '#f59e0b' : Colors.outline} />
+                        <Text style={[styles.devLabel, isPremium && { color: '#f59e0b' }]}>
+                          {isPremium ? 'Premium Dev Mode ON' : 'Premium Dev Mode OFF'}
+                        </Text>
+                        <Switch
+                          value={isPremium}
+                          onValueChange={(val) => devTogglePremium(val)}
+                          trackColor={{ false: Colors.outlineVariant, true: '#fde68a' }}
+                          thumbColor={isPremium ? '#f59e0b' : Colors.outline}
+                          style={{ transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] }}
+                        />
+                      </View>
                     </View>
-                  </View>
+                  )}
                 </ScrollView>
 
                 {/* Fixed Bottom Premium CTA & Copyright */}

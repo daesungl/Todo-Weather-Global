@@ -7,12 +7,18 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 import './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
 import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import { useSubscription } from './src/contexts/SubscriptionContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
+
+// 스플래시 화면 자동 숨김 방지
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* ignore error */
+});
 
 // AdMob 초기화 (AdManager 사용)
 AdManager.initialize();
@@ -81,6 +87,21 @@ function AppOpenAdHandler() {
 export default function App() {
   const routeNameRef = React.useRef();
   const navigationRef = React.useRef();
+
+  useEffect(() => {
+    // 앱이 로드된 후 최소 1.5초간 스플래시 유지
+    const prepare = async () => {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        await SplashScreen.hideAsync();
+      }
+    };
+
+    prepare();
+  }, []);
 
   return (
     <GestureHandlerRootView style={styles.root}>

@@ -9,12 +9,12 @@ const AdBanner = ({ unitId = BANNER_UNIT_ID, size = BannerAdSize.ANCHORED_ADAPTI
   const [adLoaded, setAdLoaded] = useState(false);
   const [adError, setAdError] = useState(false);
 
-  if (isPremium) {
+  if (isPremium || adError) {
     return null;
   }
 
   return (
-    <View style={[styles.container, !adLoaded && !adError && styles.loadingMinHeight]}>
+    <View style={styles.container}>
       <BannerAd
         unitId={unitId}
         size={size}
@@ -26,13 +26,11 @@ const AdBanner = ({ unitId = BANNER_UNIT_ID, size = BannerAdSize.ANCHORED_ADAPTI
           setAdError(false);
         }}
         onAdFailedToLoad={(error) => {
-          console.warn('[AdBanner] Failed to load ad:', error);
+          console.log('[AdBanner] Failed to load ad:', error);
           setAdError(true);
           setAdLoaded(false);
         }}
       />
-      {/* 광고 로드에 실패했거나 아직 로딩 중일 때 최소한의 여백 보장 */}
-      {(adError || !adLoaded) && <View style={styles.errorSpacer} />}
     </View>
   );
 };
@@ -43,13 +41,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-  },
-  loadingMinHeight: {
-    minHeight: 60, // 배너 로딩 중일 때 깜빡임 방지
-  },
-  errorSpacer: {
-    height: 30, // 광고 로드 실패 시 보장할 여백
-    width: '100%',
+    // 광고가 로드되기 전까지는 높이를 차지하지 않음
   },
 });
 
