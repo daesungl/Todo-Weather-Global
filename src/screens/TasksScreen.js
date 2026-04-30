@@ -260,7 +260,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
   const todayStr = React.useMemo(() => dateStr(new Date()), []);
 
   return (
-    <View style={[styles.monthGrid, { width: width - Spacing.lg * 2 }]}>
+    <View style={[styles.monthGrid, { width: width - Spacing.sm * 2 }]}>
       {days.map((day, i) => {
         const ds = dateStr(day.date);
         const isSelected = ds === selectedDateStr;
@@ -316,7 +316,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                 const weekEndIdx = Math.min(effectiveEndIdx, weekStartIdx + (6 - (weekStartIdx % 7)));
                 const isSegmentStart = i === weekStartIdx;
                 const spanInWeek = weekEndIdx - weekStartIdx + 1;
-                const cellWidth = Math.floor((width - Spacing.lg * 2) / 7);
+                const cellWidth = Math.floor((width - Spacing.sm * 2) / 7);
 
                 return (
                   <View
@@ -1131,8 +1131,8 @@ const TasksScreen = ({ navigation }) => {
   }, [sheetAnim, setSelectedTaskDetail, setIsTaskListVisible, setSelectedDate, setTaskDate]);
 
   const calendarItemLayout = React.useCallback((data, index) => ({
-    length: width - Spacing.lg * 2,
-    offset: (width - Spacing.lg * 2) * index,
+    length: width - Spacing.sm * 2,
+    offset: (width - Spacing.sm * 2) * index,
     index,
   }), []);
 
@@ -1271,8 +1271,8 @@ const TasksScreen = ({ navigation }) => {
               keyExtractor={item => item.toString()}
               initialScrollIndex={getMonthIndex(selectedDate)}
               getItemLayout={(data, index) => ({
-                length: width - Spacing.lg * 2,
-                offset: (width - Spacing.lg * 2) * index,
+                length: width - Spacing.sm * 2,
+                offset: (width - Spacing.sm * 2) * index,
                 index,
               })}
               windowSize={3}
@@ -1282,7 +1282,7 @@ const TasksScreen = ({ navigation }) => {
               removeClippedSubviews={true}
               onMomentumScrollBegin={() => { isScrollingRef.current = true; }}
               onMomentumScrollEnd={(e) => {
-                const index = Math.round(e.nativeEvent.contentOffset.x / (width - Spacing.lg * 2));
+                const index = Math.round(e.nativeEvent.contentOffset.x / (width - Spacing.sm * 2));
                 const newBaseDate = getDateFromIndex(index);
 
                 if (newBaseDate.getMonth() !== selectedDate.getMonth() || newBaseDate.getFullYear() !== selectedDate.getFullYear()) {
@@ -2576,18 +2576,18 @@ const TasksScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { backgroundColor: 'white', borderBottomLeftRadius: 32, borderBottomRightRadius: 32, paddingBottom: Spacing.xl, elevation: 4, zIndex: 10 },
-  monthHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 },
+  monthHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0, paddingHorizontal: Spacing.lg - Spacing.sm },
   monthSelectBtn: { flexDirection: 'row', alignItems: 'center' },
   monthText: { fontSize: 24, fontWeight: '800', color: '#1B254B' },
   viewToggleBtn: { padding: 8, backgroundColor: '#F4F7FE', borderRadius: 12 },
   viewToggleText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
   calendarArea: { paddingHorizontal: 0 },
   weekdayLabels: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 10, paddingHorizontal: 0 },
-  weekdayText: { width: Math.floor((width - Spacing.lg * 2) / 7), textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
+  weekdayText: { width: Math.floor((width - Spacing.sm * 2) / 7), textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
   weekStrip: { flexDirection: 'row', justifyContent: 'space-between' },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
-  dayCell: { width: Math.floor((width - Spacing.lg * 2 - 20) / 7), height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
-  dayCellMonth: { width: Math.floor((width - Spacing.lg * 2) / 7), height: 95, borderRadius: 8, marginBottom: 4 },
+  dayCell: { width: Math.floor((width - Spacing.sm * 2 - 20) / 7), height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
+  dayCellMonth: { width: Math.floor((width - Spacing.sm * 2) / 7), height: 105, borderRadius: 8, marginBottom: 4 },
   dayCellTop: { paddingVertical: 4, alignItems: 'center', height: 32, zIndex: 10 },
   dayNumContainer: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   todayCircle: { backgroundColor: Colors.text },
@@ -2595,16 +2595,16 @@ const styles = StyleSheet.create({
   dayNum: { fontSize: 13, fontWeight: '700', color: Colors.text },
 
   calendarSlotContainer: { flex: 1, paddingHorizontal: 1, gap: 0 },
-  emptySlotRow: { height: 12 },
-  calendarTaskBar: { height: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
+  emptySlotRow: { height: 14 },
+  calendarTaskBar: { height: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
   barStart: { borderTopLeftRadius: 3, borderBottomLeftRadius: 3, marginLeft: 1 },
   barEnd: { borderTopRightRadius: 3, borderBottomRightRadius: 3, marginRight: 1 },
   barMiddle: { marginHorizontal: 0 },
-  calendarBarText: { fontSize: 9, fontWeight: '700', color: 'white', lineHeight: 12, includeFontPadding: false, textAlignVertical: 'center' },
+  calendarBarText: { fontSize: 10, fontWeight: '700', color: 'white', lineHeight: 14, includeFontPadding: false, textAlignVertical: 'center' },
   moreTasksRow: { height: 10, justifyContent: 'center', alignItems: 'center', marginTop: 0 },
   moreTasksText: { fontSize: 8, fontWeight: '800', color: Colors.textSecondary },
 
-  scrollContent: { padding: Spacing.lg, paddingBottom: 180 },
+  scrollContent: { paddingHorizontal: Spacing.sm, paddingTop: Spacing.lg, paddingBottom: 180 },
   sectionHeader: { marginBottom: Spacing.xl },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase' },
   sectionSubtitle: { fontSize: 22, fontWeight: '800', color: Colors.text, marginTop: 2 },
