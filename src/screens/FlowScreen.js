@@ -398,7 +398,7 @@ const FlowScreen = ({ navigation }) => {
           try {
             const weather = await WeatherService.getWeather(step.lat, step.lon, false, step.region?.name, step.region?.name);
             if (!weather?.condKey) continue;
-            const newWeather = { condKey: weather.condKey, isDay: weather.isDay !== false };
+            const newWeather = { condKey: weather.condKey, isDay: weather.isDay !== false, tzOffsetMs: weather.tzOffsetMs };
 
             setFlows(prev => {
               const updated = prev.map(f => {
@@ -829,6 +829,14 @@ const FlowScreen = ({ navigation }) => {
     return localHour >= 6 && localHour < 18;
   };
 
+  const getStepIsDay = (step) => {
+    if (step.weather?.tzOffsetMs !== undefined) {
+      const localHour = new Date(Date.now() + step.weather.tzOffsetMs).getUTCHours();
+      return localHour >= 6 && localHour < 18;
+    }
+    return getLiveIsDay(step.lon);
+  };
+
   const renderWeatherIcon = (key, size = 20, color = Colors.primary, isDay = true) => {
     const moonColor = color === 'white' ? 'white' : "#A1C9FF";
     const sunColor = color === 'white' ? 'white' : "#f59e0b";
@@ -1097,7 +1105,7 @@ const FlowScreen = ({ navigation }) => {
                                 style={{ paddingHorizontal: 10, paddingVertical: 8, marginLeft: 4 }}
                               >
                                 <View pointerEvents="none">
-                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, getLiveIsDay(step.lon))}
+                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, getStepIsDay(step))}
                                 </View>
                               </GHButton>
                             )}

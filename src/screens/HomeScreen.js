@@ -158,13 +158,25 @@ const HomeScreen = ({ navigation }) => {
   const modalPanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
-      onPanResponderMove: (_, g) => { if (g.dy > 0) modalPanY.setValue(g.dy); },
+      onMoveShouldSetPanResponder: (_, g) => {
+        // 세로 이동이 가로 이동보다 크고, 5px 이상 움직였을 때만 인식
+        return Math.abs(g.dy) > Math.abs(g.dx) && g.dy > 5;
+      },
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) modalPanY.setValue(g.dy);
+      },
       onPanResponderRelease: (_, g) => {
-        if (g.dy > 100 || g.vy > 0.5) {
+        // 80px 이상 내려갔거나, 아래로 빠르게(0.3 이상) 튕겼을 때 닫기
+        if (g.dy > 80 || (g.vy > 0.3 && g.dy > 0)) {
           closeSearchModal();
         } else {
-          Animated.spring(modalPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+          // 원래 위치로 복구 (부드러운 스프링 효과)
+          Animated.spring(modalPanY, { 
+            toValue: 0, 
+            useNativeDriver: true, 
+            tension: 50, 
+            friction: 8 
+          }).start();
         }
       },
     })
@@ -780,6 +792,12 @@ const styles = StyleSheet.create({
     letterSpacing: -3,
     marginLeft: -4,
   },
+  modalHandleArea: {
+    width: '100%',
+    height: 44, // 30에서 44로 확대하여 터치 편의성 개선
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   heroVisualWrap: {
     width: 120,
     height: 120,
@@ -1006,7 +1024,6 @@ const styles = StyleSheet.create({
 
   // Modal Styles
   modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalHandleArea: { alignItems: 'center', paddingTop: 4, paddingBottom: 12 },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, opacity: 0.5 },
   modalContent: {
     height: height * 0.8,

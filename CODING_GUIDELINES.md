@@ -91,5 +91,64 @@ React Native/Expo 환경에서 iOS와 안드로이드는 동작 방식이 다를
 
 ---
 
+## 🎨 UX & Interaction Principles
+
+사용자에게 프리미엄하고 기민한(Snappy) 반응성을 제공하기 위한 핵심 인터랙션 원칙입니다.
+
+### 📍 즉시 네비게이션 (Immediate Navigation)
+*   **원칙:** 데이터 로딩 완료를 기다리지 않고 즉시 화면을 전환합니다.
+*   **구현:** 
+    *   날씨 아이콘이나 지역 카드 클릭 시 `await WeatherService...`를 하지 않고 즉시 `navigation.navigate`를 호출합니다.
+    *   상세 데이터가 없는 경우 기본적인 좌표(`lat`, `lon`)와 이름만 전달하며, 상세 화면(`WeatherDetailScreen`) 내부의 `useEffect`에서 부족한 데이터를 비동기로 로딩합니다.
+    *   사용자가 "기다린다"는 느낌을 받지 않도록 하는 것이 최우선입니다.
+
+### 📍 터치 응답성 및 히트박스 (Touch Responsiveness)
+*   **GHButton 활용:** 단순 클릭이 아닌 인터랙티브한 반응이 필요한 모든 요소에는 `src/components/common/GHButton` (또는 프로젝트 내 최적화된 버튼 컴포넌트)을 사용합니다.
+*   **히트박스 확장 (`hitSlop`):** 아이콘 위주의 작은 버튼은 사용자의 손가락 크기를 고려하여 최소 `20px` ~ `25px` 이상의 `hitSlop`을 상하좌우로 부여합니다.
+*   **이벤트 간섭 방지:** 버튼 내부의 아이콘이나 텍스트에는 `pointerEvents="none"`을 적용하여 터치 이벤트가 부모 버튼으로 누락 없이 전달되게 합니다.
+
+### 📍 햅틱 피드백 (Haptic Feedback)
+*   **적용 시점:** 
+    *   페이지 이동(날씨 상세 진입 등) 시작 시점
+    *   주요 설정 변경 또는 삭제/저장 성공 시
+    *   모달이 열리거나 닫히는 시점
+*   **스타일:** `Haptics.ImpactFeedbackStyle.Light`를 기본으로 사용하되, 중요도에 따라 `Medium` 또는 `Heavy`를 적절히 섞어 사용합니다.
+
+### 📍 브랜딩 및 공유 레이아웃 (Branding Policy)
+*   **스플래시/아이콘 가시성:** 배경색(`app.json`의 `backgroundColor`)과 로고/텍스트 간의 대비를 높여 작은 사이즈에서도 명확히 보이도록 유지합니다.
+*   **공유용 워터마크:** 플로우 공유 이미지 등 외부로 노출되는 화면 하단에는 `TODO WEATHER | Your smart event-based weather planner` 문구를 은은하게(opacity 0.6 내외) 배치하여 앱의 정체성을 유지합니다.
+
+---
+
+## 🏗️ Structural & Maintenance Principles
+
+앱의 규모가 커짐에 따라 코드의 가독성과 유지보수성을 유지하기 위한 구조적 가이드라인입니다.
+
+### 📍 컴포넌트 분리 (Component Decomposition)
+*   **원칙:** 하나의 파일이 너무 비대해지지 않도록 기능을 단위별로 쪼갭니다.
+*   **기준:** 특정 스크린 파일(예: `FlowScreen.js`)이 800행을 초과하거나, 내부 모달/컴포넌트 로직이 복잡해질 경우 `src/components/` 하위로 분리합니다.
+*   **분리 대상:** 
+    *   복잡한 모달 (`SearchModal`, `EditStepModal` 등)
+    *   반복되는 리스트 아이템 (`StepRow`, `RegionCard` 등)
+    *   독립적인 레이아웃 블록 (`HeroSection`, `WeatherGrid` 등)
+
+### 📍 비즈니스 로직의 추상화 (Custom Hooks)
+*   **원칙:** UI와 비즈니스 로직을 분리하여 재사용성을 높이고 코드를 간결하게 유지합니다.
+*   **구현:** API 호출, 복잡한 상태 계산, 구독 권한 체크 등은 `src/hooks/` 폴더에 커스텀 훅(예: `useWeather`, `useSubscription`, `useTaskSync`)으로 만들어 관리합니다.
+
+### 📍 스타일 및 테마 관리
+*   **공통 테마:** 색상, 타이포그래피, 간격 등은 반드시 `src/theme/`에 정의된 토큰을 사용합니다.
+*   **스타일 분리:** 특정 컴포넌트 내의 `StyleSheet`가 너무 길어질 경우, `ComponentName.styles.js` 파일로 분리하여 관리하는 것을 권장합니다.
+
+---
+
+> [!TIP]
+> 새로운 기능을 개발할 때 "이것이 충분히 빠르게 반응하는가?"와 "터치가 시원시원한가?"를 항상 자문해 보세요. 기술적인 완결성만큼이나 사용자가 느끼는 **'부드러움'**이 이 앱의 핵심 가치입니다.
+
 > [!TIP]
 > 새로운 라이브러리를 추가하거나 네이티브 설정을 변경할 때는 반드시 **iOS와 안드로이드 양쪽 기기(또는 시뮬레이터)에서 모두 테스트**를 완료해야 합니다.
+
+### 4. Data Reliability & Validation
+- **Validation Layer**: Always validate external API responses before caching or updating UI. Filter extreme outliers (e.g., ±90°C weather) and ensure minimum data completeness.
+- **Retry Strategy**: Implement at least one automatic retry with a slight delay for transient API failures or validation errors before falling back to alternative sources.
+- **Graceful Fallback**: When a primary data source fails validation, attempt secondary sources to ensure service availability.

@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "13",
+      "buildNumber": "14",
       "infoPlist": {
         "CFBundleLocalizations": [
           "ko",

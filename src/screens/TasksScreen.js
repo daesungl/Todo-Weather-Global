@@ -237,7 +237,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
         const segEnd = Math.min(ee, weekEnd) - weekStart;
 
         let slot = 0;
-        while (slot < 4) {
+        while (slot < 5) {
           let available = true;
           for (let i = segStart; i <= segEnd; i++) {
             if (occ[i].includes(slot)) { available = false; break; }
@@ -247,7 +247,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
         }
 
         const key = `${task.id}_${week}`;
-        if (slot < 4) {
+        if (slot < 5) {
           slots[key] = slot;
           for (let i = segStart; i <= segEnd; i++) occ[i].push(slot);
         }
@@ -296,7 +296,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
               </View>
             </View>
             <View style={styles.calendarSlotContainer}>
-              {[0, 1, 2, 3].map(slotIdx => {
+              {[0, 1, 2, 3, 4].map(slotIdx => {
                 const weekIndex = Math.floor(i / 7);
                 const task = dayTasks.find(t => taskSlots[`${t.id}_${weekIndex}`] === slotIdx);
                 if (!task) return <View key={slotIdx} style={styles.emptySlotRow} />;
@@ -2594,15 +2594,15 @@ const styles = StyleSheet.create({
   todayText: { color: 'white' },
   dayNum: { fontSize: 13, fontWeight: '700', color: Colors.text },
 
-  calendarSlotContainer: { flex: 1, paddingHorizontal: 1, gap: 1 },
-  emptySlotRow: { height: 14 },
-  calendarTaskBar: { height: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
-  barStart: { borderTopLeftRadius: 4, borderBottomLeftRadius: 4, marginLeft: 2 },
-  barEnd: { borderTopRightRadius: 4, borderBottomRightRadius: 4, marginRight: 2 },
+  calendarSlotContainer: { flex: 1, paddingHorizontal: 1, gap: 0 },
+  emptySlotRow: { height: 12 },
+  calendarTaskBar: { height: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
+  barStart: { borderTopLeftRadius: 3, borderBottomLeftRadius: 3, marginLeft: 1 },
+  barEnd: { borderTopRightRadius: 3, borderBottomRightRadius: 3, marginRight: 1 },
   barMiddle: { marginHorizontal: 0 },
-  calendarBarText: { fontSize: 10, fontWeight: '700', color: 'white', lineHeight: 14, includeFontPadding: false, textAlignVertical: 'center' },
-  moreTasksRow: { height: 13, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
-  moreTasksText: { fontSize: 9, fontWeight: '800', color: Colors.textSecondary },
+  calendarBarText: { fontSize: 9, fontWeight: '700', color: 'white', lineHeight: 12, includeFontPadding: false, textAlignVertical: 'center' },
+  moreTasksRow: { height: 10, justifyContent: 'center', alignItems: 'center', marginTop: 0 },
+  moreTasksText: { fontSize: 8, fontWeight: '800', color: Colors.textSecondary },
 
   scrollContent: { padding: Spacing.lg, paddingBottom: 180 },
   sectionHeader: { marginBottom: Spacing.xl },

@@ -98,29 +98,28 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
           fetchKMAWarning(region, city).catch(() => null)
         ]);
 
-        if (kma && kma.temp !== '--°') {
-          console.log(`[${address}] 날씨 데이터 ( KMA ) 조회 완료`);
-          const result = { 
-            ...kma, 
-            ...sun, 
-            alert: alert, 
-            locationName: regionId || address, 
-            addressName: address, 
-            lat,
-            lon,
-            isAccurateSource: true 
-          };
+          if (kma && kma.temp !== '--°') {
+            console.log(`[${address}] 날씨 데이터 ( KMA ) 조회 완료`);
+            const result = { 
+              ...kma, 
+              ...sun, 
+              alert: alert, 
+              locationName: regionId || address, 
+              addressName: address, 
+              lat,
+              lon,
+              isAccurateSource: true 
+            };
 
-          // Final isDay Correction
-          const now = new Date();
-          const kstOffset = 9 * 60 * 60 * 1000;
-          const nowKST = new Date(now.getTime() + kstOffset);
-          const hour = nowKST.getUTCHours();
-          result.isDay = hour >= 6 && hour < 18;
+            // Final isDay Correction using local timezone
+            const now = new Date();
+            const offsetMs = result.tzOffsetMs ?? (9 * 60 * 60 * 1000); // KMA is usually +9h
+            const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
+            result.isDay = localHour >= 6 && localHour < 18;
 
-          await saveCache(cacheKey, result);
-          return result;
-        }
+            await saveCache(cacheKey, result);
+            return result;
+          }
         throw new Error('KMA data invalid or empty');
       } catch (kmaErr) {
         console.warn(`[${address}] 날씨 데이터 ( KMA ) 조회 실패 (에러코드: ${kmaErr.response?.status || kmaErr.message})`);
@@ -148,12 +147,11 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
         isAccurateSource: false
       };
 
-      // Final isDay Correction
+      // Final isDay Correction using local timezone
       const now = new Date();
-      const kstOffset = 9 * 60 * 60 * 1000;
-      const nowKST = new Date(now.getTime() + kstOffset);
-      const hour = nowKST.getUTCHours();
-      result.isDay = hour >= 6 && hour < 18;
+      const offsetMs = result.tzOffsetMs ?? 0;
+      const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
+      result.isDay = localHour >= 6 && localHour < 18;
 
       await saveCache(cacheKey, result);
       return result;

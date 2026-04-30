@@ -13,7 +13,6 @@ const pad = (n) => n.toString().padStart(2, '0');
 
 const getKSTDate = (date = new Date()) => {
   // Convert standard epoch time directly into a +9h shifted Date object
-  // Using getUTC* functions on this object guarantees perfect KST mapping
   return new Date(date.getTime() + 9 * 60 * 60 * 1000);
 };
 
@@ -30,7 +29,6 @@ export const fetchKMAWarning = async (region, city) => {
     let stnId = 108; // 전국 기본
     const locationStr = `${region} ${city}`;
 
-    // 더 정교한 지점 매칭
     const matched = WeatherWarnStationCode.find(d => locationStr.includes(d.Region));
     if (matched) stnId = matched.Code;
 
@@ -39,24 +37,16 @@ export const fetchKMAWarning = async (region, city) => {
     const url = 'https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrInfo';
     const params = { serviceKey: KMA_SERVICE_KEY, pageNo: '1', numOfRows: '10', dataType: 'JSON', stnId, fromTmFc: fromDate };
 
-    const response = await axios.get(url, { params, timeout: 5000 }); // 5초 타임아웃
+    const response = await axios.get(url, { params, timeout: 5000 });
     const rawItems = response?.data?.response?.body?.items?.item;
 
     const itemsArray = Array.isArray(rawItems) ? rawItems : (rawItems ? [rawItems] : []);
     if (itemsArray.length === 0) return null;
-    // 특보 현황이 포함된 항목 우선, 없으면 첫 번째 항목
     const item = itemsArray.find(i => i.t1?.includes('특보 현황')) ?? itemsArray[0];
 
     if (!item?.t1) return null;
 
-    // 데이터 정제: STN-ID 제거, 중복 줄바꿈 처리 등
-    let cleanedText = item.t1
-      //   .replace(/STN-ID: \d+/g, '')
-      .replace(/\\n/g, '\n')
-      //  .replace(/\n\n+/g, '\n')
-      .trim();
-
-    console.log('[KMAService] Warning Date:', item.tmFc); //charles test log
+    let cleanedText = item.t1.replace(/\\n/g, '\n').trim();
 
     return {
       text: cleanedText,
@@ -161,64 +151,51 @@ const findMidRegionCodes = (addressObj) => {
   if (!taCode) { taCode = TempRegionCode.find(d => fullName.includes(d.City))?.Code || '11B10101'; }
   let landCode = SkyRegionCode.find(d => region.includes(d.Region) && city.includes(d.City))?.Code;
   if (!landCode) { landCode = SkyRegionCode.find(d => fullName.includes(d.Region))?.Code || '11B00000'; }
-
-  // 전망 구역 코드 (stnId)
   let stnId = SummaryRegionCode.find(d => region.includes(d.Region))?.Code || '108';
-
-  console.log(`[KMA] region="${region}" city="${city}" → landCode=${landCode} taCode=${taCode} stnId=${stnId}`);
   return { taCode, landCode, stnId };
 };
 
-// Safe helper to extract item array from complex KMA responses
 const safeGetItemArray = (res) => {
   const items = res?.data?.response?.body?.items;
   if (!items) return [];
   if (Array.isArray(items.item)) return items.item;
-  if (items.item) return [items.item]; // Handle single item object
+  if (items.item) return [items.item];
   return [];
 };
 
 export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
-  try {
-    const { x, y } = dfs_xy_conv('toXY', lat, lon);
-    const ncstTime = getNcstBaseTime();
-    const ultraTime = getUltraBaseTime();
-    const vilageTime = getVilageBaseTime();
-    const midTime = getMidBaseTime();
-    const { taCode, landCode, stnId } = findMidRegionCodes(addressObj);
+  const { x, y } = dfs_xy_conv('toXY', lat, lon);
+  const ncstTime = getNcstBaseTime();
+  const ultraTime = getUltraBaseTime();
+  const vilageTime = getVilageBaseTime();
+  const midTime = getMidBaseTime();
+  const { taCode, landCode, stnId } = findMidRegionCodes(addressObj);
+  const baseUrl = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0';
+  const midUrl = 'https://apis.data.go.kr/1360000/MidFcstInfoService';
+  const serviceKey = process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '';
 
-    const baseUrl = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0';
-    const midUrl = 'https://apis.data.go.kr/1360000/MidFcstInfoService';
-    // Use raw key in URL to prevent Axios double encoding issues
-    const serviceKey = process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '';
+  const getValidatedData = async () => {
+    const fetchData = async (attempt = 1) => {
+      try {
+        const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes] = await Promise.all([
+          axios.get(`${baseUrl}/getUltraSrtNcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y }, timeout: 5000 }).catch(() => null),
+          axios.get(`${baseUrl}/getUltraSrtFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 60, dataType: 'JSON', base_date: ultraTime.baseDate, base_time: ultraTime.baseTime, nx: x, ny: y }, timeout: 5000 }).catch(() => null),
+          axios.get(`${baseUrl}/getVilageFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 1000, dataType: 'JSON', base_date: vilageTime.baseDate, base_time: vilageTime.baseTime, nx: x, ny: y }, timeout: 5000 }).catch(() => null),
+          axios.get(`${midUrl}/getMidLandFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: landCode, tmFc: midTime.baseDate + midTime.baseTime }, timeout: 5000 }).catch(() => null),
+          axios.get(`${midUrl}/getMidTa?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime }, timeout: 5000 }).catch(() => null),
+          axios.get(`${midUrl}/getMidFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime }, timeout: 5000 }).catch(() => null)
+        ]);
+        return { ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes };
+      } catch (e) {
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 1000));
+          return fetchData(attempt + 1);
+        }
+        throw e;
+      }
+    };
 
-    const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes] = await Promise.all([
-      axios.get(`${baseUrl}/getUltraSrtNcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y },
-        timeout: 5000
-      }).catch(() => null),
-      axios.get(`${baseUrl}/getUltraSrtFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 60, dataType: 'JSON', base_date: ultraTime.baseDate, base_time: ultraTime.baseTime, nx: x, ny: y },
-        timeout: 5000
-      }).catch(() => null),
-      axios.get(`${baseUrl}/getVilageFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 1000, dataType: 'JSON', base_date: vilageTime.baseDate, base_time: vilageTime.baseTime, nx: x, ny: y },
-        timeout: 5000
-      }).catch(() => null),
-      axios.get(`${midUrl}/getMidLandFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: landCode, tmFc: midTime.baseDate + midTime.baseTime },
-        timeout: 5000
-      }).catch(() => null),
-      axios.get(`${midUrl}/getMidTa?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime },
-        timeout: 5000
-      }).catch(() => null),
-      axios.get(`${midUrl}/getMidFcst?serviceKey=${serviceKey}`, {
-        params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime },
-        timeout: 5000
-      }).catch(() => null)
-    ]);
-
+    const { ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes } = await fetchData();
     const liveItems = safeGetItemArray(ncstRes);
     const ultraItems = safeGetItemArray(ultraRes);
     const forecastItems = safeGetItemArray(vilageRes);
@@ -244,7 +221,6 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
     });
 
     const hourlyMap = {};
-    // 1. Base: Village Forecast (Updated every 3 hours)
     forecastItems.forEach(item => {
       const key = `${item.fcstDate}${item.fcstTime}`;
       if (!hourlyMap[key]) hourlyMap[key] = { date: item.fcstDate, time: item.fcstTime };
@@ -258,12 +234,11 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       if (item.category === 'PCP') hourlyMap[key].pcp = item.fcstValue;
     });
 
-    // 2. Override: Ultra-Short-Term Forecast (Updated every hour, highly accurate for next 6h)
     ultraItems.forEach(item => {
       const key = `${item.fcstDate}${item.fcstTime}`;
-      if (!hourlyMap[key]) return; // Forecast items are primary timeline
-      if (item.category === 'T1H') hourlyMap[key].temp = item.fcstValue; // Use temp from ultra
-      if (item.category === 'RN1') hourlyMap[key].pcp = item.fcstValue; // Use 1h precipitation from ultra
+      if (!hourlyMap[key]) return;
+      if (item.category === 'T1H') hourlyMap[key].temp = item.fcstValue;
+      if (item.category === 'RN1') hourlyMap[key].pcp = item.fcstValue;
       if (item.category === 'SKY') hourlyMap[key].sky = item.fcstValue;
       if (item.category === 'PTY') hourlyMap[key].pty = item.fcstValue;
       if (item.category === 'WSD') hourlyMap[key].wind = item.fcstValue;
@@ -286,24 +261,16 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         if (!pcpVal || pcpVal === '강수없음' || pcpVal === '0') pcpVal = '0mm';
         else if (pcpVal === '1mm 미만') pcpVal = '~1mm';
         else if (!pcpVal.includes('mm') && !isNaN(pcpVal)) pcpVal = `${pcpVal}mm`;
-
         const isHourDay = hour >= 6 && hour < 18;
         return {
-          time: hourLabel,
-          temp: `${h.temp}°`,
-          condKey: mapKMAtoCondKey(h.sky, h.pty, isHourDay),
-          pop: `${h.pop}%`,
-          pcp: pcpVal,
-          wind: `${Math.round(h.wind)}m/s`,
-          windDeg: (parseInt(h.windDeg) + 180) % 360,
-          hum: `${h.hum}%`,
-          fullTime: `${h.date}${h.time}`,
-          isDay: isHourDay
+          time: hourLabel, temp: `${h.temp}°`, condKey: mapKMAtoCondKey(h.sky, h.pty, isHourDay),
+          pop: `${h.pop}%`, pcp: pcpVal, wind: `${Math.round(h.wind)}m/s`,
+          windDeg: (parseInt(h.windDeg) + 180) % 360, hum: `${h.hum}%`, fullTime: `${h.date}${h.time}`, isDay: isHourDay
         };
       });
 
-    let highLimit = -100, lowLimit = 100;
     const todayStr = getKSTDateString(new Date());
+    let highLimit = -100, lowLimit = 100;
     forecastItems.forEach(item => {
       if (item.fcstDate === todayStr) {
         const val = parseFloat(item.fcstValue);
@@ -316,19 +283,12 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
 
     const dailyForecast = [];
     const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const now = new Date();
-
     const midBaseYear = parseInt(midTime.baseDate.substring(0, 4));
     const midBaseMonth = parseInt(midTime.baseDate.substring(4, 6)) - 1;
     const midBaseDay = parseInt(midTime.baseDate.substring(6, 8));
     const midBaseDateObj = new Date(Date.UTC(midBaseYear, midBaseMonth, midBaseDay));
 
-    const getWorstPty = (cur, newVal) => {
-      if (newVal !== '0' && cur === '0') return newVal;
-      if (newVal === '3' || newVal === '7') return newVal;
-      return cur;
-    };
-
+    const getWorstPty = (cur, newVal) => (newVal !== '0' && cur === '0' ? newVal : (newVal === '3' || newVal === '7' ? newVal : cur));
     const safeMapKMA = (sky, pty) => {
       if (pty && pty !== '0') {
         if (pty === '1' || pty === '4' || pty === '5') return 'rainy';
@@ -336,11 +296,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         if (pty === '3' || pty === '7') return 'snow';
       }
       const s = parseInt(sky);
-      if (s <= 1) return 'sunny';
-      if (s <= 3) return 'partly_cloudy';
-      return 'cloudy';
+      return s <= 1 ? 'sunny' : (s <= 3 ? 'partly_cloudy' : 'cloudy');
     };
-
     const getMidCond = (status) => {
       if (!status) return 'sunny';
       if (status.includes('비')) return 'rainy';
@@ -350,33 +307,23 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       if (status.includes('흐림')) return 'cloudy';
       return 'sunny';
     };
-
     const getMidIdx = (dayOffset) => {
-      const kstNow = getKSTDate(now);
+      const kstNow = getKSTDate(nowRaw);
       const todayUTC = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
       const targetUTC = new Date(todayUTC.getTime() + dayOffset * 24 * 60 * 60 * 1000);
-      const diffDays = Math.round((targetUTC.getTime() - midBaseDateObj.getTime()) / (24 * 60 * 60 * 1000));
-      return diffDays;
+      return Math.round((targetUTC.getTime() - midBaseDateObj.getTime()) / (24 * 60 * 60 * 1000));
     };
 
-    console.log(`[KMA-Debug] MidBaseDate: ${midBaseDateObj.toISOString().split('T')[0]}, Now: ${getKSTDate(now).toISOString()}`);
-
     for (let i = 0; i < 10; i++) {
-      const targetDate = new Date(now.getTime() + (i * 24 * 60 * 60 * 1000));
+      const targetDate = new Date(nowRaw.getTime() + (i * 24 * 60 * 60 * 1000));
       const kstTarget = getKSTDate(targetDate);
       const dStr = getKSTDateString(targetDate);
       const dayLabel = i === 0 ? 'Today' : (i === 1 ? 'Tomorrow' : weekdays[kstTarget.getUTCDay()]);
-
-      let amPop = '0', pmPop = '0';
-      let amCond = 'sunny', pmCond = 'sunny';
+      let amPop = '0', pmPop = '0', amCond = 'sunny', pmCond = 'sunny';
       let highTemp = highLimit, lowTemp = lowLimit;
 
       if (i < 3) {
-        let dayHigh = -100, dayLow = 100;
-        let ptyAm = '0', ptyPm = '0';
-        let skyAm = '1', skyPm = '1';
-        let amPopMax = 0, pmPopMax = 0;
-        let hasData = false;
+        let dayHigh = -100, dayLow = 100, ptyAm = '0', ptyPm = '0', skyAm = '1', skyPm = '1', amPopMax = 0, pmPopMax = 0, hasData = false;
         forecastItems.forEach(item => {
           if (item.fcstDate === dStr) {
             hasData = true;
@@ -400,10 +347,8 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         if (hasData) {
           highTemp = dayHigh !== -100 ? dayHigh : highLimit;
           lowTemp = dayLow !== 100 ? dayLow : lowLimit;
-          amPop = amPopMax.toString();
-          pmPop = pmPopMax.toString();
-          amCond = safeMapKMA(skyAm, ptyAm);
-          pmCond = safeMapKMA(skyPm, ptyPm);
+          amPop = amPopMax.toString(); pmPop = pmPopMax.toString();
+          amCond = safeMapKMA(skyAm, ptyAm); pmCond = safeMapKMA(skyPm, ptyPm);
         } else {
           const idx = getMidIdx(i);
           amPop = String(midLandData[`rnSt${idx}Am`] ?? midLandData[`rnSt${idx}`] ?? '0');
@@ -413,63 +358,29 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         }
       } else {
         const idx = getMidIdx(i);
-        const taMax = midTaData[`taMax${idx}`];
-        const taMin = midTaData[`taMin${idx}`];
+        const taMax = midTaData[`taMax${idx}`], taMin = midTaData[`taMin${idx}`];
         highTemp = taMax !== undefined ? taMax : Math.round(highLimit - (i * 0.5));
         lowTemp = taMin !== undefined ? taMin : Math.round(lowLimit - (i * 0.5));
         if (idx >= 3 && idx <= 7) {
-          amPop = String(midLandData[`rnSt${idx}Am`] ?? '0');
-          pmPop = String(midLandData[`rnSt${idx}Pm`] ?? '0');
-          amCond = getMidCond(midLandData[`wf${idx}Am`]);
-          pmCond = getMidCond(midLandData[`wf${idx}Pm`]);
+          amPop = String(midLandData[`rnSt${idx}Am`] ?? '0'); pmPop = String(midLandData[`rnSt${idx}Pm`] ?? '0');
+          amCond = getMidCond(midLandData[`wf${idx}Am`]); pmCond = getMidCond(midLandData[`wf${idx}Pm`]);
         } else if (idx >= 8 && idx <= 10) {
-          const pop = String(midLandData[`rnSt${idx}`] ?? '0');
-          const wf = midLandData[`wf${idx}`];
-          amPop = pmPop = pop;
-          amCond = pmCond = getMidCond(wf);
+          const pop = String(midLandData[`rnSt${idx}`] ?? '0'), wf = midLandData[`wf${idx}`];
+          amPop = pmPop = pop; amCond = pmCond = getMidCond(wf);
         }
       }
-
       const mm = String(kstTarget.getUTCMonth() + 1).padStart(2, '0');
       const dd = String(kstTarget.getUTCDate()).padStart(2, '0');
-      const dateStr = `${mm}.${dd}`;
-
-      console.log(`[KMA-Forecast] D+${i} (${dayLabel}): H=${highTemp}, L=${lowTemp}, idx=${i < 3 ? 'ShortTerm' : getMidIdx(i)}`);
-      dailyForecast.push({
-        day: dayLabel,
-        date: dateStr,
-        high: Math.round(highTemp),
-        low: Math.round(lowTemp),
-        amPop: `${amPop}%`,
-        pmPop: `${pmPop}%`,
-        amCond,
-        pmCond,
-        condition: pmCond
-      });
+      dailyForecast.push({ day: dayLabel, date: `${mm}.${dd}`, high: Math.round(highTemp), low: Math.round(lowTemp), amPop: `${amPop}%`, pmPop: `${pmPop}%`, amCond, pmCond, condition: pmCond });
     }
-
-    console.log(`[KMA] Success! Returning accurate weather data for ${addressObj.address || 'Korea'}`);
 
     const condKey = mapKMAtoCondKey(liveWeather.sky, liveWeather.pty, nowKST.getUTCHours() >= 6 && nowKST.getUTCHours() < 18);
     const getConditionText = (key) => {
-      const map = {
-        sunny: '맑음',
-        clear_night: '맑음(밤)',
-        partly_cloudy: '구름많음',
-        mostly_clear_night: '구름조금(밤)',
-        cloudy: '흐림',
-        overcast: '흐림',
-        light_rain: '약한 비',
-        rainy: '비',
-        moderate_rain: '소나기',
-        snow: '눈',
-        snow_rain: '진눈깨비',
-        thunderstorm: '뇌우'
-      };
+      const map = { sunny: '맑음', clear_night: '맑음(밤)', partly_cloudy: '구름많음', mostly_clear_night: '구름조금(밤)', cloudy: '흐림', overcast: '흐림', light_rain: '약한 비', rainy: '비', moderate_rain: '소나기', snow: '눈', snow_rain: '진눈깨비', thunderstorm: '뇌우' };
       return map[key] || '맑음';
     };
 
-    return {
+    const finalResult = {
       source: 'KOREA METEOROLOGICAL ADMINISTRATION & AIR KOREA',
       temp: `${liveWeather.temp || Math.round(highLimit)}°`,
       highTemp: `${Math.round(highLimit)}°`,
@@ -478,30 +389,66 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       feelsLike: liveWeather.temp ? `${Math.round(liveWeather.temp)}°` : '--°',
       condKey,
       conditionText: getConditionText(condKey),
-      dailyForecast,
-      hourlyForecast,
-      wfSv: wfSv,
-      airQuality: '--',
-      aqiValue: '--',
-      aqiText: '대기질 정보를 업데이트 중입니다.',
-      stationName: '',
-      aqiForecast: '',
-      aqiColor: '#bdbdbd',
-      aqiIndex: 0,
-      pollutants: null,
+      dailyForecast, hourlyForecast, wfSv,
+      airQuality: '--', aqiValue: '--', aqiText: '대기질 정보를 업데이트 중입니다.',
+      stationName: '', aqiForecast: '', aqiColor: '#bdbdbd', aqiIndex: 0, pollutants: null,
       isDay: nowKST.getUTCHours() >= 6 && nowKST.getUTCHours() < 18,
-      tzOffsetMs: 9 * 60 * 60 * 1000, // KST = UTC+9 고정
+      tzOffsetMs: 9 * 60 * 60 * 1000,
       timestamp: new Date().toISOString(),
     };
-  } catch (error) {
-    console.error('KMA API Error Details:', error);
-    return null;
+
+    try {
+      const airRes = await fetchAirQuality(lat, lon, addressObj.address || '').catch(() => null);
+      if (airRes) {
+        finalResult.airQuality = airRes.airQuality;
+        finalResult.aqiValue = airRes.aqiValue;
+        finalResult.aqiText = airRes.aqiText;
+        finalResult.aqiColor = airRes.aqiColor;
+        finalResult.aqiIndex = airRes.aqiIndex;
+        finalResult.pollutants = airRes.pollutants;
+        finalResult.stationName = airRes.stationName;
+      }
+    } catch (e) {}
+
+    const isSane = (t) => { const v = parseFloat(t); return !isNaN(v) && v > -90 && v < 90; };
+    const hasData = finalResult.dailyForecast.length >= 3 && finalResult.hourlyForecast.length >= 5;
+    if (!isSane(finalResult.temp) || !isSane(finalResult.highTemp) || !isSane(finalResult.lowTemp) || !hasData) {
+      throw new Error(`Invalid KMA Data: temp=${finalResult.temp}, high=${finalResult.highTemp}, low=${finalResult.lowTemp}`);
+    }
+
+    // dailyForecast 개별 항목 온도 검증 (KMA가 100/-100 같은 에러값을 보내는 경우 감지)
+    const badForecast = finalResult.dailyForecast.find(
+      d => !isSane(d.high) || !isSane(d.low)
+    );
+    if (badForecast) {
+      throw new Error(`Invalid KMA Forecast: day=${badForecast.day}, high=${badForecast.high}, low=${badForecast.low}`);
+    }
+
+    // hourlyForecast 개별 항목 온도 검증
+    const badHourly = finalResult.hourlyForecast.find(
+      h => h.temp !== undefined && !isSane(h.temp)
+    );
+    if (badHourly) {
+      throw new Error(`Invalid KMA Hourly: time=${badHourly.time}, temp=${badHourly.temp}`);
+    }
+
+    return finalResult;
+  };
+
+  try {
+    return await getValidatedData();
+  } catch (err) {
+    console.warn('[KMA] Validation Failed, retrying once...', err.message);
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      return await getValidatedData();
+    } catch (err2) {
+      console.error('[KMA] Final Validation Failed. Triggering Fallback.', err2.message);
+      return null;
+    }
   }
 };
 
-/**
- * 대기질 등급별 행동 가이드를 반환합니다.
- */
 const getActionGuide = (grade) => {
   const g = parseInt(grade);
   if (g <= 1) return '쾌적한 공기입니다. 야외 활동에 아주 좋습니다.';
