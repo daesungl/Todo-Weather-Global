@@ -65,6 +65,7 @@ const FlowScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
+  const selectedFlowRef = useRef(null);
   const [isSharingImage, setIsSharingImage] = useState(false);
   const viewShotRef = useRef();
   
@@ -377,11 +378,47 @@ const FlowScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
+    selectedFlowRef.current = selectedFlow;
     if (selectedFlow) {
       fetchHeroWeather(selectedFlow);
       refreshFlowWeather(selectedFlow);
     }
   }, [selectedFlow]);
+
+  // WeatherDetail에서 돌아올 때 선택된 플로우의 스텝 날씨를 갱신
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      const flow = selectedFlowRef.current;
+      if (!flow?.steps?.length) return;
+      const stepsWithLocation = flow.steps.filter(s => s.lat && s.lon);
+      if (!stepsWithLocation.length) return;
+
+      (async () => {
+        for (const step of stepsWithLocation) {
+          try {
+            const weather = await WeatherService.getWeather(step.lat, step.lon, false, step.region?.name, step.region?.name);
+            if (!weather?.condKey) continue;
+            const newWeather = { condKey: weather.condKey, isDay: weather.isDay !== false };
+
+            setFlows(prev => {
+              const updated = prev.map(f => {
+                if (f.id !== flow.id) return f;
+                return { ...f, steps: f.steps.map(s => s.id === step.id ? { ...s, weather: newWeather } : s) };
+              });
+              const updatedFlow = updated.find(f => f.id === flow.id);
+              if (updatedFlow) {
+                selectedFlowRef.current = updatedFlow;
+                setSelectedFlow(updatedFlow);
+              }
+              saveFlows(updated);
+              return updated;
+            });
+          } catch (_) {}
+        }
+      })();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const MAX_FLOWS = limits.flows;
   const MAX_STEPS = limits.stepsPerFlow;
@@ -785,6 +822,13 @@ const FlowScreen = ({ navigation }) => {
     return bestGradient;
   };
 
+  const getLiveIsDay = (lon) => {
+    if (lon == null) return true;
+    const offsetMs = Math.round(lon / 15) * 3600000;
+    const localHour = new Date(Date.now() + offsetMs).getUTCHours();
+    return localHour >= 6 && localHour < 18;
+  };
+
   const renderWeatherIcon = (key, size = 20, color = Colors.primary, isDay = true) => {
     const moonColor = color === 'white' ? 'white' : "#A1C9FF";
     const sunColor = color === 'white' ? 'white' : "#f59e0b";
@@ -1053,7 +1097,7 @@ const FlowScreen = ({ navigation }) => {
                                 style={{ paddingHorizontal: 10, paddingVertical: 8, marginLeft: 4 }}
                               >
                                 <View pointerEvents="none">
-                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, step.weather?.isDay !== false)}
+                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, getLiveIsDay(step.lon))}
                                 </View>
                               </GHButton>
                             )}
