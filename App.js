@@ -181,7 +181,7 @@ export default function App() {
           style={[
             StyleSheet.absoluteFill,
             {
-              backgroundColor: '#b2ebf2', 
+              backgroundColor: '#b2ebf2',
               opacity: splashOpacity,
               justifyContent: 'center',
               alignItems: 'center',
@@ -190,7 +190,7 @@ export default function App() {
           ]}
         >
           <Animated.Image
-            source={require('./assets/splash-icon-v5.png')}
+            source={require('./assets/splash-icon-v3.png')}
             style={{
               width: '100%',
               height: '100%',
