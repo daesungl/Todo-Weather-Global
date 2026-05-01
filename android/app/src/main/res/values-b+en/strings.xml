@@ -8,4 +8,7 @@
   <string name="search">"[object Object]"</string>
   <string name="tasks">"[object Object]"</string>
   <string name="flow">"[object Object]"</string>
+  <string name="NSLocationWhenInUseUsageDescription">"We need your location to provide accurate weather forecasts for your current area."</string>
+  <string name="NSUserTrackingUsageDescription">"This allows us to provide personalized ads and a better user experience."</string>
+  <string name="name">"Todo Weather"</string>
 </resources>

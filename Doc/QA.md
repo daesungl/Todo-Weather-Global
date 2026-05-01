@@ -139,17 +139,57 @@ Firebase 콘솔에서 위 두 개 파일(GoogleService-Info.plist, google-servic
 AdMob은 Analytics 연동이 완료된 후에 Firebase 프로젝트와 연동하면 훨씬 수월하니, 일단 이 파일들부터 준비해볼까요?_
  
 
- + Admob 설정
- - 안드로이드 광고 ID
-  - app id : ca-app-pub-9445741126920983~5679330567
-   - banner id : ca-app-pub-9445741126920983/4014150245
-   - native id : ca-app-pub-9445741126920983/5331620866
-   - app_opening id : ca-app-pub-9445741126920983/1392375850
+-
 
- - iOS 광고 ID
-  - app id : ca-app-pub-9445741126920983~8209065649
-   - banner id : ca-app-pub-9445741126920983/1764136281
-   - native id : ca-app-pub-9445741126920983/1387986901
-   - app_opening id : ca-app-pub-9445741126920983/2513885833
-
+      항목         │                      내용                      │
+  ├─────────────────────┼────────────────────────────────────────────────┤
+  │ SubscriptionContext │ LIMITS 상수 추가, limits context로 노출        │
+  ├─────────────────────┼────────────────────────────────────────────────┤
+  │ 날씨 관심지역       │ 무료 5개 / 프리미엄 15개 (기존 3개 → 수정)     │
+  ├─────────────────────┼────────────────────────────────────────────────┤
+  │ 플로우 카드         │ 무료 5개 / 프리미엄 30개                       │
+  ├─────────────────────┼────────────────────────────────────────────────┤
+  │ 플로우 스텝         │ 무료 10개 / 프리미엄 30개 (신규)               │
+  ├─────────────────────┼────────────────────────────────────────────────┤
+  │ 프리미엄 토글       │ 햄버거 메뉴 하단, 점선 테두리로 dev용임을 표시 │
+  └─────────────────────┴────────────────────────────────────────────────┘
    
+                                                            
+  1단계 — 스토어에서 상품 먼저 생성
+  - App Store Connect → 내 앱 → 구독 → 구독 그룹 생성 → 상품 추가                               
+    - 예: com.yourapp.premium.monthly (월간)                                                    
+    - 예: com.yourapp.premium.yearly (연간)                                                     
+  - Google Play Console → 앱 → 수익 창출 → 구독 → 상품 생성                                     
+    - 동일한 ID로 맞추는 게 관리 편함                       
+                                                                                                
+  2단계 — RevenueCat에 스토어 상품 연결                                                         
+  - RevenueCat 대시보드 → Products → + New                                                      
+  - 스토어에서 만든 Product ID 입력해서 등록                                                    
+                                                                                                
+  3단계 — Entitlement에 상품 Attach                                                             
+  - 방금 만드신 premium Entitlement → Attach 버튼으로 등록한 상품 연결                          
+                                                                                                
+  4단계 — Offering 생성                                                                         
+  - Offerings → + New Offering → 패키지에 상품 연결                                             
+  - 앱에서 offerings.availablePackages로 이 패키지 목록을 가져오는 구조 
+
+  -
+
+  **투두 웨더(Todo Weather)**는 단순한 날씨 앱이 아니라, '날씨에 맞춘 일상 계획'이라는 확실한 차별점이 있습니다. 특히 새롭게 강화된 '플로우(Flow)' 기능과 '글로벌 정밀 날씨' 데이터를 강조하면 좋을 것 같습니다.
+
+앱스토어 **프로모션 텍스트(최대 170자)**로 사용하기 좋은 몇 가지 옵션을 한국어와 영어 버전으로 제안해 드립니다.
+
+옵션 1. '일정 + 날씨'의 시너지를 강조할 때 (가장 추천)
+국문: 날씨가 바뀌면 계획도 바뀌어야 하니까! 투두 웨더와 함께 날씨에 최적화된 하루를 설계하세요. 전 세계 어디서든 정확한 기보와 함께 당신의 소중한 일정을 완벽하게 관리할 수 있습니다.
+
+영문: Don't let the weather ruin your plans! Design your perfect day with weather-aware tasks and global precision forecasts. Manage your schedule and the elements all in one place.
+
+옵션 2. '플로우(Flow)' 기능과 여행/여정을 강조할 때
+국문: 여행, 캠핑, 그리고 소중한 외출까지. '플로우' 기능으로 며칠간의 여정을 날씨와 함께 한눈에 확인하세요. 전 세계 정밀 날씨 데이터가 당신의 모든 발걸음을 더 스마트하게 만들어줍니다.
+
+영문: Plan your journey with precision. From weekend getaways to daily routines, visualize your multi-day itinerary with real-time weather updates. Travel smarter with Todo Weather.
+
+옵션 3. 프리미엄하고 깔끔한 UI/경험을 강조할 때
+국문: 가장 아름답고 직관적인 날씨 투두 앱. 복잡한 기상 데이터와 할 일을 하나로 통합했습니다. 지금 바로 '투두 웨더'의 프리미엄 디자인과 글로벌 날씨 서비스를 경험해 보세요.
+
+영문: Experience the most beautiful and intuitive weather-integrated task manager. Seamlessly blend global weather insights with your daily productivity. Elevate your routine with Todo Weather.

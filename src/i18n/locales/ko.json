@@ -308,6 +308,14 @@
       "share_failed_msg": "이미지 생성 중 오류가 발생했습니다.",
       "delete_flow": "플로우 삭제",
       "delete_flow_msg": "정말로 이 플로우를 삭제하시겠습니까?"
+    },
+    "paywall": {
+      "legal_notice": "구독은 각 기간 종료 24시간 전에 자동 갱신됩니다. 언제든지 스토어 설정에서 취소할 수 있습니다.",
+      "terms_of_use": "이용약관",
+      "privacy_policy": "개인정보 처리방침"
     }
-  }
+  },
+  "NSLocationWhenInUseUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다.",
+  "NSUserTrackingUsageDescription": "사용자의 관심사에 맞는 맞춤형 광고를 제공하기 위해 권한이 필요합니다.",
+  "name": "투두 웨더"
 }

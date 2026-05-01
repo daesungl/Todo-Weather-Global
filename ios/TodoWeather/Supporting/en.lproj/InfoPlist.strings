@@ -7,3 +7,6 @@ weather = "[object Object]";
 search = "[object Object]";
 tasks = "[object Object]";
 flow = "[object Object]";
+NSLocationWhenInUseUsageDescription = "We need your location to provide accurate weather forecasts for your current area.";
+NSUserTrackingUsageDescription = "This allows us to provide personalized ads and a better user experience.";
+name = "Todo Weather";

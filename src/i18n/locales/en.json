@@ -308,6 +308,14 @@
       "share_failed_msg": "An error occurred while generating the image.",
       "delete_flow": "Delete Flow",
       "delete_flow_msg": "Delete this journey?"
+    },
+    "paywall": {
+      "legal_notice": "Subscriptions automatically renew unless auto-renew is turned off at least 24-hours before the end of the current period. Manage subscriptions in Store Settings.",
+      "terms_of_use": "Terms of Use",
+      "privacy_policy": "Privacy Policy"
     }
-  }
+  },
+  "NSLocationWhenInUseUsageDescription": "We need your location to provide accurate weather forecasts for your current area.",
+  "NSUserTrackingUsageDescription": "This allows us to provide personalized ads and a better user experience.",
+  "name": "Todo Weather"
 }
