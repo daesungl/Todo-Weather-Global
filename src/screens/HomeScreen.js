@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable } from 'react-native';
-import { TouchableOpacity, GestureHandlerRootView, ScrollView as GHScrollView } from 'react-native-gesture-handler';
+import { TouchableOpacity, GestureHandlerRootView, ScrollView as GHScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS } from 'react-native-reanimated';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
@@ -30,7 +31,10 @@ const HomeScreen = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const currentPageRef = useRef(1);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const slideX = useSharedValue(0);
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slideX.value }],
+  }));
   const loadingPageRef = useRef(null);
   const regionsRef = useRef([]);
   const scrollViewRef = useRef(null);
@@ -40,57 +44,51 @@ const HomeScreen = ({ navigation }) => {
 
   const goToPage = (nextPage, direction) => {
     const dir = direction ?? (nextPage > currentPageRef.current ? -1 : 1);
-    Animated.timing(slideAnim, {
-      toValue: dir * width,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      slideAnim.setValue(-dir * width);
+    const applyPageChange = () => {
       currentPageRef.current = nextPage;
       setCurrentPage(nextPage);
       loadPageWeather(nextPage - 1, regionsRef.current);
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
+    };
+    slideX.value = withTiming(dir * width, { duration: 200 }, (finished) => {
+      'worklet';
+      if (finished) {
+        slideX.value = -dir * width;
+        runOnJS(applyPageChange)();
+        slideX.value = withTiming(0, { duration: 180 });
+      }
     });
   };
 
-  const swipePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        const isHorizontal =
-          Math.abs(gestureState.dx) > 12 &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
-        if (isHorizontal) isSwipingRef.current = true;
-        return isHorizontal;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        slideAnim.setValue(gestureState.dx * 0.4);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        const page = currentPageRef.current;
-        if (gestureState.dx < -50) {
-          const next = page === 5 ? 1 : page + 1;
-          goToPage(next, -1);
-        } else if (gestureState.dx > 50) {
-          const next = page === 1 ? 5 : page - 1;
-          goToPage(next, 1);
-        } else {
-          Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
+  const handleSwipeRelease = (tx) => {
+    const page = currentPageRef.current;
+    if (tx < -50) {
+      isSwipingRef.current = true;
+      goToPage(page === 5 ? 1 : page + 1, -1);
+    } else if (tx > 50) {
+      isSwipingRef.current = true;
+      goToPage(page === 1 ? 5 : page - 1, 1);
+    } else {
+      slideX.value = withSpring(0);
+    }
+    setTimeout(() => { isSwipingRef.current = false; }, 300);
+  };
+
+  const panGesture = useMemo(() =>
+    Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .failOffsetY([-10, 10])
+      .onUpdate((e) => {
+        slideX.value = e.translationX * 0.4;
+      })
+      .onEnd((e) => {
+        runOnJS(handleSwipeRelease)(e.translationX);
+      })
+      .onFinalize((_, success) => {
+        if (!success) {
+          slideX.value = withSpring(0);
         }
-        // 스와이프 종료 후 짧은 딜레이 뒤 플래그 해제 (onPress 보다 늦게 해제)
-        setTimeout(() => { isSwipingRef.current = false; }, 300);
-      },
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderTerminate: () => {
-        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
-        setTimeout(() => { isSwipingRef.current = false; }, 300);
-      },
-    })
-  ).current;
+      })
+  , []);
 
   const [currentWeather, setCurrentWeather] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -510,8 +508,9 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.sectionTitle}>{t('home.interest_regions')}</Text>
         </View>
 
-        <View style={styles.paginationArea} {...swipePanResponder.panHandlers}>
-          <Animated.View style={[styles.regionsList, { transform: [{ translateX: slideAnim }] }]}>
+        <GestureDetector gesture={panGesture}>
+        <View style={styles.paginationArea}>
+          <Reanimated.View style={[styles.regionsList, slideStyle]}>
             <DraggableFlatList
               data={(displayRegions || []).filter(r => r.pageIndex === currentPage - 1)}
               keyExtractor={(item) => item.id}
@@ -632,8 +631,9 @@ const HomeScreen = ({ navigation }) => {
                 ) : null
               }
             />
-          </Animated.View>
+          </Reanimated.View>
         </View>
+        </GestureDetector>
 
         <View style={styles.pageIndicator}>
           {[1, 2, 3, 4, 5].map(num => (

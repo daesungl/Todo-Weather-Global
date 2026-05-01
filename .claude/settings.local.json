@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew assembleRelease --stacktrace)",
+      "Bash(./gradlew assembleRelease)",
+      "Bash(npx expo *)"
+    ]
+  }
+}

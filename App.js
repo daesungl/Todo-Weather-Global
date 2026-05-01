@@ -90,46 +90,51 @@ export default function App() {
   const navigationRef = React.useRef();
   const [appIsReady, setAppIsReady] = React.useState(false);
   const splashOpacity = React.useRef(new Animated.Value(1)).current;
-  const [showSplash, setShowSplash] = React.useState(true);
+  // 안드로이드는 fake splash 없이 native splash만 사용
+  const [showSplash, setShowSplash] = React.useState(Platform.OS === 'ios');
+  const hideSplashTriggeredRef = React.useRef(false);
 
   useEffect(() => {
     const prepare = async () => {
       try {
-        // iOS 광고 추적 권한 요청
         if (Platform.OS === 'ios') {
           const { status } = await requestTrackingPermissionsAsync();
           if (status === 'granted') {
-            console.log('Tracking permission granted');
-            // 권한 허용 후 AdMob 다시 초기화 시도 (선택 사항)
             AdManager.initialize();
           }
         }
-
-        // 앱 준비 및 데이터 로딩 (최소 1.5초 유지)
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (e) {
         console.warn(e);
       } finally {
         setAppIsReady(true);
-        // 네이티브 스플래시를 숨김 (가짜 스플래시가 뒤를 받쳐줌)
-        await SplashScreen.hideAsync();
-
-        // 페이드아웃 애니메이션 시작
-        Animated.timing(splashOpacity, {
-          toValue: 0,
-          duration: 500, // 0.5초 동안 페이드아웃
-          useNativeDriver: true,
-        }).start(() => {
-          setShowSplash(false);
-        });
       }
     };
-
     prepare();
   }, []);
 
+  useEffect(() => {
+    if (!appIsReady || hideSplashTriggeredRef.current) return;
+    hideSplashTriggeredRef.current = true;
+
+    if (Platform.OS === 'android') {
+      // 안드로이드: fake splash 없이 native splash만 즉시 숨김
+      SplashScreen.hideAsync().catch(() => {});
+    } else {
+      // iOS: fake splash 페이드아웃 후 숨김
+      SplashScreen.hideAsync().catch(() => {});
+      Animated.timing(splashOpacity, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => setShowSplash(false));
+    }
+  }, [appIsReady]);
+
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView 
+      style={styles.root}
+    >
       <SubscriptionProvider>
         <UnitProvider>
           <SafeAreaProvider>
@@ -209,3 +214,4 @@ const styles = StyleSheet.create({
     backgroundColor: '#f7f9ff',
   },
 });
+

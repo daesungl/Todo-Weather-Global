@@ -124,7 +124,7 @@ const RangeCalendarModal = ({ visible, onClose, onApply, initialStartDate, initi
           
           <View style={styles.infoRow}>
             <Text style={styles.infoText}>
-              {!startDate ? t('tasks.select_start_date', '시작일을 선택하세요') 
+              {!startDate ? t('tasks.select_start_date', '시작일을 선택하세요')
               : !endDate ? t('tasks.select_end_date', '종료일을 선택하세요')
               : `${startDate} ~ ${endDate}`}
             </Text>
