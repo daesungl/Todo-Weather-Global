@@ -237,17 +237,18 @@ export const fetchExtraMetrics = async (lat, lon) => {
 /**
  * 전 세계 도시 및 지역을 검색합니다. (Nominatim / OpenStreetMap)
  */
-export const searchLocations = async (query) => {
+export const searchLocations = async (query, lang = 'ko') => {
   if (!query || query.length < 2) return [];
 
   try {
+    const acceptLang = lang.startsWith('ko') ? 'ko,en' : 'en,ko';
     const response = await axios.get('https://nominatim.openstreetmap.org/search', {
       params: {
         q: query,
         format: 'json',
         addressdetails: 1,
         limit: 10,
-        'accept-language': 'en',
+        'accept-language': acceptLang,
       },
       headers: {
         'User-Agent': 'TodoWeatherApp/1.0',
@@ -257,8 +258,23 @@ export const searchLocations = async (query) => {
     const data = response.data || [];
     return data.map(item => {
       const a = item.address || {};
-      const name = a.city || a.town || a.village || a.county || a.state || a.country || item.display_name.split(',')[0];
-      const parts = [a.state, a.country].filter(Boolean);
+      const type = item.addresstype || item.type;
+      
+      // 장소 고유 명칭(leisure, amenity, shop 등)을 최우선으로 사용하고, 없으면 display_name의 첫 번째 조각을 사용
+      let name = item.name || a.leisure || a.amenity || a.tourism || a.shop || a.office || item.display_name.split(',')[0];
+      
+      // 주(State) 또는 국가(Country)인 경우 이름 뒤에 명시하여 유저에게 알림
+      const isState = type === 'state' || type === 'province';
+      const isCountry = type === 'country';
+      
+      if (isState) name += ' (State)';
+      else if (isCountry) name += ' (Country)';
+
+      // 제목(name)과 중복되는 지명은 주소 목록에서 제외
+      const parts = [a.city || a.town || a.village, a.state, a.country]
+        .filter(Boolean)
+        .filter(part => !name.includes(part));
+
       return {
         id: item.place_id.toString(),
         name,
@@ -267,10 +283,64 @@ export const searchLocations = async (query) => {
         lon: parseFloat(item.lon),
         type: 'global',
         category: 'search.place',
+        rawType: type, // 'state', 'country', 'city' 등 원본 타입 전달
+        isRegion: isState || isCountry, // 주나 국가인지 여부 플래그
       };
     });
   } catch (error) {
     console.error('Nominatim Search Error:', error);
     return [];
   }
+};
+
+/**
+ * 주(State)나 국가(Country) 단위의 광범위한 지역이 선택되었을 때, 
+ * 해당 지역의 대표 도시(Major City)의 좌표를 찾아 반환합니다.
+ * (중앙점 산속/바다 한가운데 날씨가 나오는 것을 방지)
+ */
+export const getRepresentativeCoordinates = async (name, rawType, lang = 'ko') => {
+  try {
+    const cleanName = name.replace(' (State)', '').replace(' (Country)', '');
+    const acceptLang = lang.startsWith('ko') ? 'ko,en' : 'en,ko';
+    
+    // 구조화된 검색 활용: 해당 주(State)나 국가(Country) 내의 'city'를 검색
+    const searchParams = {
+      format: 'json',
+      limit: 5,
+      'accept-language': acceptLang,
+    };
+
+    if (name.includes('(State)')) {
+      searchParams.state = cleanName;
+      searchParams.q = 'capital'; // 해당 주의 주도(Capital) 검색
+    } else if (name.includes('(Country)')) {
+      searchParams.country = cleanName;
+      searchParams.q = 'capital'; // 해당 국가의 수도(Capital) 검색
+    } else {
+      searchParams.q = `capital in ${cleanName}`;
+    }
+
+    const response = await axios.get('https://nominatim.openstreetmap.org/search', {
+      params: searchParams,
+      headers: { 'User-Agent': 'TodoWeatherApp/1.0' },
+    });
+
+    const data = response.data || [];
+    if (data.length > 0) {
+      // 결과 중 진짜 도시(city)나 타운(town)인 것을 우선 선택
+      const cityTypes = ['city', 'town', 'city_district', 'municipality'];
+      const bestMatch = data.find(item => cityTypes.includes(item.addresstype) || cityTypes.includes(item.type)) || data[0];
+      
+      console.log(`[GlobalService] Redirected ${name} to representative: ${bestMatch.display_name} (${bestMatch.addresstype})`);
+      return {
+        lat: parseFloat(bestMatch.lat),
+        lon: parseFloat(bestMatch.lon),
+        name: bestMatch.display_name.split(',')[0],
+        address: bestMatch.display_name
+      };
+    }
+  } catch (error) {
+    console.warn('[GlobalService] Failed to find representative city:', error);
+  }
+  return null;
 };

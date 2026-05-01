@@ -53,7 +53,7 @@ import { useUnits } from '../contexts/UnitContext';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
-import { searchLocations } from '../services/weather/GlobalService';
+import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
 import { getFlows, saveFlows, addFlow, deleteFlow } from '../services/FlowService';
 
@@ -349,21 +349,40 @@ const FlowScreen = ({ navigation }) => {
   const handleSearch = async (query) => {
     setIsSearching(true);
     try {
-      const [dom, glo] = await Promise.all([searchDomesticPlaces(query), searchLocations(query)]);
+      const [dom, glo] = await Promise.all([searchDomesticPlaces(query), searchLocations(query, i18n.language)]);
       setSearchResults(isKoreanQuery(query) ? [...dom, ...glo] : [...glo, ...dom]);
     } catch (e) { console.error(e); }
     finally { setIsSearching(false); }
   };
 
   const handleSelection = async (item) => {
+    let finalItem = { ...item };
+    
+    // 주(State)나 국가(Country) 단위 결과인 경우 대표 도시 좌표로 보정
+    if (item.isRegion) {
+      setIsSearching(true);
+      const representative = await getRepresentativeCoordinates(item.name, item.rawType, i18n.language);
+      setIsSearching(false);
+      
+      if (representative) {
+        finalItem = {
+          ...item,
+          lat: representative.lat,
+          lon: representative.lon,
+          // 주소 명칭은 원본을 유지하되 좌표만 보정함
+        };
+        console.log(`[FlowScreen] Location corrected: ${item.name} -> ${representative.name} coordinates`);
+      }
+    }
+
     if (searchMode === 'flow') {
-      setFlowLocation(item.name);
-      setFlowAddress(item.address || item.addressName || '');
-      setFlowLat(item.lat);
-      setFlowLon(item.lon);
-      if (!flowTitle) setFlowTitle(`${item.name} Trip`);
+      setFlowLocation(finalItem.name);
+      setFlowAddress(finalItem.address || finalItem.addressName || '');
+      setFlowLat(finalItem.lat);
+      setFlowLon(finalItem.lon);
+      if (!flowTitle) setFlowTitle(`${finalItem.name} Trip`);
     } else {
-      setSelectedRegion(item);
+      setSelectedRegion(finalItem);
     }
     setSearchModalVisible(false);
   };
@@ -718,11 +737,13 @@ const FlowScreen = ({ navigation }) => {
     const lat = step.lat || selectedFlow?.lat;
     const lon = step.lon || selectedFlow?.lon;
     const name = (step.region && step.region.name) || selectedFlow?.location;
+    const address = (step.region && step.region.address) || selectedFlow?.address || '';
+
     if (!lat || !lon) return;
 
     // 즉시 이동 (상세 데이터는 WeatherDetailScreen에서 needsFullLoad로 처리됨)
     navigation.navigate('WeatherDetail', { 
-      weatherData: { lat, lon, locationName: name }, 
+      weatherData: { lat, lon, locationName: name, addressName: address }, 
       isCurrentLocation: false, 
       locationName: name 
     });
@@ -1022,8 +1043,8 @@ const FlowScreen = ({ navigation }) => {
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   const navData = heroWeather 
-                    ? { ...heroWeather, locationName: selectedFlow.location }
-                    : { lat: selectedFlow.lat, lon: selectedFlow.lon, locationName: selectedFlow.location };
+                    ? { ...heroWeather, locationName: selectedFlow.location, addressName: selectedFlow.address || heroWeather.addressName }
+                    : { lat: selectedFlow.lat, lon: selectedFlow.lon, locationName: selectedFlow.location, addressName: selectedFlow.address };
                   
                   navigation.navigate('WeatherDetail', {
                     weatherData: navData,

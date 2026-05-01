@@ -16,7 +16,7 @@ import MainHeader from '../components/MainHeader';
 import { getWeather } from '../services/weather/WeatherService';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
 import { searchPlaces } from '../services/weather/VWorldService';
-import { searchLocations } from '../services/weather/GlobalService';
+import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
 import AdBanner from '../components/AdBanner';
@@ -25,7 +25,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 const { width, height } = Dimensions.get('window');
 
 const HomeScreen = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { formatTemp, formatWind } = useUnits();
   const [menuVisible, setMenuVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -211,7 +211,7 @@ const HomeScreen = ({ navigation }) => {
       // Run both domestic and global search concurrently
       const [domesticResults, globalResults] = await Promise.all([
         searchPlaces(query),
-        searchLocations(query)
+        searchLocations(query, i18n.language)
       ]);
 
       // 한국어 쿼리면 국내 결과 우선, 영어 쿼리면 글로벌 결과 우선
@@ -328,6 +328,23 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleAddRegion = async (item) => {
+    let finalItem = { ...item };
+
+    // 주(State)나 국가(Country) 단위 결과인 경우 대표 도시 좌표로 보정
+    if (item.isRegion) {
+      setIsSearching(true);
+      const representative = await getRepresentativeCoordinates(item.name, item.rawType, i18n.language);
+      setIsSearching(false);
+      if (representative) {
+        finalItem = {
+          ...item,
+          lat: representative.lat,
+          lon: representative.lon,
+        };
+        console.log(`[HomeScreen] Location corrected: ${item.name} -> ${representative.name} coordinates`);
+      }
+    }
+
     if (displayRegions.filter(r => !r.inactive).length >= limits.regions) {
       Alert.alert(
         t('common.info', '알림'),
@@ -347,7 +364,7 @@ const HomeScreen = ({ navigation }) => {
       return;
     }
 
-    const updated = await addRegion(item.name, item.address, item.lat, item.lon, pageIndex);
+    const updated = await addRegion(finalItem.name, finalItem.address, finalItem.lat, finalItem.lon, pageIndex);
     regionsRef.current = updated;
     setRegions(updated);
     const newest = updated[updated.length - 1];

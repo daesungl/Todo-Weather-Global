@@ -188,7 +188,10 @@
     "pollutant_o3": "오존",
     "pollutant_no2": "이산화질소",
     "pollutant_co": "일산화탄소",
-    "pollutant_so2": "아황산가스"
+    "pollutant_so2": "아황산가스",
+    "alert_present": "기상 안전 정보",
+    "alert_detail_title": "기상 안전 정보",
+    "alert_issued_at": "발표 시각"
   },
   "search": {
     "place": "명칭",

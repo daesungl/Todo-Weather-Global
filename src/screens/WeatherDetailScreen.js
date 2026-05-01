@@ -968,7 +968,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
               {weatherData.alert?.tmFc && (
                 <View style={{ marginTop: Spacing.xl, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: Spacing.lg }}>
                   <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'right' }}>
-                    {`발표 시각 : ${formatAlertTime(weatherData.alert.tmFc)}`}
+                    {`${t('weather.alert_issued_at', '발표 시각')} : ${formatAlertTime(weatherData.alert.tmFc)}`}
                   </Text>
                 </View>
               )}

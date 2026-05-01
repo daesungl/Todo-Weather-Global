@@ -188,7 +188,10 @@
     "pollutant_o3": "Ozone",
     "pollutant_no2": "Nitrogen Dioxide",
     "pollutant_co": "Carbon Monoxide",
-    "pollutant_so2": "Sulfur Dioxide"
+    "pollutant_so2": "Sulfur Dioxide",
+    "alert_present": "Weather Safety Info",
+    "alert_detail_title": "Weather Alert Details",
+    "alert_issued_at": "Issued at"
   },
   "search": {
     "place": "Name",
