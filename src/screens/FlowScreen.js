@@ -1189,7 +1189,9 @@ const FlowScreen = ({ navigation }) => {
               setEditingStep(null);
               setEditActivity('');
               setEditMemo('');
-              setEditDate(new Date().toISOString().split('T')[0]);
+              const todayStr = new Date().toISOString().split('T')[0];
+              setEditDate(todayStr);
+              setEditEndDate(todayStr);
               setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
               setSelectedRegion(null);
               openEditModal(true);

@@ -131,10 +131,11 @@ const RangeCalendarModal = ({ visible, onClose, onApply, initialStartDate, initi
           </View>
 
           <Calendar
-            current={startDate || undefined}
+            current={initialStartDate ? formatDate(initialStartDate) : (startDate || undefined)}
             markingType={'period'}
             markedDates={getMarkedDates()}
             onDayPress={handleDayPress}
+            style={{ height: 370 }}
             theme={{
               backgroundColor: '#ffffff',
               calendarBackground: '#ffffff',
