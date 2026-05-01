@@ -513,6 +513,7 @@ const TasksScreen = ({ navigation }) => {
   const [isDetailMenuVisible, setIsDetailMenuVisible] = useState(false);
   const [isEditingInSheet, setIsEditingInSheet] = useState(false);
   const editSheetX = useRef(new Animated.Value(width)).current;
+  const editSheetY = useRef(new Animated.Value(0)).current;
 
   // Toast Stack State
   const [toasts, setToasts] = useState([]);
@@ -983,6 +984,7 @@ const TasksScreen = ({ navigation }) => {
     setNewWeatherRegion(task.weatherRegion || null);
     setSelectedColor(task.color || Colors.primary);
     editSheetX.setValue(width);
+    editSheetY.setValue(0);
     setIsEditingInSheet(true);
     Animated.spring(editSheetX, {
       toValue: 0,
@@ -1000,6 +1002,7 @@ const TasksScreen = ({ navigation }) => {
     setShowTimePicker(false);
     setShowEndTimePicker(false);
     setIsMemoEditing(false);
+    editSheetY.setValue(0);
     Animated.timing(editSheetX, {
       toValue: width,
       duration: 260,
@@ -1009,7 +1012,9 @@ const TasksScreen = ({ navigation }) => {
       setEditingTask(null);
       if (typeof onAfterClose === 'function') onAfterClose();
     });
-  }, [editSheetX]);
+  }, [editSheetX, editSheetY]);
+
+  const editSheetPanResponder = useRef(createModalPanResponder(editSheetY, closeEditInSheet)).current;
 
   const handleSaveTask = async () => {
     if (!newTitle.trim()) {
@@ -1603,7 +1608,7 @@ const TasksScreen = ({ navigation }) => {
               {isEditingInSheet && (
                 <Animated.View style={[
                   StyleSheet.absoluteFill,
-                  { backgroundColor: 'white', paddingHorizontal: Spacing.xl, transform: [{ translateX: editSheetX }] }
+                  { backgroundColor: 'white', paddingHorizontal: Spacing.xl, transform: [{ translateX: editSheetX }, { translateY: editSheetY }] }
                 ]}>
                   <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1644,7 +1649,7 @@ const TasksScreen = ({ navigation }) => {
                       </View>
                     ) : (
                       <>
-                        <View style={styles.modalHeader} {...addModalPanResponder.panHandlers}>
+                        <View style={styles.modalHeader} {...editSheetPanResponder.panHandlers}>
                           <View style={styles.modalHandle} />
                           <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
                             <TouchableOpacity onPress={() => closeEditInSheet()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>

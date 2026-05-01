@@ -142,13 +142,40 @@ React Native/Expo 환경에서 iOS와 안드로이드는 동작 방식이 다를
 
 ---
 
+---
+
+## 7. 반응형 레이아웃 및 기기 대응 (Responsive Layout & Device Compatibility)
+
+다양한 화면 크기와 해상도(아이폰 SE ~ iPad)에서 일관된 사용자 경험을 제공하기 위한 원칙입니다.
+
+### 📍 레이아웃 원칙
+*   **Flexbox 활용:** 고정 너비(`width: 300` 등) 대신 `flex: 1`이나 비율을 사용하여 부모 컨테이너의 남은 공간을 유연하게 채우도록 설계합니다.
+*   **대칭성 및 여백 관리:**
+    *   비대칭 패딩(예: `paddingLeft`만 설정)은 특정 기기에서 시각적 쏠림 현상을 유발합니다. 반드시 **`paddingHorizontal`**을 사용하거나 좌우 패딩 값을 동일하게 맞추세요.
+    *   콘텐츠 카드는 `alignSelf: 'stretch'`를 활용하여 부모의 패딩 내에서 가로 공간을 꽉 채우는 것을 기본으로 합니다.
+*   **고정 수치 계산 지양:** `width: width - 40`과 같은 직접적인 너비 계산은 기기 회전이나 멀티태스킹 모드(iPad)에서 오작동할 수 있습니다. 가급적 부모 컨테이너의 패딩을 통해 내부 요소의 너비를 제어하세요.
+
+### 📍 달력 및 그리드 레이아웃
+*   **정확한 등분:** 달력의 7등분처럼 정밀한 계산이 필요한 경우에만 `Dimensions`를 사용하되, `Spacing` 테마 상수를 계산식에 포함하여 전체적인 여백 시스템과 조화를 이루게 합니다.
+*   **정보 밀도 최적화:** 가독성이 중요한 달력 본체 등은 좌우 여백을 최소화(`Spacing.sm` 내외)하여 정보 노출량을 극대화합니다. 반면 헤더나 일반 리스트는 표준 여백(`Spacing.lg`)을 사용하여 안정감을 줍니다.
+
+### 📍 실 기기 테스트 필수
+*   에뮬레이터와 실 기기는 물리적 베젤, 안전 영역(Safe Area), 시스템 폰트 크기 설정 등이 다릅니다. 주요 UI 변경 시에는 반드시 실 기기에서 쏠림이나 잘림 현상이 없는지 검증해야 합니다.
+
+---
+
+## 8. 데이터 신뢰성 및 검증 (Data Reliability & Validation)
+
+데이터 소스의 무결성을 보장하고 사용자에게 잘못된 정보가 전달되는 것을 방지하기 위한 정책입니다.
+
+*   **검증 레이어 (Validation Layer):** 외부 API 응답을 캐싱하거나 UI에 반영하기 전 반드시 유효성을 검사합니다. 예를 들어, 기온이 **-90°C ~ 90°C** 범위를 벗어나는 이상치(Outlier)는 필터링하고 데이터의 최소 완결성을 확인해야 합니다.
+*   **재시도 전략 (Retry Strategy):** 일시적인 API 실패나 검증 오류 발생 시, 즉시 실패로 처리하기보다 약간의 지연 시간을 두고 **최소 1회 이상의 자동 재시도**를 수행하여 데이터 가용성을 높입니다.
+*   **우아한 예외 처리 (Graceful Fallback):** 주 데이터 소스 검증 실패 시, 가능한 경우 보조 데이터 소스를 시도하여 서비스 중단을 최소화합니다.
+
+---
+
 > [!TIP]
 > 새로운 기능을 개발할 때 "이것이 충분히 빠르게 반응하는가?"와 "터치가 시원시원한가?"를 항상 자문해 보세요. 기술적인 완결성만큼이나 사용자가 느끼는 **'부드러움'**이 이 앱의 핵심 가치입니다.
 
 > [!TIP]
 > 새로운 라이브러리를 추가하거나 네이티브 설정을 변경할 때는 반드시 **iOS와 안드로이드 양쪽 기기(또는 시뮬레이터)에서 모두 테스트**를 완료해야 합니다.
-
-### 4. Data Reliability & Validation
-- **Validation Layer**: Always validate external API responses before caching or updating UI. Filter extreme outliers (e.g., ±90°C weather) and ensure minimum data completeness.
-- **Retry Strategy**: Implement at least one automatic retry with a slight delay for transient API failures or validation errors before falling back to alternative sources.
-- **Graceful Fallback**: When a primary data source fails validation, attempt secondary sources to ensure service availability.

@@ -1843,7 +1843,7 @@ const styles = StyleSheet.create({
   headerRight: { width: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   detailHeaderTitle: { ...Typography.h3, fontSize: 17, color: Colors.onBackground, textAlign: 'center' },
   iconBtn: { padding: 8 },
-  detailContent: { paddingHorizontal: 12, paddingBottom: 200, paddingTop: Spacing.sm },
+  detailContent: { paddingHorizontal: Spacing.sm, paddingBottom: 200, paddingTop: Spacing.sm },
   heroSection: { marginBottom: Spacing.xl },
   heroDate: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
   heroLocationRow: { 
@@ -1859,7 +1859,7 @@ const styles = StyleSheet.create({
   dayBadge: { backgroundColor: Colors.primary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginRight: 8 },
   dayBadgeText: { ...Typography.labelSmall, color: 'white', fontWeight: '800' },
   dayDateText: { ...Typography.bodyLarge, fontWeight: '800', color: Colors.onBackground },
-  stepRow: { flexDirection: 'row', paddingLeft: 8, paddingRight: 0, marginBottom: 14 },
+  stepRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 14 },
   timelineCol: { width: 18, alignItems: 'center' },
   timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.outlineVariant, marginTop: 18, borderWidth: 2, borderColor: 'white' },
   dotCurrent: { backgroundColor: Colors.primary, width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: 'rgba(0, 102, 138, 0.2)' },
