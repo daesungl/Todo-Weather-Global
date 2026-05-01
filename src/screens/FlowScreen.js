@@ -42,7 +42,8 @@ import {
   Keyboard as KeyboardIcon,
   Flag,
   Share2,
-  Lock
+  Lock,
+  ArrowUpDown
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ViewShot from 'react-native-view-shot';
@@ -66,6 +67,7 @@ const FlowScreen = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
   const selectedFlowRef = useRef(null);
+  const [stepSortOrder, setStepSortOrder] = useState('asc');
   const [isSharingImage, setIsSharingImage] = useState(false);
   const viewShotRef = useRef();
   
@@ -975,9 +977,10 @@ const FlowScreen = ({ navigation }) => {
     })();
     const groupedSteps = groupStepsByDate(displaySteps);
     const sortedDates = Object.keys(groupedSteps).sort((a, b) => {
-      if (a === 'Unscheduled') return 1;
-      if (b === 'Unscheduled') return -1;
-      return a.localeCompare(b);
+      if (a === 'Unscheduled') return -1;
+      if (b === 'Unscheduled') return 1;
+      const cmp = a.localeCompare(b);
+      return stepSortOrder === 'asc' ? cmp : -cmp;
     });
 
     return (
@@ -1006,7 +1009,19 @@ const FlowScreen = ({ navigation }) => {
             <Text style={styles.detailHeaderTitle} numberOfLines={1}>{selectedFlow.title}</Text>
           </View>
 
-          <View style={styles.headerRight}>
+          <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <BorderlessButton
+              style={styles.iconBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setStepSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+              }}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 8 }}
+            >
+              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                <ArrowUpDown size={18} color={stepSortOrder === 'desc' ? Colors.primary : Colors.onBackground} />
+              </View>
+            </BorderlessButton>
             <BorderlessButton
               style={styles.iconBtn}
               onPress={() => {
@@ -1022,7 +1037,7 @@ const FlowScreen = ({ navigation }) => {
                   ]
                 );
               }}
-              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              hitSlop={{ top: 20, bottom: 20, left: 8, right: 20 }}
             >
               <MoreVertical size={20} color={Colors.onBackground} />
             </BorderlessButton>
@@ -1078,7 +1093,7 @@ const FlowScreen = ({ navigation }) => {
                       <Text style={styles.dayDateText}>{t('flow.unscheduled', 'Unscheduled')}</Text>
                     </View>
                   )}
-                  {groupedSteps[date].map((step, index) => (
+                  {(stepSortOrder === 'asc' ? groupedSteps[date] : [...groupedSteps[date]].reverse()).map((step, index) => (
                     <View key={step.id} style={styles.stepRow}>
                       <View style={styles.timelineCol}>
                         <View style={[styles.timelineDot, step.status === 'completed' && styles.dotCompleted, step.inactive && { backgroundColor: Colors.outline }]} />
