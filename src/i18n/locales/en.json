@@ -62,6 +62,22 @@
     "tasks_upcoming": "Next: {{task}} at {{time}}",
     "premium_only_limit": "Premium subscription is required to add more regions. (Max 3 for free)"
   },
+  "briefing": {
+    "title": "Smart Daily Briefing",
+    "greeting_morning": "Good morning!",
+    "greeting_afternoon": "Good afternoon!",
+    "greeting_evening": "Good evening!",
+    "weather_tasks": "It's {{weather}} in {{location}}. Good luck with your {{count}} tasks today!",
+    "rain_alert": "Rain is expected. Don't forget your umbrella! ☔",
+    "snow_alert": "It's snowing. Be careful on slippery roads! ❄️",
+    "dust_alert": "Air quality is poor. You might want to wear a mask. 😷",
+    "hot_alert": "A heatwave is expected! Stay hydrated. ☀️",
+    "cold_alert": "It's very cold outside. Dress warmly. 🧣",
+    "perfect_day": "It's a beautiful sunny day! Perfect for outdoor activities. ✨",
+    "no_tasks": "No tasks scheduled for today. Enjoy your day! ☕",
+    "all_done": "You've completed all your tasks! Great job! 👏",
+    "task_summary": "You have {{count}} tasks today."
+  },
   "management": {
     "title": "Manage Regions",
     "guide_text": "You can manage up to 5 regions\nto check the weather.",

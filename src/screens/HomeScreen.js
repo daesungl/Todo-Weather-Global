@@ -22,6 +22,8 @@ import { searchLocations, getRepresentativeCoordinates } from '../services/weath
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
 import AdBanner from '../components/AdBanner';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import SmartBriefing from '../components/SmartBriefing';
+import { getTasks } from '../services/task/TaskService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -136,6 +138,8 @@ const HomeScreen = ({ navigation }) => {
   const modalPanY = useRef(new Animated.Value(height)).current;
   const [adHidden, setAdHidden] = useState(false);
   const [isScrollEnabled, setIsScrollEnabled] = useState(true);
+  
+  const [taskStats, setTaskStats] = useState({ total: 0, completed: 0 });
 
   const openSearchModal = () => {
     setSearchQuery('');
@@ -185,8 +189,21 @@ const HomeScreen = ({ navigation }) => {
     useCallback(() => {
       fetchMainWeather();
       loadRegions();
+      fetchTaskStats();
     }, [])
   );
+
+  const fetchTaskStats = async () => {
+    try {
+      const allTasks = await getTasks();
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayTasks = allTasks.filter(t => t.date === todayStr);
+      const completed = todayTasks.filter(t => t.isCompleted).length;
+      setTaskStats({ total: todayTasks.length, completed });
+    } catch (e) {
+      console.error('Failed to fetch task stats', e);
+    }
+  };
 
   // Search Debounce logic
   useEffect(() => {
@@ -495,6 +512,14 @@ const HomeScreen = ({ navigation }) => {
             </LinearGradient>
           </View>
         </TouchableOpacity>
+
+        <View style={{ height: 16 }} />
+
+        <SmartBriefing 
+          weather={currentWeather} 
+          tasksCount={taskStats.total} 
+          completedCount={taskStats.completed} 
+        />
 
         {!isPremium && !adHidden ? (
           <View style={styles.adBannerWrapper}>

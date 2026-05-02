@@ -62,6 +62,22 @@
     "tasks_upcoming": "다음: {{task}} ({{time}})",
     "premium_only_limit": "더 많은 지역을 추가하려면 프리미엄 구독이 필요합니다. (최대 3개)"
   },
+  "briefing": {
+    "title": "오늘의 스마트 브리핑",
+    "greeting_morning": "좋은 아침이에요!",
+    "greeting_afternoon": "즐거운 오후입니다!",
+    "greeting_evening": "편안한 저녁 되세요!",
+    "weather_tasks": "{{location}}은 지금 {{weather}} 상태예요. 오늘 남은 할 일 {{count}}개도 화이팅하세요!",
+    "rain_alert": "비 소식이 있어요. 우산을 꼭 챙기세요! ☔",
+    "snow_alert": "눈이 내리고 있어요. 빙판길 조심하세요! ❄️",
+    "dust_alert": "미세먼지가 나빠요. 마스크를 챙기시는 게 좋겠어요. 😷",
+    "hot_alert": "폭염이 예상돼요! 수분 섭취를 잊지 마세요. ☀️",
+    "cold_alert": "날씨가 많이 추워요. 따뜻하게 입고 나가세요. 🧣",
+    "perfect_day": "날씨가 정말 화창해요! 야외 활동하기 딱 좋은 날입니다. ✨",
+    "no_tasks": "오늘은 예정된 할 일이 없네요. 여유로운 하루 보내세요! ☕",
+    "all_done": "오늘의 할 일을 모두 완료하셨네요! 정말 멋져요! 👏",
+    "task_summary": "오늘 할 일이 {{count}}개 있습니다."
+  },
   "management": {
     "title": "날씨 관심 지역 관리",
     "guide_text": "날씨를 확인할 지역을 최대 5개까지\n관리할 수 있습니다.",
