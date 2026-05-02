@@ -65,6 +65,7 @@ const FlowScreen = ({ navigation }) => {
   const { formatTemp } = useUnits();
   const insets = useSafeAreaInsets();
   const [menuVisible, setMenuVisible] = useState(false);
+  const [flowMenuVisible, setFlowMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
   const selectedFlowRef = useRef(null);
   const [stepSortOrder, setStepSortOrder] = useState('asc');
@@ -1026,16 +1027,7 @@ const FlowScreen = ({ navigation }) => {
               style={styles.iconBtn}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                Alert.alert(
-                  selectedFlow.title,
-                  null,
-                  [
-                    { text: t('common.cancel'), style: 'cancel' },
-                    { text: t('flow.share_as_image', '이미지로 공유'), onPress: handleShareFlowImage },
-                    { text: t('common.edit', 'Edit'), onPress: () => openFlowModal(selectedFlow) },
-                    { text: t('common.delete', 'Delete'), style: 'destructive', onPress: () => handleDeleteFlow(selectedFlow.id) },
-                  ]
-                );
+                setFlowMenuVisible(true);
               }}
               hitSlop={{ top: 20, bottom: 20, left: 8, right: 20 }}
             >
@@ -1832,6 +1824,44 @@ const FlowScreen = ({ navigation }) => {
         </Modal>
 
         <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { loadInitialData(); }} navigation={navigation} />
+
+        {/* Flow 옵션 팝업 메뉴 */}
+        <Modal
+          transparent
+          visible={flowMenuVisible}
+          animationType="fade"
+          onRequestClose={() => setFlowMenuVisible(false)}
+        >
+          <Pressable style={styles.flowMenuOverlay} onPress={() => setFlowMenuVisible(false)}>
+            <View style={styles.flowMenuCard}>
+              <Text style={styles.flowMenuTitle} numberOfLines={1}>{selectedFlow?.title}</Text>
+              <View style={styles.flowMenuDivider} />
+              <Pressable
+                style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#F4F7FE' }]}
+                onPress={() => { setFlowMenuVisible(false); handleShareFlowImage(); }}
+              >
+                <Share2 size={18} color={Colors.primary} />
+                <Text style={styles.flowMenuItemText}>{t('flow.share_as_image', '이미지로 공유')}</Text>
+              </Pressable>
+              <View style={styles.flowMenuDivider} />
+              <Pressable
+                style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#F4F7FE' }]}
+                onPress={() => { setFlowMenuVisible(false); openFlowModal(selectedFlow); }}
+              >
+                <Edit3 size={18} color={Colors.onBackground} />
+                <Text style={styles.flowMenuItemText}>{t('common.edit', 'Edit')}</Text>
+              </Pressable>
+              <View style={styles.flowMenuDivider} />
+              <Pressable
+                style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#FFF0F0' }]}
+                onPress={() => { setFlowMenuVisible(false); handleDeleteFlow(selectedFlow?.id); }}
+              >
+                <Trash2 size={18} color={Colors.error} />
+                <Text style={[styles.flowMenuItemText, { color: Colors.error }]}>{t('common.delete', 'Delete')}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
       </View>
     </GestureHandlerRootView>
   );
@@ -2060,6 +2090,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.05)',
+  },
+
+  // Flow 옵션 팝업 메뉴 스타일
+  flowMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  flowMenuCard: {
+    width: '100%',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20 },
+      android: { elevation: 12 }
+    }),
+  },
+  flowMenuTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    textAlign: 'center',
+  },
+  flowMenuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+  },
+  flowMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 14,
+  },
+  flowMenuItemText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.onBackground,
   },
 });
 

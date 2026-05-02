@@ -2599,9 +2599,9 @@ const styles = StyleSheet.create({
   todayText: { color: 'white' },
   dayNum: { fontSize: 13, fontWeight: '700', color: Colors.text },
 
-  calendarSlotContainer: { flex: 1, paddingHorizontal: 0, gap: 0 },
+  calendarSlotContainer: { flex: 1, paddingHorizontal: 0, gap: 1 },
   emptySlotRow: { height: 14 },
-  calendarTaskBar: { height: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, marginBottom: 1 },
+  calendarTaskBar: { height: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
   barStart: { borderTopLeftRadius: 4, borderBottomLeftRadius: 4, marginLeft: 0.5 },
   barEnd: { borderTopRightRadius: 4, borderBottomRightRadius: 4, marginRight: 0.5 },
   barMiddle: { marginHorizontal: 0 },
