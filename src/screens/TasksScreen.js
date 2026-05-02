@@ -326,8 +326,8 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                       { backgroundColor: col + opacity },
                       isStart && styles.barStart,
                       isEnd && styles.barEnd,
-                      isMulti && !isStart && { borderTopLeftRadius: 0, borderBottomLeftRadius: 0, marginLeft: -1, paddingLeft: 0 },
-                      isMulti && !isEnd && { borderTopRightRadius: 0, borderBottomRightRadius: 0, marginRight: -1, paddingRight: 0 }
+                      isMulti && !isStart && { borderTopLeftRadius: 0, borderBottomLeftRadius: 0, marginLeft: 0, paddingLeft: 0 },
+                      isMulti && !isEnd && { borderTopRightRadius: 0, borderBottomRightRadius: 0, marginRight: 0, paddingRight: 0 }
                     ]}
                   >
                     {isSegmentStart && spanInWeek === 1 && (
@@ -2599,11 +2599,11 @@ const styles = StyleSheet.create({
   todayText: { color: 'white' },
   dayNum: { fontSize: 13, fontWeight: '700', color: Colors.text },
 
-  calendarSlotContainer: { flex: 1, paddingHorizontal: 1, gap: 0 },
+  calendarSlotContainer: { flex: 1, paddingHorizontal: 0, gap: 0 },
   emptySlotRow: { height: 14 },
-  calendarTaskBar: { height: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
-  barStart: { borderTopLeftRadius: 3, borderBottomLeftRadius: 3, marginLeft: 1 },
-  barEnd: { borderTopRightRadius: 3, borderBottomRightRadius: 3, marginRight: 1 },
+  calendarTaskBar: { height: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, marginBottom: 1 },
+  barStart: { borderTopLeftRadius: 4, borderBottomLeftRadius: 4, marginLeft: 0.5 },
+  barEnd: { borderTopRightRadius: 4, borderBottomRightRadius: 4, marginRight: 0.5 },
   barMiddle: { marginHorizontal: 0 },
   calendarBarText: { fontSize: 10, fontWeight: '700', color: 'white', lineHeight: 14, includeFontPadding: false, textAlignVertical: 'center' },
   moreTasksRow: { height: 10, justifyContent: 'center', alignItems: 'center', marginTop: 0 },
@@ -2723,7 +2723,7 @@ const styles = StyleSheet.create({
   modalForm: { flex: 1 },
 
   // TimeTree Style
-  timeTreeTitle: { fontSize: 20, fontWeight: '700', color: Colors.text, paddingVertical: 12, borderBottomWidth: 1.5, borderBottomColor: '#F1F5F9', marginBottom: 12 },
+  timeTreeTitle: { fontSize: 20, fontWeight: '700', color: Colors.text, paddingVertical: 18, borderBottomWidth: 1.5, borderBottomColor: '#F1F5F9', marginBottom: 12 },
   timeTreeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
   rowLead: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   rowTail: { flexDirection: 'row', alignItems: 'center' },
