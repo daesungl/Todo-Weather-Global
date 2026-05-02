@@ -65,30 +65,38 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const ITEM_HEIGHT = 50;
 const TASK_COLOR_LABELS = [
+  { key: 'midnight', color: '#0F172A', name: '미드나잇' },
   { key: 'dark_blue', name: '다크 블루', color: '#2A234F' },
   { key: 'charcoal', name: '차콜', color: '#2B2B2B' },
   { key: 'navy_blue', name: '네이비 블루', color: '#10367D' },
+  { key: 'forest_green', name: '포레스트 그린', color: '#06530B' },
+  { key: 'crimson_red', name: '크림슨 레드', color: '#B40023' },
   { key: 'burgundy', name: '버건디', color: '#7D2027' },
   { key: 'indigo', name: '인디고', color: '#3730A3' },
-  { key: 'forest_green', name: '포레스트 그린', color: '#06530B' },
+  { key: 'rose_red', color: '#9F1239', name: '로즈 레드' },
+  { key: 'bronze', color: '#78350F', name: '브론즈' },
   { key: 'olive_green', name: '올리브 그린', color: '#574C00' },
-  { key: 'crimson_red', name: '크림슨 레드', color: '#B40023' },
-  { key: 'slate', name: '슬레이트', color: '#475569' },
   { key: 'peacock_blue', name: '피콕 블루', color: '#006D77' },
-  { key: 'violet', name: '바이올렛', color: '#7C3AED' },
+  { key: 'steel_blue', color: '#1D4ED8', name: '스틸 블루' },
+  { key: 'mauve', color: '#7E22CE', name: '모브' },
+  { key: 'deep_pink', color: '#BE185D', name: '딥 핑크' },
   { key: 'emerald', color: '#047857', name: '에메랄드' },
-  { key: 'mustard', color: '#887114', name: '머스타드' },
+  { key: 'slate', name: '슬레이트', color: '#475569' },
+  { key: 'teal', color: '#0F766E', name: '틸' },
   { key: 'orange', color: '#EA2E00', name: '오렌지' },
+  { key: 'violet', name: '바이올렛', color: '#7C3AED' },
+  { key: 'amber', color: '#B45309', name: '앰버' },
+  { key: 'mustard', color: '#887114', name: '머스타드' },
   { key: 'coral', color: '#E05252', name: '코럴' },
-  { key: 'terracotta', color: '#C66B3D', name: '테라코타' },
   { key: 'sky_blue', color: '#2196F3', name: '스카이 블루' },
+  { key: 'terracotta', color: '#C66B3D', name: '테라코타' },
   { key: 'sage_green', color: '#A8B89F', name: '세이지 그린' },
-  { key: 'blush_pink', color: '#FFB3C3', name: '블러쉬 핑크' },
   { key: 'pastel_purple', color: '#BBBFEC', name: '파스텔 퍼플' },
+  { key: 'blush_pink', color: '#FFB3C3', name: '블러쉬 핑크' },
+  { key: 'beige', color: '#F0E7D6', name: '베이지' },
   { key: 'lavender', color: '#EBEBEB', name: '라벤더' },
   { key: 'cream', color: '#F4EFE6', name: '크림' },
   { key: 'ivory', color: '#FEF9DB', name: '아이보리' },
-  { key: 'beige', color: '#F0E7D6', name: '베이지' },
 ];
 
 const TASK_COLORS = TASK_COLOR_LABELS.map(l => l.color);
@@ -929,6 +937,7 @@ const TasksScreen = ({ navigation }) => {
     setNewMemo('');
     setNewLocName('');
     setNewWeatherRegion(null);
+    setSelectedColor(TASK_COLOR_LABELS[Math.floor(Math.random() * TASK_COLOR_LABELS.length)].color);
     setIsAdding(true);
     modalAddY.setValue(height);
     Animated.spring(modalAddY, {
@@ -1459,10 +1468,10 @@ const TasksScreen = ({ navigation }) => {
                         <ChevronLeft size={28} color={Colors.text} pointerEvents="none" />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        onPress={selectedTaskDetail?.isFlowTask ? null : () => setIsDetailMenuVisible(true)}
-                        style={[styles.detailHeaderBtn, selectedTaskDetail?.isFlowTask && { opacity: 0.3 }]}
+                        onPress={() => setIsDetailMenuVisible(true)}
+                        style={styles.detailHeaderBtn}
                         hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                        disabled={!selectedTaskDetail || selectedTaskDetail.isFlowTask}
+                        disabled={!selectedTaskDetail}
                       >
                         <MoreHorizontal size={24} color={Colors.text} pointerEvents="none" />
                       </TouchableOpacity>
@@ -1550,20 +1559,37 @@ const TasksScreen = ({ navigation }) => {
                     <>
                       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setIsDetailMenuVisible(false)} />
                       <View style={styles.floatingMenu}>
-                        <TouchableOpacity style={styles.menuItem} onPress={async () => {
-                          setIsDetailMenuVisible(false);
-                          const updated = await toggleTaskCompletion(selectedTaskDetail.id);
-                          setTasks(updated);
-                          const newStatus = !selectedTaskDetail.isCompleted;
-                          setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
-                        }}>
-                          <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
-                          <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
-                            {selectedTaskDetail.isCompleted ? t('tasks.mark_incomplete') : t('tasks.mark_complete')}
-                          </Text>
-                        </TouchableOpacity>
+                        {selectedTaskDetail.isFlowTask ? (
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => {
+                              setIsDetailMenuVisible(false);
+                              setIsTaskListVisible(false);
+                              // FlowScreen으로 이동하며 해당 flowId 전달
+                              navigation.navigate('Flow', { flowId: selectedTaskDetail.flowId });
+                            }}
+                          >
+                            <ArrowRight size={18} color={Colors.primary} />
+                            <Text style={[styles.menuText, { color: Colors.primary, fontWeight: '800' }]}>
+                              {t('tasks.go_to_flow', '이동하기')}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity style={styles.menuItem} onPress={async () => {
+                            setIsDetailMenuVisible(false);
+                            const updated = await toggleTaskCompletion(selectedTaskDetail.id);
+                            setTasks(updated);
+                            const newStatus = !selectedTaskDetail.isCompleted;
+                            setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
+                          }}>
+                            <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
+                            <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
+                              {selectedTaskDetail.isCompleted ? t('tasks.mark_incomplete') : t('tasks.mark_complete')}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
 
                         <TouchableOpacity style={styles.menuItem} onPress={async () => {
                           setIsDetailMenuVisible(false);
@@ -1574,30 +1600,33 @@ const TasksScreen = ({ navigation }) => {
                           <Share2 size={18} color={Colors.text} /><Text style={styles.menuText}>{t('tasks.share')}</Text>
                         </TouchableOpacity>
 
-                        <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
-
-                        <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); openEditInSheet(selectedTaskDetail); }}>
-                          <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>{t('common.edit')}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.menuItem} onPress={() => {
-                          setIsDetailMenuVisible(false);
-                          const taskId = selectedTaskDetail.id;
-                          isAlertActiveRef.current = true;
-                          Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
-                            { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
-                            {
-                              text: t('common.delete'), style: 'destructive', onPress: async () => {
-                                isAlertActiveRef.current = false;
-                                handleBackToList();
-                                const updated = await deleteTask(taskId);
-                                setTasks(updated);
-                                showToast(t('tasks.delete_success'));
-                              }
-                            }
-                          ], { cancelable: false });
-                        }}>
-                          <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>{t('common.delete')}</Text>
-                        </TouchableOpacity>
+                        {!selectedTaskDetail.isFlowTask && (
+                          <>
+                            <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
+                            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDetailMenuVisible(false); openEditInSheet(selectedTaskDetail); }}>
+                              <Pencil size={18} color={Colors.text} /><Text style={styles.menuText}>{t('common.edit')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.menuItem} onPress={() => {
+                              setIsDetailMenuVisible(false);
+                              const taskId = selectedTaskDetail.id;
+                              isAlertActiveRef.current = true;
+                              Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
+                                { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
+                                {
+                                  text: t('common.delete'), style: 'destructive', onPress: async () => {
+                                    isAlertActiveRef.current = false;
+                                    handleBackToList();
+                                    const updated = await deleteTask(taskId);
+                                    setTasks(updated);
+                                    showToast(t('tasks.delete_success'));
+                                  }
+                                }
+                              ], { cancelable: false });
+                            }}>
+                              <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>{t('common.delete')}</Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
                       </View>
                     </>
                   )}

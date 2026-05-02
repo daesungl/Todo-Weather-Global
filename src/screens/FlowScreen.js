@@ -60,7 +60,42 @@ import { getFlows, saveFlows, addFlow, deleteFlow } from '../services/FlowServic
 
 const { width, height } = Dimensions.get('window');
 
-const FlowScreen = ({ navigation }) => {
+const FLOW_GRADIENT_PRESETS = [
+  { key: 'wine',          name: '와인',     colors: ['#881337', '#7f1d1d'] },
+  { key: 'midnight',      name: '미드나잇', colors: ['#1e3a8a', '#312e81'] },
+  { key: 'cherry',        name: '체리',     colors: ['#be123c', '#9f1239'] },
+  { key: 'steel',         name: '스틸',     colors: ['#1d4ed8', '#1e3a8a'] },
+  { key: 'grape',         name: '그레이프', colors: ['#7c3aed', '#4c1d95'] },
+  { key: 'deep_sea',      name: '딥씨',     colors: ['#0369a1', '#1e3a8a'] },
+  { key: 'nebula',        name: '네뷸라',   colors: ['#4f46e5', '#7e22ce'] },
+  { key: 'bronze',        name: '브론즈',   colors: ['#b45309', '#78350f'] },
+  { key: 'lavender',      name: '라벤더',   colors: ['#c026d3', '#7c3aed'] },
+  { key: 'slate',         name: '슬레이트', colors: ['#64748b', '#475569'] },
+  { key: 'teal_ocean',    name: '틸오션',   colors: ['#0891b2', '#0369a1'] },
+  { key: 'forest',        name: '포레스트', colors: ['#16a34a', '#065f46'] },
+  { key: 'gold',          name: '골드',     colors: ['#d97706', '#92400e'] },
+  { key: 'violet_purple', name: '바이올렛', colors: ['#6366f1', '#a855f7'] },
+  { key: 'olive',         name: '올리브',   colors: ['#65a30d', '#713f12'] },
+  { key: 'fire',          name: '파이어',   colors: ['#dc2626', '#f97316'] },
+  { key: 'tropical',      name: '트로피칼', colors: ['#059669', '#0891b2'] },
+  { key: 'sunset',        name: '선셋',     colors: ['#f97316', '#ef4444'] },
+  { key: 'aurora',        name: '오로라',   colors: ['#8b5cf6', '#06b6d4'] },
+  { key: 'rose',          name: '로즈',     colors: ['#f43f5e', '#fb923c'] },
+  { key: 'candy',         name: '캔디',     colors: ['#f43f5e', '#e879f9'] },
+  { key: 'ocean',         name: '오션',     colors: ['#3b82f6', '#06b6d4'] },
+  { key: 'warm_gray',     name: '웜그레이', colors: ['#9ca3af', '#6b7280'] },
+  { key: 'coral',         name: '코럴',     colors: ['#e05252', '#f59e0b'] },
+  { key: 'emerald',       name: '에메랄드', colors: ['#10b981', '#06b6d4'] },
+  { key: 'sakura',        name: '사쿠라',   colors: ['#f472b6', '#e879f9'] },
+  { key: 'lime',          name: '라임',     colors: ['#84cc16', '#16a34a'] },
+  { key: 'sky',           name: '스카이',   colors: ['#38bdf8', '#818cf8'] },
+  { key: 'mint',          name: '민트',     colors: ['#34d399', '#06b6d4'] },
+  { key: 'peach_rose',    name: '피치로즈', colors: ['#fb7185', '#fbbf24'] },
+  { key: 'peach',         name: '피치',     colors: ['#fb923c', '#fbbf24'] },
+  { key: 'arctic',        name: '아틱',     colors: ['#bae6fd', '#a5b4fc'] },
+];
+
+const FlowScreen = ({ navigation, route }) => {
   const { t, i18n } = useTranslation();
   const { formatTemp } = useUnits();
   const insets = useSafeAreaInsets();
@@ -105,6 +140,7 @@ const FlowScreen = ({ navigation }) => {
   const [flowAddress, setFlowAddress] = useState('');
   const [flowLat, setFlowLat] = useState(null);
   const [flowLon, setFlowLon] = useState(null);
+  const [flowGradient, setFlowGradient] = useState(FLOW_GRADIENT_PRESETS[0].colors);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -136,11 +172,22 @@ const FlowScreen = ({ navigation }) => {
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress', () => {
+      selectedFlowRef.current = null;
       setSelectedFlow(null);
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
     return unsubscribe;
   }, [navigation]);
+
+  useEffect(() => {
+    const flowId = route.params?.flowId;
+    if (!flowId || !flows.length) return;
+    const targetFlow = flows.find(f => f.id === flowId);
+    if (targetFlow) {
+      setSelectedFlow(targetFlow);
+      navigation.setParams({ flowId: undefined });
+    }
+  }, [route.params?.flowId, flows]);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
@@ -318,6 +365,7 @@ const FlowScreen = ({ navigation }) => {
       currentFlows = savedFlows;
       setFlows(currentFlows);
     }
+
     setIsLoading(false);
   };
 
@@ -482,14 +530,15 @@ const FlowScreen = ({ navigation }) => {
 
       const now = new Date().toISOString();
       const updatedFlows = editingFlow
-        ? flows.map(f => f.id === editingFlow.id ? { 
-            ...f, 
-            title: flowTitle, 
-            description: flowDescription, 
-            location: flowLocation, 
-            address: flowAddress, 
+        ? flows.map(f => f.id === editingFlow.id ? {
+            ...f,
+            title: flowTitle,
+            description: flowDescription,
+            location: flowLocation,
+            address: flowAddress,
             lat: flowLat,
             lon: flowLon,
+            gradient: flowGradient,
             weatherTemp,
             weatherCondKey,
             weatherIsDay,
@@ -503,7 +552,7 @@ const FlowScreen = ({ navigation }) => {
             location: flowLocation || '',
             address: flowAddress || '',
             progress: 0,
-            gradient: getFlowGradient(flows),
+            gradient: flowGradient,
             weatherTemp,
             weatherCondKey,
             weatherIsDay,
@@ -703,6 +752,7 @@ const FlowScreen = ({ navigation }) => {
     setFlowAddress(flow ? (flow.address || '') : '');
     setFlowLat(flow ? flow.lat : null);
     setFlowLon(flow ? flow.lon : null);
+    setFlowGradient(flow ? (flow.gradient || FLOW_GRADIENT_PRESETS[0].colors) : FLOW_GRADIENT_PRESETS[Math.floor(Math.random() * FLOW_GRADIENT_PRESETS.length)].colors);
     setFlowModalVisible(true);
     Animated.spring(flowPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
@@ -1460,6 +1510,48 @@ const FlowScreen = ({ navigation }) => {
                         <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput ref={flowDescRef} style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder={t('flow.description_placeholder', 'What is this flow about?')} placeholderTextColor={Colors.outline} autoCapitalize="none" onFocus={() => { focusedFlowInputRef.current = flowDescRef.current; }} onBlur={() => { focusedFlowInputRef.current = null; }} /></View>
                       </View>
 
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>{t('flow.card_color', '카드 색상')}</Text>
+                        <View style={styles.gradientPreview}>
+                          <LinearGradient colors={flowGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradientPreviewCircle} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.gradientPreviewName}>
+                              {FLOW_GRADIENT_PRESETS.find(p => p.colors[0] === flowGradient[0] && p.colors[1] === flowGradient[1])?.name ?? t('flow.custom_color', '커스텀')}
+                            </Text>
+                            <LinearGradient colors={flowGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradientPreviewBadge}>
+                              <Text style={styles.gradientPreviewBadgeText}>{flowTitle || t('flow.flow_title_placeholder', 'Flow')}</Text>
+                            </LinearGradient>
+                          </View>
+                        </View>
+                        <View style={styles.gradientGrid}>
+                          {FLOW_GRADIENT_PRESETS.map((preset) => {
+                            const isSelected = flowGradient[0] === preset.colors[0] && flowGradient[1] === preset.colors[1];
+                            return (
+                              <GHButton
+                                key={preset.key}
+                                style={styles.gradientGridCell}
+                                onPress={() => {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                  setFlowGradient(preset.colors);
+                                }}
+                              >
+                                <View style={[styles.gradientSwatchWrap, isSelected && styles.gradientSwatchWrapSelected]}>
+                                  <LinearGradient
+                                    colors={preset.colors}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={styles.gradientSwatch}
+                                  >
+                                    {isSelected && <Check size={16} color="white" strokeWidth={3} />}
+                                  </LinearGradient>
+                                </View>
+                                <Text style={styles.gradientLabel} numberOfLines={1}>{preset.name}</Text>
+                              </GHButton>
+                            );
+                          })}
+                        </View>
+                      </View>
+
                       <View style={{ height: 100 }} />
                     </ScrollView>
 
@@ -2016,6 +2108,17 @@ const styles = StyleSheet.create({
   },
   premiumSubmitText: { color: 'white', fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
   editInputText: { ...Typography.body, fontSize: 14.5, color: Colors.onBackground, fontWeight: '600' },
+  gradientPreview: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, marginTop: 10, marginBottom: 12 },
+  gradientPreviewCircle: { width: 36, height: 36, borderRadius: 18 },
+  gradientPreviewName: { fontSize: 11, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 4 },
+  gradientPreviewBadge: { borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' },
+  gradientPreviewBadgeText: { fontSize: 13, fontWeight: '700', color: 'white' },
+  gradientGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, gap: 4 },
+  gradientGridCell: { width: (width - Spacing.xl * 2 - 4 * 3) / 4, alignItems: 'center', paddingVertical: 8 },
+  gradientSwatchWrap: { width: 48, height: 48, borderRadius: 24, padding: 3, borderWidth: 2.5, borderColor: 'transparent', marginBottom: 6 },
+  gradientSwatchWrapSelected: { borderColor: Colors.primary },
+  gradientSwatch: { flex: 1, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  gradientLabel: { fontSize: 11, color: Colors.onSurfaceVariant, fontWeight: '600', textAlign: 'center' },
   inputClearBtn: { padding: 8, marginLeft: 4, backgroundColor: Colors.surfaceContainer, borderRadius: 10 },
   pickerContainer: { backgroundColor: Colors.surfaceContainerLowest, borderRadius: 24, marginTop: 8, marginBottom: 20, overflow: 'hidden', paddingBottom: 8 },
   modalFooter: { flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 20, alignItems: 'center' },
