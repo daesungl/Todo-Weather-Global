@@ -488,27 +488,59 @@ const FlowScreen = ({ navigation, route }) => {
       if (!stepsWithLocation.length) return;
 
       (async () => {
-        for (const step of stepsWithLocation) {
-          try {
-            const weather = await WeatherService.getWeather(step.lat, step.lon, false, step.region?.name, step.region?.name);
-            if (!weather?.condKey) continue;
-            const newWeather = { condKey: weather.condKey, isDay: weather.isDay !== false, tzOffsetMs: weather.tzOffsetMs };
+        // 중복 위치 제거 (lat, lon 기준)
+        const uniqueLocations = [];
+        const seen = new Set();
+        
+        for (const s of stepsWithLocation) {
+          const key = `${s.lat}_${s.lon}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueLocations.push({ lat: s.lat, lon: s.lon, name: s.region?.name });
+          }
+        }
 
-            setFlows(prev => {
-              const updated = prev.map(f => {
-                if (f.id !== flow.id) return f;
-                return { ...f, steps: f.steps.map(s => s.id === step.id ? { ...s, weather: newWeather } : s) };
-              });
-              const updatedFlow = updated.find(f => f.id === flow.id);
-              if (updatedFlow) {
-                selectedFlowRef.current = updatedFlow;
-                setSelectedFlow(updatedFlow);
-              }
-              saveFlows(updated);
-              return updated;
-            });
+        const weatherResults = {};
+        for (const loc of uniqueLocations) {
+          try {
+            const weather = await WeatherService.getWeather(loc.lat, loc.lon, false, loc.name, loc.name);
+            if (weather?.condKey) {
+              weatherResults[`${loc.lat}_${loc.lon}`] = { 
+                condKey: weather.condKey, 
+                isDay: weather.isDay !== false, 
+                tzOffsetMs: weather.tzOffsetMs 
+              };
+            }
           } catch (_) {}
         }
+
+        if (Object.keys(weatherResults).length === 0) return;
+
+        setFlows(prev => {
+          const updated = prev.map(f => {
+            if (f.id !== flow.id) return f;
+            const newSteps = f.steps.map(s => {
+              if (!s.lat || !s.lon) return s;
+              const newWeather = weatherResults[`${s.lat}_${s.lon}`];
+              if (newWeather) return { ...s, weather: newWeather };
+              return s;
+            });
+            return { ...f, steps: newSteps };
+          });
+          
+          saveFlows(updated);
+          
+          // 현재 선택된 플로우 동기화 (무한 루프 방지 위해 레퍼런스 활용)
+          const updatedFlow = updated.find(f => f.id === flow.id);
+          if (updatedFlow) {
+            selectedFlowRef.current = updatedFlow;
+            // setFlows 외부에서 setSelectedFlow가 간접적으로 업데이트되도록 처리
+            // (무한 루프의 원인이 되는 setSelectedFlow 직접 호출 제거)
+            setTimeout(() => setSelectedFlow(updatedFlow), 0);
+          }
+          
+          return updated;
+        });
       })();
     });
     return unsubscribe;
@@ -516,6 +548,7 @@ const FlowScreen = ({ navigation, route }) => {
 
   const MAX_FLOWS = limits.flows;
   const MAX_STEPS = limits.stepsPerFlow;
+  const WEATHER_LIMIT = limits.stepWeatherLimit;
 
   // inactive 플래그를 렌더 시점에 계산 — AsyncStorage 타이밍 이슈 없이 isPremium 즉시 반영
   const displayFlows = React.useMemo(() => {
@@ -610,6 +643,17 @@ const FlowScreen = ({ navigation, route }) => {
         ? t('flow.alert.step_limit_msg', `플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`)
         : t('flow.alert.step_limit_free_msg', `무료 플랜은 플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`);
       Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), msg);
+      return;
+    }
+
+    // 날씨 설정 제한 체크
+    const weatherSteps = (selectedFlow?.steps || []).filter(s => s.region);
+    const isAddingNewWeather = selectedRegion && (!editingStep || !editingStep.region);
+    if (isAddingNewWeather && weatherSteps.length >= WEATHER_LIMIT) {
+      const msg = isPremium
+        ? t('flow.alert.weather_limit_msg', { count: WEATHER_LIMIT })
+        : t('flow.alert.weather_limit_free_msg', { count: WEATHER_LIMIT });
+      Alert.alert(t('flow.alert.limit_title', 'Weather Limit'), msg);
       return;
     }
     if (editTime && !editTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {

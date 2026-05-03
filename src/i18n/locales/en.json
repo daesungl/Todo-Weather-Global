@@ -344,6 +344,8 @@
       "limit_title": "Flow Limit Reached",
       "limit_msg": "You can create up to 50 flows.",
       "premium_limit_msg": "Premium subscription is required to create more flows. (Max 5 for free)",
+      "weather_limit_msg": "You can set weather for up to {{count}} schedules per flow.",
+      "weather_limit_free_msg": "Free plan allows setting weather for up to {{count}} schedules per flow. Upgrade to Premium for more.",
       "sharing_not_available": "Sharing Not Available",
       "sharing_not_available_msg": "Sharing is not available on this device",
       "share_failed": "Share Failed",

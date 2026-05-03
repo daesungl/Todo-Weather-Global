@@ -8,12 +8,14 @@ export const LIMITS = {
   FREE: {
     regions: 5,
     flows: 5,
-    stepsPerFlow: 10,
+    stepsPerFlow: 300,
+    stepWeatherLimit: 3,
   },
   PREMIUM: {
     regions: 15,
     flows: 30,
-    stepsPerFlow: 30,
+    stepsPerFlow: 1000,
+    stepWeatherLimit: 10,
   },
 };
 
@@ -88,8 +90,12 @@ export const SubscriptionProvider = ({ children }) => {
   };
 
   // 사업자 등록 전까지 임시로 모든 제한 해제 (광고는 유지)
-  const limits = LIMITS.PREMIUM; 
-  // const limits = isPremium ? LIMITS.PREMIUM : LIMITS.FREE;
+  // 단, 새롭게 도입된 스텝 날씨 설정 제한(stepWeatherLimit)은 실제 구독 상태(isPremium)를 따르도록 합니다.
+  const actualLimits = isPremium ? LIMITS.PREMIUM : LIMITS.FREE;
+  const limits = {
+    ...LIMITS.PREMIUM,
+    stepWeatherLimit: actualLimits.stepWeatherLimit
+  };
 
   return (
     <SubscriptionContext.Provider value={{
