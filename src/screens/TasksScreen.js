@@ -360,7 +360,6 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                         style={[
                           styles.calendarBarText,
                           { textAlign: 'center', width: '100%' },
-                          !day.current && { color: 'rgba(255,255,255,0.7)' }
                         ]}
                         numberOfLines={1}
                       >
@@ -386,7 +385,6 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                           style={[
                             styles.calendarBarText,
                             { textAlign: 'center', width: '100%', paddingHorizontal: 2 },
-                            !day.current && { color: 'rgba(255,255,255,0.7)' }
                           ]}
                           numberOfLines={1}
                         >

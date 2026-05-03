@@ -646,10 +646,24 @@ const FlowScreen = ({ navigation, route }) => {
       return;
     }
 
-    // 날씨 설정 제한 체크
-    const weatherSteps = (selectedFlow?.steps || []).filter(s => s.region);
+    // 날씨 설정 제한 체크: 반복 일정은 1개로 카운트
+    const weatherStepGroups = new Set();
+    let weatherCount = 0;
+    (selectedFlow?.steps || []).forEach(s => {
+      if (s.region) {
+        if (s.repeatGroupId) {
+          if (!weatherStepGroups.has(s.repeatGroupId)) {
+            weatherStepGroups.add(s.repeatGroupId);
+            weatherCount++;
+          }
+        } else {
+          weatherCount++;
+        }
+      }
+    });
+    
     const isAddingNewWeather = selectedRegion && (!editingStep || !editingStep.region);
-    if (isAddingNewWeather && weatherSteps.length >= WEATHER_LIMIT) {
+    if (isAddingNewWeather && weatherCount >= WEATHER_LIMIT) {
       const msg = isPremium
         ? t('flow.alert.weather_limit_msg', { count: WEATHER_LIMIT })
         : t('flow.alert.weather_limit_free_msg', { count: WEATHER_LIMIT });
