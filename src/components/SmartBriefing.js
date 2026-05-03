@@ -101,7 +101,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: 28,
     padding: 20,
-    marginBottom: 16,
     borderWidth: 1,
     borderColor: Colors.surfaceContainer,
     shadowColor: Colors.shadow,

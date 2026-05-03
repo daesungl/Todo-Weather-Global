@@ -13,12 +13,12 @@ import { BannerAdSize } from 'react-native-google-mobile-ads';
 import { useTranslation } from 'react-i18next';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RangeCalendarModal from '../components/RangeCalendarModal';
-import { 
-  Plus, 
-  MapPin, 
-  Calendar, 
-  CloudRain, 
-  Sun, 
+import {
+  Plus,
+  MapPin,
+  Calendar,
+  CloudRain,
+  Sun,
   Wind,
   ChevronLeft,
   MoreVertical,
@@ -43,7 +43,8 @@ import {
   Flag,
   Share2,
   Lock,
-  ArrowUpDown
+  ArrowUpDown,
+  Repeat
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ViewShot from 'react-native-view-shot';
@@ -59,6 +60,23 @@ import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorld
 import { getFlows, saveFlows, addFlow, deleteFlow } from '../services/FlowService';
 
 const { width, height } = Dimensions.get('window');
+
+const _advanceByRepeat = (date, repeat) => {
+  const d = new Date(date);
+  switch (repeat) {
+    case 'daily':   d.setDate(d.getDate() + 1);          break;
+    case 'weekly':  d.setDate(d.getDate() + 7);          break;
+    case 'monthly': d.setMonth(d.getMonth() + 1);        break;
+    case 'yearly':  d.setFullYear(d.getFullYear() + 1);  break;
+  }
+  return d;
+};
+const _dateStrFlow = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 const FLOW_GRADIENT_PRESETS = [
   { key: 'wine',          name: '와인',     colors: ['#881337', '#7f1d1d'] },
@@ -128,8 +146,14 @@ const FlowScreen = ({ navigation, route }) => {
   const [matchStartDate, setMatchStartDate] = useState(true);
   const [editActivity, setEditActivity] = useState('');
   const [editMemo, setEditMemo] = useState('');
-  const [pickerType, setPickerType] = useState(null); // 'startDate', 'startTime', 'endDate', 'endTime'
+  const [pickerType, setPickerType] = useState(null);
   const pickerBackupRef = useRef({ editDate: '', editTime: '', editEndDate: '', editEndTime: '' });
+
+  // Step Repeat State
+  const [stepRepeatType, setStepRepeatType] = useState(null);
+  const [stepRepeatEndDate, setStepRepeatEndDate] = useState('');
+  const [showStepRepeatPicker, setShowStepRepeatPicker] = useState(false);
+  const [showStepRepeatEndPicker, setShowStepRepeatEndPicker] = useState(false);
 
   // Flow Create/Edit State
   const [flowModalVisible, setFlowModalVisible] = useState(false);
@@ -584,7 +608,7 @@ const FlowScreen = ({ navigation, route }) => {
     if (!editingStep && (selectedFlow?.steps?.length || 0) >= MAX_STEPS) {
       const msg = isPremium
         ? t('flow.alert.step_limit_msg', `플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`)
-        : t('flow.alert.step_limit_free_msg', `무료 플랜은 플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다. 더 추가하려면 프리미엄을 이용해 주세요.`);
+        : t('flow.alert.step_limit_free_msg', `무료 플랜은 플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`);
       Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), msg);
       return;
     }
@@ -592,17 +616,20 @@ const FlowScreen = ({ navigation, route }) => {
       Alert.alert(t('flow.alert.invalid_time'), t('flow.alert.invalid_time_msg'));
       return;
     }
-    
-    setIsSearching(true);
-    try {
-      let weatherData = null;
-      let hasWarning = false;
-      const now = new Date().toISOString();
-      
-      const targetLat = selectedRegion ? selectedRegion.lat : null;
-      const targetLon = selectedRegion ? selectedRegion.lon : null;
-      const targetName = selectedRegion ? selectedRegion.name : null;
+    if (stepRepeatType && !stepRepeatEndDate) {
+      Alert.alert('', t('tasks.repeat_end_required', '반복 종료일을 선택해주세요'));
+      return;
+    }
 
+    setIsSearching(true);
+    let weatherData = null;
+    let hasWarning = false;
+    const now = new Date().toISOString();
+    const targetLat = selectedRegion ? selectedRegion.lat : null;
+    const targetLon = selectedRegion ? selectedRegion.lon : null;
+    const targetName = selectedRegion ? selectedRegion.name : null;
+
+    try {
       if (targetLat && targetLon) {
         const weather = await WeatherService.getWeather(targetLat, targetLon, false, targetName, targetName);
         const weatherKey = weather ? weather.condKey : null;
@@ -610,48 +637,218 @@ const FlowScreen = ({ navigation, route }) => {
         hasWarning = weather && (weather.condKey === 'rainy' || weather.condKey === 'thunderstorm');
         weatherData = { condKey: weatherKey, isDay: weatherIsDay };
       }
+    } catch (e) { console.error(e); }
+    finally { setIsSearching(false); }
 
-      const finalEndDate = matchStartDate ? editDate : editEndDate;
-      const finalEndTime = matchStartDate ? editTime : editEndTime;
+    const finalEndDate = matchStartDate ? editDate : editEndDate;
+    const finalEndTime = matchStartDate ? editTime : editEndTime;
 
+    const applyToFlow = async (updatedSteps) => {
       const updatedFlows = flows.map(f => {
-        if (f.id === selectedFlow.id) {
-          const updatedSteps = editingStep 
-            ? f.steps.map(s => s.id === editingStep.id ? { ...s, time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now } : s)
-            : [...(f.steps || []), { id: Date.now().toString(), date: editDate, time: editTime, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, status: 'upcoming', weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, createdAt: now, updatedAt: now }];
-          
-          const sorted = sortSteps(updatedSteps);
-          const updatedF = { ...f, steps: sorted, updatedAt: now };
-          setSelectedFlow(updatedF);
-          return updatedF;
-        }
-        return f;
+        if (f.id !== selectedFlow.id) return f;
+        const sorted = sortSteps(updatedSteps);
+        const updatedF = { ...f, steps: sorted, updatedAt: now };
+        setSelectedFlow(updatedF);
+        return updatedF;
       });
-
       setFlows(updatedFlows);
       await saveFlows(updatedFlows);
       closeEditModal();
-    } catch (e) { 
-      console.error(e); 
-    } finally { 
-      setIsSearching(false); 
+    };
+
+    const currentSteps = flows.find(f => f.id === selectedFlow.id)?.steps || [];
+    const baseUpdates = { time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now };
+
+    const doEdit = (scope) => {
+      let updatedSteps;
+      if (scope === 'this') {
+        updatedSteps = currentSteps.map(s => s.id === editingStep.id ? { ...s, ...baseUpdates } : s);
+      } else {
+        const { date: _d, endDate: _ed, ...shared } = baseUpdates;
+
+        const oldDateMs = new Date(editingStep.date + 'T12:00:00').getTime();
+        const editDateMs = new Date(editDate + 'T12:00:00').getTime();
+        const dateShiftMs = editDateMs - oldDateMs;
+
+        const editEndDateMs = finalEndDate ? new Date(finalEndDate + 'T12:00:00').getTime() : null;
+        const durationMs = editEndDateMs !== null ? editEndDateMs - editDateMs : null;
+
+        const pred = scope === 'future'
+          ? (s) => s.repeatGroupId === editingStep.repeatGroupId && s.date >= editingStep.date
+          : (s) => s.repeatGroupId === editingStep.repeatGroupId;
+
+        updatedSteps = currentSteps.map(s => {
+          if (!pred(s)) return s;
+          // 편집 중인 스텝: date/endDate 포함 전체 적용
+          if (s.id === editingStep.id) {
+            return { ...s, ...baseUpdates };
+          }
+          // 나머지 그룹 스텝: 기준 날짜의 변경 폭(dateShiftMs)만큼 시작일과 종료일 함께 이동
+          const stepDateMs = new Date(s.date + 'T12:00:00').getTime();
+          const newStepDateMs = stepDateMs + dateShiftMs;
+          const newDateStr = _dateStrFlow(new Date(newStepDateMs));
+          
+          let newEndDate = null;
+          if (durationMs !== null) {
+            newEndDate = _dateStrFlow(new Date(newStepDateMs + durationMs));
+          } else if (s.endDate) {
+            const oldEndMs = new Date(s.endDate + 'T12:00:00').getTime();
+            newEndDate = _dateStrFlow(new Date(oldEndMs + dateShiftMs));
+          }
+          
+          return { ...s, ...shared, date: newDateStr, endDate: newEndDate };
+        });
+      }
+      applyToFlow(updatedSteps);
+    };
+
+    if (editingStep) {
+      if (editingStep.repeatGroupId) {
+        const repEndChanged = stepRepeatEndDate !== (editingStep.repeatEndDate || '');
+
+        if (repEndChanged && stepRepeatEndDate) {
+          // Repeat end date changed → extend/shorten series globally, no 3-way choice
+          const groupId = editingStep.repeatGroupId;
+          const repeat = editingStep.repeat || stepRepeatType;
+          const newRepeatEnd = new Date(stepRepeatEndDate + 'T12:00:00');
+
+          const groupSteps = currentSteps
+            .filter(s => s.repeatGroupId === groupId)
+            .sort((a, b) => a.date.localeCompare(b.date));
+          const lastStep = groupSteps[groupSteps.length - 1];
+          const lastDate = new Date(lastStep.date + 'T12:00:00');
+
+          const masterStep = groupSteps.find(s => s.isRepeatMaster) || groupSteps[0];
+          const masterStart = new Date(masterStep.date + 'T12:00:00');
+          const masterEndObj = masterStep.endDate ? new Date(masterStep.endDate + 'T12:00:00') : masterStart;
+          const durationMs = masterEndObj - masterStart;
+
+          const { date: _d, endDate: _ed, ...sharedUpdates } = baseUpdates;
+
+          // Remove instances after new end date (keep master), apply shared edits
+          let updatedSteps = currentSteps
+            .filter(s => {
+              if (s.repeatGroupId !== groupId) return true;
+              if (s.isRepeatMaster) return true;
+              return s.date <= stepRepeatEndDate;
+            })
+            .map(s => s.repeatGroupId === groupId
+              ? { ...s, ...sharedUpdates, repeatEndDate: stepRepeatEndDate }
+              : s
+            );
+
+          // Add new instances if end date was extended
+          if (newRepeatEnd > lastDate) {
+            let current = _advanceByRepeat(lastDate, repeat);
+            const MAX_OCC = 200;
+            const newSteps = [];
+            while (current <= newRepeatEnd && newSteps.length < MAX_OCC) {
+              newSteps.push({
+                ...masterStep,
+                ...sharedUpdates,
+                id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_ext_${newSteps.length}`,
+                date: _dateStrFlow(current),
+                endDate: _dateStrFlow(new Date(current.getTime() + durationMs)),
+                repeatEndDate: stepRepeatEndDate,
+                isRepeatMaster: false,
+                isCompleted: false,
+                status: 'upcoming',
+                createdAt: now,
+                updatedAt: now,
+              });
+              current = _advanceByRepeat(current, repeat);
+            }
+            updatedSteps = [...updatedSteps, ...newSteps];
+          }
+
+          applyToFlow(updatedSteps);
+          return;
+        }
+
+        doEdit('all');
+      } else {
+        const updatedSteps = currentSteps.map(s => s.id === editingStep.id ? { ...s, ...baseUpdates } : s);
+        applyToFlow(updatedSteps);
+      }
+      return;
+    }
+
+    // New step
+    if (stepRepeatType && stepRepeatEndDate) {
+      const groupId = `rg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const startDate = new Date(editDate + 'T12:00:00');
+      const endDateObj = finalEndDate ? new Date(finalEndDate + 'T12:00:00') : startDate;
+      const durationMs = endDateObj - startDate;
+      const repeatEnd = new Date(stepRepeatEndDate + 'T12:00:00');
+      const MAX_OCCURRENCES = 200;
+      const newSteps = [];
+      let current = new Date(startDate);
+
+      while (current <= repeatEnd && newSteps.length < MAX_OCCURRENCES) {
+        const occStartStr = _dateStrFlow(current);
+        const occEndStr = _dateStrFlow(new Date(current.getTime() + durationMs));
+        newSteps.push({
+          id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${newSteps.length}`,
+          date: occStartStr,
+          time: editTime,
+          endTime: finalEndTime,
+          endDate: occEndStr,
+          activity: editActivity,
+          memo: editMemo,
+          region: selectedRegion,
+          status: 'upcoming',
+          weather: weatherData,
+          warning: hasWarning,
+          lat: targetLat,
+          lon: targetLon,
+          repeat: stepRepeatType,
+          repeatEndDate: stepRepeatEndDate,
+          repeatGroupId: groupId,
+          isRepeatMaster: newSteps.length === 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+        current = _advanceByRepeat(current, stepRepeatType);
+      }
+      applyToFlow([...currentSteps, ...newSteps]);
+    } else {
+      const newStep = {
+        id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        ...baseUpdates,
+        status: 'upcoming',
+        createdAt: now,
+      };
+      applyToFlow([...currentSteps, newStep]);
     }
   };
 
-  const deleteStep = async () => {
+  const doDeleteStep = async (scope) => {
     const now = new Date().toISOString();
     const updatedFlows = flows.map(f => {
-      if (f.id === selectedFlow.id) {
-        const updatedSteps = f.steps.filter(s => s.id !== editingStep.id);
-        const updatedF = { ...f, steps: updatedSteps, updatedAt: now };
-        setSelectedFlow(updatedF);
-        return updatedF;
+      if (f.id !== selectedFlow.id) return f;
+      let updatedSteps;
+      if (scope === 'this') {
+        updatedSteps = f.steps.filter(s => s.id !== editingStep.id);
+      } else if (scope === 'future') {
+        updatedSteps = f.steps.filter(s => !(s.repeatGroupId === editingStep.repeatGroupId && s.date >= editingStep.date));
+      } else {
+        updatedSteps = f.steps.filter(s => s.repeatGroupId !== editingStep.repeatGroupId);
       }
-      return f;
+      const updatedF = { ...f, steps: updatedSteps, updatedAt: now };
+      setSelectedFlow(updatedF);
+      return updatedF;
     });
     setFlows(updatedFlows);
     await saveFlows(updatedFlows);
     closeEditModal();
+  };
+
+  const deleteStep = () => {
+    if (editingStep?.repeatGroupId) {
+      doDeleteStep('all');
+    } else {
+      doDeleteStep('this');
+    }
   };
 
   const deleteStepById = async (stepId) => {
@@ -767,6 +964,9 @@ const FlowScreen = ({ navigation, route }) => {
     setEditActivity(step.activity);
     setEditMemo(step.memo || '');
     setSelectedRegion(step.region || null);
+    setStepRepeatType(step.repeat || null);
+    setStepRepeatEndDate(step.repeatEndDate || '');
+    setShowStepRepeatPicker(false);
     setPickerType(null);
     openEditModal();
   };
@@ -1020,11 +1220,9 @@ const FlowScreen = ({ navigation, route }) => {
   const renderTimelineDetail = () => {
     const allSteps = selectedFlow.steps || [];
     const displaySteps = (() => {
-      // 임시: 모든 스텝 활성화
-      if (true) return allSteps;
-      const sorted = [...allSteps].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-      const activeIds = new Set(sorted.slice(0, MAX_STEPS).map(s => s.id));
-      return allSteps.map(s => ({ ...s, inactive: !activeIds.has(s.id) }));
+      // Show only master steps for repeat groups (non-masters are hidden in list, visible in calendar)
+      const visible = allSteps.filter(s => !s.repeatGroupId || s.isRepeatMaster);
+      return visible;
     })();
     const groupedSteps = groupStepsByDate(displaySteps);
     const sortedDates = Object.keys(groupedSteps).sort((a, b) => {
@@ -1169,9 +1367,17 @@ const FlowScreen = ({ navigation, route }) => {
                               <View style={styles.stepHeader}>
                                 <View style={{ flex: 1 }}>
                                   <Text style={[styles.stepTime, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
-                                  <Text style={styles.stepActivity} numberOfLines={2}>
-                                    {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
-                                  </Text>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <Text style={styles.stepActivity} numberOfLines={2}>
+                                      {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
+                                    </Text>
+                                    {step.repeatGroupId && (
+                                      <View style={styles.repeatStepBadge}>
+                                        <Repeat size={10} color={Colors.primary} />
+                                        <Text style={styles.repeatStepBadgeText}>{t('tasks.repeat_badge', '반복')}</Text>
+                                      </View>
+                                    )}
+                                  </View>
                                   {step.memo ? <Text style={styles.stepMemo} numberOfLines={2} ellipsizeMode="tail">{step.memo}</Text> : null}
                                 </View>
                               </View>
@@ -1236,6 +1442,9 @@ const FlowScreen = ({ navigation, route }) => {
               setEditEndDate(todayStr);
               setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
               setSelectedRegion(null);
+              setStepRepeatType(null);
+              setStepRepeatEndDate('');
+              setShowStepRepeatPicker(false);
               openEditModal(true);
             }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1463,7 +1672,9 @@ const FlowScreen = ({ navigation, route }) => {
 
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
                       <View style={styles.modalContentPadding}>
-                        <Text style={styles.inputLabel}>{t('flow.flow_title', 'Flow Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        <View style={styles.labelRow}>
+                          <Text style={styles.inputLabel}>{t('flow.flow_title', 'Flow Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        </View>
                         <View style={[styles.compactInputRow, !flowTitle && styles.compactInputRowRequired]}>
                           <Flag size={18} color={flowTitle ? Colors.primary : Colors.error} />
                           <TextInput ref={flowTitleRef} style={styles.compactInput} value={flowTitle} onChangeText={setFlowTitle} placeholder={t('flow.flow_title_placeholder', 'e.g. Hawaii Trip, Morning Routine')} placeholderTextColor={Colors.outline} autoCapitalize="none" onFocus={() => { focusedFlowInputRef.current = flowTitleRef.current; }} onBlur={() => { focusedFlowInputRef.current = null; }} />
@@ -1506,7 +1717,9 @@ const FlowScreen = ({ navigation, route }) => {
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>{t('flow.description', 'Description')}</Text>
+                        <View style={styles.labelRow}>
+                          <Text style={styles.inputLabel}>{t('flow.description', 'Description')}</Text>
+                        </View>
                         <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput ref={flowDescRef} style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder={t('flow.description_placeholder', 'What is this flow about?')} placeholderTextColor={Colors.outline} autoCapitalize="none" onFocus={() => { focusedFlowInputRef.current = flowDescRef.current; }} onBlur={() => { focusedFlowInputRef.current = null; }} /></View>
                       </View>
 
@@ -1621,7 +1834,9 @@ const FlowScreen = ({ navigation, route }) => {
 
                     <ScrollView ref={stepScrollRef} showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
                       <View style={styles.modalContentPadding}>
-                        <Text style={styles.inputLabel}>{t('flow.activity', 'Activity')} <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        <View style={styles.labelRow}>
+                          <Text style={styles.inputLabel}>{t('flow.activity', 'Activity')} <Text style={styles.requiredAsterisk}>*</Text></Text>
+                        </View>
                         <View style={[styles.compactInputRow, !editActivity && styles.compactInputRowRequired]}>
                           <Edit3 size={18} color={editActivity ? Colors.primary : Colors.error} />
                           <TextInput ref={activityInputRef} style={styles.compactInput} value={editActivity} onChangeText={setEditActivity} placeholder={t('flow.activity_placeholder', 'What are you doing?')} placeholderTextColor={Colors.outline} autoCapitalize="none" />
@@ -1810,6 +2025,58 @@ const FlowScreen = ({ navigation, route }) => {
                         </View>
                       </View>
 
+                      {/* Repeat Section */}
+                      <View style={styles.inputGroup}>
+                        <Pressable
+                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}
+                          onPress={() => { Keyboard.dismiss(); setShowStepRepeatPicker(prev => !prev); }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Repeat size={16} color={stepRepeatType ? Colors.primary : Colors.outline} />
+                            <Text style={[styles.inputLabel, { marginBottom: 0, color: stepRepeatType ? Colors.primary : Colors.onBackground }]}>
+                              {t('tasks.repeat', '반복')}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 14, color: stepRepeatType ? Colors.primary : Colors.outline, fontWeight: '500' }}>
+                              {stepRepeatType ? t(`tasks.repeat_${stepRepeatType}`) : t('tasks.repeat_none', '없음')}
+                            </Text>
+                            <ChevronDown size={14} color={Colors.outline} />
+                          </View>
+                        </Pressable>
+                        {showStepRepeatPicker && (
+                          <View style={styles.stepRepeatPickerRow}>
+                            {[null, 'daily', 'weekly', 'monthly', 'yearly'].map(opt => (
+                              <Pressable
+                                key={opt || 'none'}
+                                style={[styles.repeatChip, stepRepeatType === opt && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}
+                                onPress={() => { setStepRepeatType(opt); setShowStepRepeatPicker(false); if (!opt) setStepRepeatEndDate(''); }}
+                              >
+                                <Text style={[styles.repeatChipText, stepRepeatType === opt && { color: 'white' }]}>
+                                  {opt ? t(`tasks.repeat_${opt}`) : t('tasks.repeat_none', '없음')}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        )}
+                        {stepRepeatType && (
+                          <View style={{ marginTop: 12 }}>
+                            <View style={styles.labelRow}>
+                              <Text style={styles.inputLabel}>{t('tasks.repeat_end_date', '반복 종료일')}</Text>
+                            </View>
+                            <Pressable
+                              style={styles.editInputWrap}
+                              onPress={() => { Keyboard.dismiss(); setShowStepRepeatEndPicker(true); }}
+                            >
+                              <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                              <Text style={[styles.editInputText, !stepRepeatEndDate && { color: Colors.error }]}>
+                                {stepRepeatEndDate || t('tasks.repeat_end_required', '종료일 선택 필요')}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        )}
+                      </View>
+
                       <View
                         style={styles.inputGroup}
                         onLayout={(e) => { memoYRef.current = e.nativeEvent.layout.y; }}
@@ -1910,6 +2177,15 @@ const FlowScreen = ({ navigation, route }) => {
                     setMatchStartDate(false);
                   }
                 }
+              }}
+            />
+            <RangeCalendarModal
+              visible={showStepRepeatEndPicker}
+              onClose={() => setShowStepRepeatEndPicker(false)}
+              initialStartDate={stepRepeatEndDate || editDate}
+              singleDate={true}
+              onApply={(start) => {
+                if (start) setStepRepeatEndDate(typeof start === 'string' ? start : _dateStrFlow(start));
               }}
             />
           </GestureHandlerRootView>
@@ -2043,6 +2319,11 @@ const styles = StyleSheet.create({
   stepActivity: { ...Typography.h3, fontSize: 16, color: Colors.onBackground, fontWeight: '700', letterSpacing: -0.3, marginTop: 2 },
   stepTime: { fontSize: 12, color: Colors.primary, fontWeight: '800', letterSpacing: 0.5 },
   stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 6, lineHeight: 18 },
+  repeatStepBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '18', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
+  repeatStepBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.primary },
+  stepRepeatPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 8 },
+  repeatChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: Colors.outline, backgroundColor: 'white' },
+  repeatChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
   stepRegionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   stepRegionLabel: { fontSize: 11, color: Colors.outline, fontWeight: '600', maxWidth: 120 },
   warningBadge: { backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: 10, borderRadius: 12, marginTop: 12 },
@@ -2061,7 +2342,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.lg },
   searchInputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceContainerLow, borderRadius: 20, paddingHorizontal: 16, height: 56, gap: 10 },
-  modalInput: { flex: 1, ...Typography.body, fontSize: 16, color: Colors.onBackground },
+  modalInput: { flex: 1, ...Typography.body, fontSize: 16, color: Colors.onBackground, paddingVertical: 0, textAlignVertical: 'center', lineHeight: undefined },
   cancelText: { ...Typography.body, color: Colors.primary, fontWeight: '600' },
   searchResultsList: { flex: 1 },
   resultItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant, gap: 16 },

@@ -288,7 +288,21 @@
     "copy_success": "Copied to clipboard.",
     "delete_success": "Task deleted.",
     "go_to_flow": "Move to Flow",
-    "flowReadOnlyNotice": "* This task is read-only information managed in Flow."
+    "flowReadOnlyNotice": "* This task is read-only information managed in Flow.",
+    "repeat": "Repeat",
+    "repeat_none": "None",
+    "repeat_daily": "Daily",
+    "repeat_weekly": "Weekly",
+    "repeat_monthly": "Monthly",
+    "repeat_yearly": "Yearly",
+    "repeat_end_date": "Repeat Until",
+    "repeat_end_required": "Select end date",
+    "repeat_badge": "Repeat",
+    "edit_repeat_title": "Edit Repeating Event",
+    "delete_repeat_title": "Delete Repeating Event",
+    "edit_repeat_this": "This event only",
+    "edit_repeat_future": "This and following events",
+    "edit_repeat_all": "All events"
   },
   "flow": {
     "my_flows": "My Flows",

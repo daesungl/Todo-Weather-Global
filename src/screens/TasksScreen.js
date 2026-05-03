@@ -31,10 +31,10 @@ import {
   Plus, MapPin, Clock, Calendar, ChevronLeft, ChevronRight,
   CheckCircle2, Circle, Search, X, Sun, CloudRain, Cloud,
   CloudSnow, Moon, CheckSquare, Square, Trash2, CalendarDays, Compass,
-  Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown
+  Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown, Repeat
 } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
-import { getTasks, addTask, toggleTaskCompletion, deleteTask, updateTask } from '../services/task/TaskService';
+import { getTasks, addTask, addRepeatTasks, toggleTaskCompletion, deleteTask, deleteRepeatTasks, updateTask, updateRepeatTasks, updateRepeatSeriesEndDate } from '../services/task/TaskService';
 import { getWeather } from '../services/weather/WeatherService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
@@ -682,6 +682,12 @@ const TasksScreen = ({ navigation }) => {
   const [editingTask, setEditingTask] = useState(null);
   const [isMemoEditing, setIsMemoEditing] = useState(false);
 
+  // Repeat state
+  const [repeatType, setRepeatType] = useState(null); // null | 'daily' | 'weekly' | 'monthly' | 'yearly'
+  const [repeatEndDate, setRepeatEndDate] = useState(null); // Date | null
+  const [showRepeatPicker, setShowRepeatPicker] = useState(false);
+  const [showRepeatEndPicker, setShowRepeatEndPicker] = useState(false);
+
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
@@ -944,6 +950,9 @@ const TasksScreen = ({ navigation }) => {
     setNewLocName('');
     setNewWeatherRegion(null);
     setSelectedColor(TASK_COLOR_LABELS[Math.floor(Math.random() * TASK_COLOR_LABELS.length)].color);
+    setRepeatType(null);
+    setRepeatEndDate(null);
+    setShowRepeatPicker(false);
     setIsAdding(true);
     modalAddY.setValue(height);
     Animated.spring(modalAddY, {
@@ -976,6 +985,10 @@ const TasksScreen = ({ navigation }) => {
     setNewMemo(task.memo || '');
     setNewLocName(task.locationName || '');
     setNewWeatherRegion(task.weatherRegion || null);
+    setSelectedColor(task.color || TASK_COLOR_LABELS[0].color);
+    setRepeatType(task.repeat || null);
+    setRepeatEndDate(task.repeatEndDate ? new Date(task.repeatEndDate + 'T12:00:00') : null);
+    setShowRepeatPicker(false);
     setIsAdding(true);
     modalAddY.setValue(height);
     Animated.spring(modalAddY, {
@@ -998,6 +1011,9 @@ const TasksScreen = ({ navigation }) => {
     setNewLocName(task.locationName || '');
     setNewWeatherRegion(task.weatherRegion || null);
     setSelectedColor(task.color || Colors.primary);
+    setRepeatType(task.repeat || null);
+    setRepeatEndDate(task.repeatEndDate ? new Date(task.repeatEndDate + 'T12:00:00') : null);
+    setShowRepeatPicker(false);
     editSheetX.setValue(width);
     editSheetY.setValue(0);
     setIsEditingInSheet(true);
@@ -1036,14 +1052,15 @@ const TasksScreen = ({ navigation }) => {
       showToast(t('tasks.enter_title', '투두를 입력해주세요'));
       return;
     }
+    if (repeatType && !repeatEndDate) {
+      showToast(t('tasks.repeat_end_required', '반복 종료일을 선택해주세요'));
+      return;
+    }
 
-    // Validation: Ensure end is after start. If not, auto-adjust end to match start.
     let finalEndDate = endDate;
     let finalEndTime = endTime;
-
     const startCheck = new Date(taskDate);
     const endCheck = new Date(endDate);
-
     if (!isAllDay) {
       const [sh, sm] = newTime.split(':').map(Number);
       const [eh, em] = endTime.split(':').map(Number);
@@ -1053,7 +1070,6 @@ const TasksScreen = ({ navigation }) => {
       startCheck.setHours(0, 0, 0, 0);
       endCheck.setHours(0, 0, 0, 0);
     }
-
     if (endCheck < startCheck) {
       finalEndDate = taskDate;
       finalEndTime = newTime;
@@ -1072,27 +1088,93 @@ const TasksScreen = ({ navigation }) => {
       weatherRegion: newWeatherRegion,
     };
 
-    let updated;
+    const closeCallback = isEditingInSheet ? closeEditInSheet : closeAddModal;
+    const finishSave = (updated) => {
+      setTasks(updated);
+      fetchTasksWeather(updated);
+      closeCallback();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast(editingTask ? t('tasks.edit_success') : t('tasks.save_success'));
+    };
+
     if (editingTask) {
-      updated = await updateTask(editingTask.id, taskData);
-      if (selectedTaskDetail && selectedTaskDetail.id === editingTask.id) {
-        setSelectedTaskDetail({ ...editingTask, ...taskData });
+      if (editingTask.repeatGroupId) {
+        const newRepEndStr = repeatEndDate
+          ? `${repeatEndDate.getFullYear()}-${String(repeatEndDate.getMonth() + 1).padStart(2, '0')}-${String(repeatEndDate.getDate()).padStart(2, '0')}`
+          : null;
+        const repEndChanged = newRepEndStr !== (editingTask.repeatEndDate || null);
+
+        if (repEndChanged && newRepEndStr) {
+          // Repeat end date changed → extend/shorten series globally, no 3-way choice
+          let updated = await updateRepeatSeriesEndDate(editingTask.id, newRepEndStr);
+          // Also apply other field changes to all instances
+          updated = await updateRepeatTasks(editingTask.id, taskData, 'all');
+          if (selectedTaskDetail?.id === editingTask.id) {
+            const updatedTask = updated.find(t => t.id === editingTask.id);
+            if (updatedTask) setSelectedTaskDetail(updatedTask);
+            else setSelectedTaskDetail({ ...editingTask, ...taskData });
+          }
+          finishSave(updated);
+          return;
+        }
+
+        // Alert 콜백에서 stale 클로저 문제를 피하기 위해 onPress 내에서 직접 처리
+        const applyRepeatEdit = async (scope) => {
+          try {
+            let updated;
+            if (scope === 'this') {
+              updated = await updateTask(editingTask.id, taskData);
+            } else {
+              updated = await updateRepeatTasks(editingTask.id, taskData, scope);
+            }
+            if (selectedTaskDetail?.id === editingTask.id) {
+              const updatedTask = updated.find(t => t.id === editingTask.id);
+              if (updatedTask) {
+                setSelectedTaskDetail(updatedTask);
+              } else {
+                setSelectedTaskDetail({ ...editingTask, ...taskData });
+              }
+            }
+            setTasks(updated);
+            fetchTasksWeather(updated);
+            if (isEditingInSheet) {
+              closeEditInSheet();
+            } else {
+              closeAddModal();
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast(t('tasks.edit_success'));
+          } catch (err) {
+            console.error('[repeatEdit] error:', err);
+            showToast('편집 중 오류가 발생했습니다.');
+          }
+        };
+
+        Alert.alert(
+          t('tasks.edit_repeat_title', '반복 일정 편집'),
+          '',
+          [
+            { text: t('tasks.edit_repeat_this', '이 일정만'), onPress: () => applyRepeatEdit('this') },
+            { text: t('tasks.edit_repeat_future', '이후 일정 모두'), onPress: () => applyRepeatEdit('future') },
+            { text: t('tasks.edit_repeat_all', '모든 반복 일정'), onPress: () => applyRepeatEdit('all') },
+            { text: t('common.cancel'), style: 'cancel' },
+          ]
+        );
+        return;
       }
+      const updated = await updateTask(editingTask.id, taskData);
+      if (selectedTaskDetail?.id === editingTask.id) setSelectedTaskDetail({ ...editingTask, ...taskData });
+      finishSave(updated);
     } else {
-      updated = await addTask(taskData);
+      let updated;
+      if (repeatType && repeatEndDate) {
+        const repEndStr = `${repeatEndDate.getFullYear()}-${String(repeatEndDate.getMonth() + 1).padStart(2, '0')}-${String(repeatEndDate.getDate()).padStart(2, '0')}`;
+        updated = await addRepeatTasks(taskData, repeatType, repEndStr);
+      } else {
+        updated = await addTask(taskData);
+      }
+      finishSave(updated);
     }
-
-    setTasks(updated);
-    fetchTasksWeather(updated);
-
-    if (isEditingInSheet) {
-      closeEditInSheet();
-    } else {
-      closeAddModal();
-    }
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    showToast(editingTask ? t('tasks.edit_success') : t('tasks.save_success'));
   };
 
   const formatDisplayDate = (date) => {
@@ -1119,16 +1201,56 @@ const TasksScreen = ({ navigation }) => {
     showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
   };
 
-  const handleDelete = (id) => {
-    Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('common.delete'), style: 'destructive', onPress: async () => {
-          const updated = await deleteTask(id);
-          setTasks(updated);
+  const handleDelete = (id, onComplete) => {
+    const task = tasks.find(t => t.id === id);
+    if (task?.repeatGroupId) {
+      isAlertActiveRef.current = true;
+      Alert.alert(
+        t('tasks.delete_repeat_title', '반복 일정 삭제'),
+        '',
+        [
+          { text: t('tasks.edit_repeat_this', '이 일정만'), style: 'destructive', onPress: async () => {
+              isAlertActiveRef.current = false;
+              const updated = await deleteRepeatTasks(id, 'this');
+              setTasks(updated);
+              showToast(t('tasks.delete_success'));
+              onComplete?.();
+            }
+          },
+          { text: t('tasks.edit_repeat_future', '이후 일정 모두'), style: 'destructive', onPress: async () => {
+              isAlertActiveRef.current = false;
+              const updated = await deleteRepeatTasks(id, 'future');
+              setTasks(updated);
+              showToast(t('tasks.delete_success'));
+              onComplete?.();
+            }
+          },
+          { text: t('tasks.edit_repeat_all', '모든 반복 일정'), style: 'destructive', onPress: async () => {
+              isAlertActiveRef.current = false;
+              const updated = await deleteRepeatTasks(id, 'all');
+              setTasks(updated);
+              showToast(t('tasks.delete_success'));
+              onComplete?.();
+            }
+          },
+          { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } }
+        ],
+        { cancelable: false }
+      );
+    } else {
+      isAlertActiveRef.current = true;
+      Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
+        { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
+        { text: t('common.delete'), style: 'destructive', onPress: async () => {
+            isAlertActiveRef.current = false;
+            const updated = await deleteTask(id);
+            setTasks(updated);
+            showToast(t('tasks.delete_success'));
+            onComplete?.();
+          }
         }
-      }
-    ]);
+      ], { cancelable: false });
+    }
   };
 
   const handleDayPress = React.useCallback((date, isSelected) => {
@@ -1615,19 +1737,7 @@ const TasksScreen = ({ navigation }) => {
                             <TouchableOpacity style={styles.menuItem} onPress={() => {
                               setIsDetailMenuVisible(false);
                               const taskId = selectedTaskDetail.id;
-                              isAlertActiveRef.current = true;
-                              Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
-                                { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
-                                {
-                                  text: t('common.delete'), style: 'destructive', onPress: async () => {
-                                    isAlertActiveRef.current = false;
-                                    handleBackToList();
-                                    const updated = await deleteTask(taskId);
-                                    setTasks(updated);
-                                    showToast(t('tasks.delete_success'));
-                                  }
-                                }
-                              ], { cancelable: false });
+                              handleDelete(taskId, () => handleBackToList());
                             }}>
                               <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>{t('common.delete')}</Text>
                             </TouchableOpacity>
@@ -1784,6 +1894,55 @@ const TasksScreen = ({ navigation }) => {
                               />
                             </View>
                           </View>
+                          {/* Repeat (edit sheet) */}
+                          <View style={styles.timeTreeDivider} />
+                          <TouchableOpacity
+                            style={styles.timeTreeRow}
+                            onPress={() => { Keyboard.dismiss(); setShowRepeatPicker(prev => !prev); }}
+                          >
+                            <View style={styles.rowLead}>
+                              <Repeat size={22} color={repeatType ? Colors.primary : Colors.textSecondary} />
+                              <Text style={styles.timeTreeRowText}>{t('tasks.repeat', '반복')}</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 14, color: repeatType ? Colors.primary : Colors.outline, fontWeight: '500' }}>
+                                {repeatType ? t(`tasks.repeat_${repeatType}`) : t('tasks.repeat_none', '없음')}
+                              </Text>
+                              <ChevronDown size={16} color={Colors.outline} />
+                            </View>
+                          </TouchableOpacity>
+                          {showRepeatPicker && (
+                            <View style={styles.repeatPickerRow}>
+                              {[null, 'daily', 'weekly', 'monthly', 'yearly'].map(opt => (
+                                <TouchableOpacity
+                                  key={opt || 'none'}
+                                  style={[styles.repeatChip, repeatType === opt && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}
+                                  onPress={() => { setRepeatType(opt); setShowRepeatPicker(false); if (!opt) setRepeatEndDate(null); }}
+                                >
+                                  <Text style={[styles.repeatChipText, repeatType === opt && { color: 'white' }]}>
+                                    {opt ? t(`tasks.repeat_${opt}`) : t('tasks.repeat_none', '없음')}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          )}
+                          {repeatType && (
+                            <>
+                              <View style={styles.timeTreeDivider} />
+                              <TouchableOpacity
+                                style={styles.timeTreeRow}
+                                onPress={() => { Keyboard.dismiss(); setShowRepeatEndPicker(true); }}
+                              >
+                                <View style={styles.rowLead}>
+                                  <Calendar size={20} color={Colors.textSecondary} />
+                                  <Text style={styles.timeTreeLabel}>{t('tasks.repeat_end_date', '반복 종료일')}</Text>
+                                </View>
+                                <Text style={[styles.timeTreePickerText, { fontSize: 13, color: repeatEndDate ? Colors.primary : Colors.error }]}>
+                                  {repeatEndDate ? formatDisplayDate(repeatEndDate) : t('tasks.repeat_end_required', '종료일 선택 필요')}
+                                </Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
                           <View style={styles.timeTreeDivider} />
                           <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
                             <View style={styles.memoHeader}>
@@ -1907,6 +2066,15 @@ const TasksScreen = ({ navigation }) => {
               onApply={(start, end) => {
                 if (start) setTaskDate(start);
                 if (end) setEndDate(end);
+              }}
+            />
+            <RangeCalendarModal
+              visible={showRepeatEndPicker}
+              onClose={() => setShowRepeatEndPicker(false)}
+              initialStartDate={repeatEndDate || taskDate}
+              singleDate={true}
+              onApply={(start) => {
+                if (start) setRepeatEndDate(typeof start === 'string' ? new Date(start + 'T12:00:00') : start);
               }}
             />
           </Animated.View>
@@ -2209,7 +2377,58 @@ const TasksScreen = ({ navigation }) => {
 
                       <View style={styles.timeTreeDivider} />
 
+                      {/* Repeat Section */}
+                      <View style={styles.timeTreeDivider} />
+                      <TouchableOpacity
+                        style={styles.timeTreeRow}
+                        onPress={() => { Keyboard.dismiss(); setShowRepeatPicker(prev => !prev); }}
+                      >
+                        <View style={styles.rowLead}>
+                          <Repeat size={22} color={repeatType ? Colors.primary : Colors.textSecondary} />
+                          <Text style={styles.timeTreeRowText}>{t('tasks.repeat', '반복')}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ fontSize: 14, color: repeatType ? Colors.primary : Colors.outline, fontWeight: '500' }}>
+                            {repeatType ? t(`tasks.repeat_${repeatType}`) : t('tasks.repeat_none', '없음')}
+                          </Text>
+                          <ChevronDown size={16} color={Colors.outline} />
+                        </View>
+                      </TouchableOpacity>
+                      {showRepeatPicker && (
+                        <View style={styles.repeatPickerRow}>
+                          {[null, 'daily', 'weekly', 'monthly', 'yearly'].map(opt => (
+                            <TouchableOpacity
+                              key={opt || 'none'}
+                              style={[styles.repeatChip, repeatType === opt && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}
+                              onPress={() => { setRepeatType(opt); setShowRepeatPicker(false); if (!opt) setRepeatEndDate(null); }}
+                            >
+                              <Text style={[styles.repeatChipText, repeatType === opt && { color: 'white' }]}>
+                                {opt ? t(`tasks.repeat_${opt}`) : t('tasks.repeat_none', '없음')}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                      {repeatType && (
+                        <>
+                          <View style={styles.timeTreeDivider} />
+                          <TouchableOpacity
+                            style={styles.timeTreeRow}
+                            onPress={() => { Keyboard.dismiss(); setShowRepeatEndPicker(true); }}
+                          >
+                            <View style={styles.rowLead}>
+                              <Calendar size={20} color={Colors.textSecondary} />
+                              <Text style={styles.timeTreeLabel}>{t('tasks.repeat_end_date', '반복 종료일')}</Text>
+                            </View>
+                            <Text style={[styles.timeTreePickerText, { fontSize: 13, color: repeatEndDate ? Colors.primary : Colors.error }]}>
+                              {repeatEndDate ? formatDisplayDate(repeatEndDate) : t('tasks.repeat_end_required', '종료일 선택 필요')}
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+
                       {/* Memo Section */}
+                      <View style={styles.timeTreeDivider} />
                       <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
                         <View style={styles.memoHeader}>
                           <AlignLeft size={18} color={Colors.textSecondary} />
@@ -2245,6 +2464,17 @@ const TasksScreen = ({ navigation }) => {
               onApply={(start, end) => {
                 if (start) setTaskDate(new Date(start));
                 if (end) setEndDate(new Date(end));
+              }}
+            />
+
+            {/* Repeat End Date Picker */}
+            <RangeCalendarModal
+              visible={showRepeatEndPicker}
+              onClose={() => setShowRepeatEndPicker(false)}
+              initialStartDate={repeatEndDate || taskDate}
+              singleDate={true}
+              onApply={(start) => {
+                if (start) setRepeatEndDate(typeof start === 'string' ? new Date(start + 'T12:00:00') : start);
               }}
             />
 
@@ -2689,6 +2919,10 @@ const styles = StyleSheet.create({
   colorSwatch: { width: 40, height: 40, borderRadius: 20, marginBottom: 6, justifyContent: 'center', alignItems: 'center' },
   colorCheckOverlay: { position: 'absolute', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.15)' },
   colorCellName: { fontSize: 10, fontWeight: '600', color: Colors.textSecondary, textAlign: 'center' },
+
+  repeatPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: Colors.surfaceContainer + '60' },
+  repeatChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: Colors.outline, backgroundColor: 'white' },
+  repeatChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
 
   emptyState: { alignItems: 'center', marginTop: 40 },
   emptyText: { fontSize: 15, fontWeight: '600', color: Colors.textSecondary },

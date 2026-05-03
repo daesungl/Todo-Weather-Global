@@ -3,7 +3,8 @@
     "allow": [
       "Bash(./gradlew assembleRelease --stacktrace)",
       "Bash(./gradlew assembleRelease)",
-      "Bash(npx expo *)"
+      "Bash(npx expo *)",
+      "Bash(npx acorn *)"
     ]
   }
 }

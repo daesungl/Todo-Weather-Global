@@ -15,17 +15,17 @@ LocaleConfig.locales['kr'] = {
 };
 LocaleConfig.defaultLocale = 'kr';
 
-const RangeCalendarModal = ({ visible, onClose, onApply, initialStartDate, initialEndDate }) => {
+// singleDate=true → 날짜 하나만 선택 후 즉시 onApply(date) 호출
+const RangeCalendarModal = ({ visible, onClose, onApply, initialStartDate, initialEndDate, singleDate = false }) => {
   const { t } = useTranslation();
-  
-  // 상태 관리: 시작일과 종료일 (YYYY-MM-DD 문자열)
+
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
 
   useEffect(() => {
     if (visible) {
       setStartDate(initialStartDate ? formatDate(initialStartDate) : null);
-      setEndDate(initialEndDate ? formatDate(initialEndDate) : null);
+      setEndDate(singleDate ? null : (initialEndDate ? formatDate(initialEndDate) : null));
     }
   }, [visible, initialStartDate, initialEndDate]);
 
@@ -41,61 +41,59 @@ const RangeCalendarModal = ({ visible, onClose, onApply, initialStartDate, initi
   const handleDayPress = (day) => {
     const selected = day.dateString;
 
-    // 1. 이미 시작일과 종료일이 모두 있는 상태에서 터치하면 -> 다시 시작일로 초기화
+    if (singleDate) {
+      onApply(selected);
+      onClose();
+      return;
+    }
+
     if (startDate && endDate) {
       setStartDate(selected);
       setEndDate(null);
       return;
     }
 
-    // 2. 시작일은 있는데 종료일이 없는 상태에서 터치하면
     if (startDate && !endDate) {
-      // 만약 선택한 날짜가 시작일보다 이전이라면, 시작일을 변경
       if (selected < startDate) {
         setStartDate(selected);
       } else {
-        // 정상적인 종료일 지정
         setEndDate(selected);
       }
       return;
     }
 
-    // 3. 아무것도 선택 안 된 상태에서 터치하면 -> 시작일 지정
     if (!startDate) {
       setStartDate(selected);
-      return;
     }
   };
 
   const getMarkedDates = () => {
     let marked = {};
     const primaryColor = Colors.primary;
-    const lightColor = `${Colors.primary}20`; // 20% opacity for between dates
+    const lightColor = `${Colors.primary}20`;
+
+    if (singleDate && startDate) {
+      marked[startDate] = { selected: true, selectedColor: primaryColor };
+      return marked;
+    }
 
     if (startDate) {
       marked[startDate] = { startingDay: true, color: primaryColor, textColor: 'white' };
     }
-    
     if (startDate && endDate) {
-      // 시작일과 종료일 사이의 날짜 채우기
       let current = new Date(startDate);
       current.setDate(current.getDate() + 1);
       const end = new Date(endDate);
-
       while (current < end) {
         const dateStr = formatDate(current);
         marked[dateStr] = { color: lightColor, textColor: Colors.text };
         current.setDate(current.getDate() + 1);
       }
-
       marked[endDate] = { endingDay: true, color: primaryColor, textColor: 'white' };
-      
-      // 만약 시작일과 종료일이 같은 날이라면
       if (startDate === endDate) {
         marked[startDate] = { startingDay: true, endingDay: true, color: primaryColor, textColor: 'white' };
       }
     }
-
     return marked;
   };
 
@@ -114,25 +112,33 @@ const RangeCalendarModal = ({ visible, onClose, onApply, initialStartDate, initi
                 <X size={24} color={Colors.text} />
               </View>
             </TouchableOpacity>
-            <Text style={styles.title}>{t('tasks.select_period', 'Select Period')}</Text>
-            <TouchableOpacity onPress={handleApply} hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}>
-              <View pointerEvents="none">
-                <Check size={24} color={Colors.primary} />
-              </View>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoText}>
-              {!startDate ? t('tasks.select_start_date', '시작일을 선택하세요')
-              : !endDate ? t('tasks.select_end_date', '종료일을 선택하세요')
-              : `${startDate} ~ ${endDate}`}
+            <Text style={styles.title}>
+              {singleDate ? t('common.select_date', '날짜 선택') : t('tasks.select_period', 'Select Period')}
             </Text>
+            {singleDate ? (
+              <View style={{ width: 24 }} />
+            ) : (
+              <TouchableOpacity onPress={handleApply} hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}>
+                <View pointerEvents="none">
+                  <Check size={24} color={Colors.primary} />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
+
+          {!singleDate && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoText}>
+                {!startDate ? t('tasks.select_start_date', '시작일을 선택하세요')
+                  : !endDate ? t('tasks.select_end_date', '종료일을 선택하세요')
+                  : `${startDate} ~ ${endDate}`}
+              </Text>
+            </View>
+          )}
 
           <Calendar
             current={initialStartDate ? formatDate(initialStartDate) : (startDate || undefined)}
-            markingType={'period'}
+            markingType={singleDate ? 'simple' : 'period'}
             markedDates={getMarkedDates()}
             onDayPress={handleDayPress}
             style={{ height: 370 }}

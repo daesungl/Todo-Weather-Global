@@ -526,7 +526,7 @@ const HomeScreen = ({ navigation }) => {
             <AdBanner onFail={() => setAdHidden(true)} />
           </View>
         ) : (
-          <View style={{ height: 12 }} />
+          <View style={{ height: 20 }} />
         )}
 
         <View style={styles.sectionHeader}>
@@ -1145,7 +1145,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   adBannerWrapper: {
-    marginVertical: 10,
+    marginVertical: 18,
     width: '100%',
     backgroundColor: '#F8F9FA',
     borderRadius: 12,
