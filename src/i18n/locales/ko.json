@@ -302,7 +302,11 @@
     "delete_repeat_title": "반복 일정 삭제",
     "edit_repeat_this": "이 일정만",
     "edit_repeat_future": "이후 일정 모두",
-    "edit_repeat_all": "모든 반복 일정"
+    "edit_repeat_all": "모든 반복 일정",
+    "notify": "알림",
+    "notify_permission_denied": "알림 권한이 필요합니다",
+    "notify_body": "{{minutes}}분 후 시작",
+    "notify_body_midnight": "자정 {{minutes}}분 전 시작"
   },
   "flow": {
     "my_flows": "나의 플로우",
@@ -334,6 +338,8 @@
     "weather_not_set": "날씨 정보 없음",
     "date": "날짜",
     "memo_placeholder": "메모나 주소 등을 입력해 주세요...",
+    "notify_time_required": "알림을 설정하려면 시작 시간이 필요합니다",
+    "notify_needs_time": "(시작 시간 필요)",
     "alert": {
       "title_required": "제목 필요",
       "title_required_msg": "플로우의 제목을 입력해 주세요.",

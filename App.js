@@ -15,6 +15,10 @@ import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import { useSubscription } from './src/contexts/SubscriptionContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
+import { refillTaskNotifications, refillStepNotifications, setupAndroidChannel, cancelPastNotifications } from './src/services/NotificationService';
+import { getTasks } from './src/services/task/TaskService';
+import { getFlows, saveFlows } from './src/services/FlowService';
+import { incrementLaunchCount } from './src/services/ReviewService';
 
 // 스플래시 화면 자동 숨김 방지
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -85,6 +89,47 @@ function AppOpenAdHandler() {
   return null;
 }
 
+function NotificationRefillHandler() {
+  const appStateRef = React.useRef(AppState.currentState);
+
+  useEffect(() => {
+    const runRefill = async () => {
+      try {
+        const tasks = await getTasks();
+        await refillTaskNotifications(tasks, async (id, patch) => {
+          const { updateTask } = await import('./src/services/task/TaskService');
+          await updateTask(id, patch);
+        });
+
+        const flows = await getFlows();
+        await refillStepNotifications(flows, async (flowId, stepId, patch) => {
+          const updatedFlows = flows.map(f => {
+            if (f.id !== flowId) return f;
+            return { ...f, steps: f.steps.map(s => s.id === stepId ? { ...s, ...patch } : s) };
+          });
+          await saveFlows(updatedFlows);
+        });
+      } catch (e) {
+        console.warn('[NotificationRefill]', e);
+      }
+    };
+
+    // 앱 시작 시 1회 실행: 과거 알림 정리 후 refill
+    setupAndroidChannel();
+    cancelPastNotifications().then(runRefill);
+
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        runRefill();
+      }
+      appStateRef.current = nextAppState;
+    });
+    return () => subscription.remove();
+  }, []);
+
+  return null;
+}
+
 export default function App() {
   const routeNameRef = React.useRef();
   const navigationRef = React.useRef();
@@ -97,6 +142,7 @@ export default function App() {
   useEffect(() => {
     const prepare = async () => {
       try {
+        incrementLaunchCount();
         if (Platform.OS === 'ios') {
           const { status } = await requestTrackingPermissionsAsync();
           if (status === 'granted') {
@@ -139,6 +185,7 @@ export default function App() {
         <UnitProvider>
           <SafeAreaProvider>
             <AppOpenAdHandler />
+            <NotificationRefillHandler />
             <StatusBar style="dark" />
             <NavigationContainer
               ref={navigationRef}

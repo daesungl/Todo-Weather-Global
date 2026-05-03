@@ -50,6 +50,9 @@ class AdManager {
     });
 
     this.appOpenAd.addAdEventListener(AdEventType.ERROR, (error) => {
+      const msg = error?.message || String(error);
+      // 다른 뷰컨트롤러가 이미 표시 중인 경우 → 광고는 여전히 유효하므로 유지
+      if (msg.includes('already presenting')) return;
       console.error('App Open Ad Error:', error);
       this.appOpenAd = null;
     });

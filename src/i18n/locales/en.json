@@ -302,7 +302,11 @@
     "delete_repeat_title": "Delete Repeating Event",
     "edit_repeat_this": "This event only",
     "edit_repeat_future": "This and following events",
-    "edit_repeat_all": "All events"
+    "edit_repeat_all": "All events",
+    "notify": "Notification",
+    "notify_permission_denied": "Notification permission is required",
+    "notify_body": "Starts in {{minutes}} minutes",
+    "notify_body_midnight": "Starts at midnight in {{minutes}} minutes"
   },
   "flow": {
     "my_flows": "My Flows",
@@ -334,6 +338,8 @@
     "weather_not_set": "Weather not set",
     "date": "Date",
     "memo_placeholder": "Add detailed notes or addresses...",
+    "notify_time_required": "A start time is required to set a notification",
+    "notify_needs_time": "(Start time required)",
     "alert": {
       "title_required": "Title Required",
       "title_required_msg": "Please enter a title for this journey.",

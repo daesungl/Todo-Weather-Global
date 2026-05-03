@@ -31,10 +31,12 @@ import {
   Plus, MapPin, Clock, Calendar, ChevronLeft, ChevronRight,
   CheckCircle2, Circle, Search, X, Sun, CloudRain, Cloud,
   CloudSnow, Moon, CheckSquare, Square, Trash2, CalendarDays, Compass,
-  Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown, Repeat
+  Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown, Repeat, Bell, BellOff
 } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import { getTasks, addTask, addRepeatTasks, toggleTaskCompletion, deleteTask, deleteRepeatTasks, updateTask, updateRepeatTasks, updateRepeatSeriesEndDate } from '../services/task/TaskService';
+import { requestPermission, scheduleNotification, cancelNotification, hasPermission, refillTaskNotifications } from '../services/NotificationService';
+import { onTaskCompleted } from '../services/ReviewService';
 import { getWeather } from '../services/weather/WeatherService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
@@ -686,6 +688,9 @@ const TasksScreen = ({ navigation }) => {
   const [showRepeatPicker, setShowRepeatPicker] = useState(false);
   const [showRepeatEndPicker, setShowRepeatEndPicker] = useState(false);
 
+  // Notification state
+  const [taskNotify, setTaskNotify] = useState(false);
+
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
@@ -951,6 +956,7 @@ const TasksScreen = ({ navigation }) => {
     setRepeatType(null);
     setRepeatEndDate(null);
     setShowRepeatPicker(false);
+    setTaskNotify(false);
     setIsAdding(true);
     modalAddY.setValue(height);
     Animated.spring(modalAddY, {
@@ -987,6 +993,7 @@ const TasksScreen = ({ navigation }) => {
     setRepeatType(task.repeat || null);
     setRepeatEndDate(task.repeatEndDate ? new Date(task.repeatEndDate + 'T12:00:00') : null);
     setShowRepeatPicker(false);
+    setTaskNotify(!!task.notify);
     setIsAdding(true);
     modalAddY.setValue(height);
     Animated.spring(modalAddY, {
@@ -1012,6 +1019,7 @@ const TasksScreen = ({ navigation }) => {
     setRepeatType(task.repeat || null);
     setRepeatEndDate(task.repeatEndDate ? new Date(task.repeatEndDate + 'T12:00:00') : null);
     setShowRepeatPicker(false);
+    setTaskNotify(!!task.notify);
     editSheetX.setValue(width);
     editSheetY.setValue(0);
     setIsEditingInSheet(true);
@@ -1073,6 +1081,29 @@ const TasksScreen = ({ navigation }) => {
       finalEndTime = newTime;
     }
 
+    // 신규 반복 시리즈인 경우 upfront 스케줄 불가 (refill이 처리)
+    const isNewRepeatSeries = !editingTask && !!(repeatType && repeatEndDate);
+
+    let notificationId = editingTask?.notificationId || null;
+    if (taskNotify) {
+      const granted = await requestPermission();
+      if (!granted) {
+        showToast(t('tasks.notify_permission_denied', '알림 권한이 필요합니다'));
+        return;
+      }
+      if (isNewRepeatSeries) {
+        // 반복 시리즈: 기존 알림 취소만; 개별 알림은 생성 후 refill이 스케줄
+        notificationId = null;
+      } else {
+        if (notificationId) await cancelNotification(notificationId);
+        const notifyTime = isAllDay ? null : newTime;
+        notificationId = await scheduleNotification(newTitle, newTitle, dateStr(taskDate), notifyTime);
+      }
+    } else if (!taskNotify && editingTask?.notificationId) {
+      await cancelNotification(editingTask.notificationId);
+      notificationId = null;
+    }
+
     const taskData = {
       title: newTitle,
       date: dateStr(taskDate),
@@ -1084,6 +1115,8 @@ const TasksScreen = ({ navigation }) => {
       color: selectedColor,
       locationName: newLocName,
       weatherRegion: newWeatherRegion,
+      notify: taskNotify,
+      notificationId: taskNotify ? notificationId : null,
     };
 
     const closeCallback = isEditingInSheet ? closeEditInSheet : closeAddModal;
@@ -1123,7 +1156,22 @@ const TasksScreen = ({ navigation }) => {
             if (scope === 'this') {
               updated = await updateTask(editingTask.id, taskData);
             } else {
-              updated = await updateRepeatTasks(editingTask.id, taskData, scope);
+              // 다중 범위: 영향받는 모든 인스턴스의 기존 알림 취소
+              const pred = scope === 'future'
+                ? t => t.repeatGroupId === editingTask.repeatGroupId && t.date >= editingTask.date
+                : t => t.repeatGroupId === editingTask.repeatGroupId;
+              const oldIds = tasks.filter(pred).map(t => t.notificationId).filter(Boolean);
+              // upfront 스케줄된 notificationId도 취소 (editingTask 날짜에만 유효)
+              const allToCancel = [...new Set([...oldIds, ...(notificationId ? [notificationId] : [])])];
+              await Promise.all(allToCancel.map(cancelNotification));
+
+              const multiData = taskNotify ? { ...taskData, notificationId: null } : taskData;
+              updated = await updateRepeatTasks(editingTask.id, multiData, scope);
+
+              if (taskNotify) {
+                await refillTaskNotifications(updated, async (id, patch) => { await updateTask(id, patch); });
+                updated = await getTasks();
+              }
             }
             if (selectedTaskDetail?.id === editingTask.id) {
               const updatedTask = updated.find(t => t.id === editingTask.id);
@@ -1168,6 +1216,13 @@ const TasksScreen = ({ navigation }) => {
       if (repeatType && repeatEndDate) {
         const repEndStr = `${repeatEndDate.getFullYear()}-${String(repeatEndDate.getMonth() + 1).padStart(2, '0')}-${String(repeatEndDate.getDate()).padStart(2, '0')}`;
         updated = await addRepeatTasks(taskData, repeatType, repEndStr);
+        if (taskNotify) {
+          // 반복 생성 직후 refill 실행 → 최초 N개 알림 즉시 스케줄
+          await refillTaskNotifications(updated, async (id, patch) => {
+            await updateTask(id, patch);
+          });
+          updated = await getTasks();
+        }
       } else {
         updated = await addTask(taskData);
       }
@@ -1191,12 +1246,14 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const handleToggle = async (id) => {
-    const updated = await toggleTaskCompletion(id);
     const task = tasks.find(t => t.id === id);
-    const newStatus = !task?.isCompleted;
+    const willComplete = !task?.isCompleted;
+    if (willComplete && task?.notificationId) await cancelNotification(task.notificationId);
+    const updated = await toggleTaskCompletion(id);
     setTasks(updated);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
+    showToast(willComplete ? t('tasks.complete_success') : t('tasks.incomplete_success'));
+    if (willComplete) onTaskCompleted();
   };
 
   const handleDelete = (id, onComplete) => {
@@ -1209,6 +1266,7 @@ const TasksScreen = ({ navigation }) => {
         [
           { text: t('tasks.edit_repeat_this', '이 일정만'), style: 'destructive', onPress: async () => {
               isAlertActiveRef.current = false;
+              if (task?.notificationId) await cancelNotification(task.notificationId);
               const updated = await deleteRepeatTasks(id, 'this');
               setTasks(updated);
               showToast(t('tasks.delete_success'));
@@ -1217,6 +1275,8 @@ const TasksScreen = ({ navigation }) => {
           },
           { text: t('tasks.edit_repeat_future', '이후 일정 모두'), style: 'destructive', onPress: async () => {
               isAlertActiveRef.current = false;
+              const futureIds = tasks.filter(t2 => t2.repeatGroupId === task.repeatGroupId && t2.date >= task.date && t2.notificationId).map(t2 => t2.notificationId);
+              await Promise.all(futureIds.map(cancelNotification));
               const updated = await deleteRepeatTasks(id, 'future');
               setTasks(updated);
               showToast(t('tasks.delete_success'));
@@ -1225,6 +1285,8 @@ const TasksScreen = ({ navigation }) => {
           },
           { text: t('tasks.edit_repeat_all', '모든 반복 일정'), style: 'destructive', onPress: async () => {
               isAlertActiveRef.current = false;
+              const allIds = tasks.filter(t2 => t2.repeatGroupId === task.repeatGroupId && t2.notificationId).map(t2 => t2.notificationId);
+              await Promise.all(allIds.map(cancelNotification));
               const updated = await deleteRepeatTasks(id, 'all');
               setTasks(updated);
               showToast(t('tasks.delete_success'));
@@ -1241,6 +1303,7 @@ const TasksScreen = ({ navigation }) => {
         { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
         { text: t('common.delete'), style: 'destructive', onPress: async () => {
             isAlertActiveRef.current = false;
+            if (task?.notificationId) await cancelNotification(task.notificationId);
             const updated = await deleteTask(id);
             setTasks(updated);
             showToast(t('tasks.delete_success'));
@@ -1709,6 +1772,7 @@ const TasksScreen = ({ navigation }) => {
                             setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                             showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
+                            if (newStatus) onTaskCompleted();
                           }}>
                             <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
                             <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
@@ -1942,6 +2006,19 @@ const TasksScreen = ({ navigation }) => {
                             </>
                           )}
                           <View style={styles.timeTreeDivider} />
+                          <View style={styles.timeTreeRow}>
+                            <View style={styles.rowLead}>
+                              {taskNotify ? <Bell size={22} color={Colors.primary} /> : <BellOff size={22} color={Colors.textSecondary} />}
+                              <Text style={styles.timeTreeRowText}>{t('tasks.notify', '알림')}</Text>
+                            </View>
+                            <Switch
+                              value={taskNotify}
+                              onValueChange={setTaskNotify}
+                              trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }}
+                              thumbColor={taskNotify ? Colors.primary : '#F4F7FE'}
+                            />
+                          </View>
+                          <View style={styles.timeTreeDivider} />
                           <TouchableOpacity style={styles.memoSection} onPress={() => { Keyboard.dismiss(); setIsMemoEditing(true); }}>
                             <View style={styles.memoHeader}>
                               <AlignLeft size={18} color={Colors.textSecondary} />
@@ -2005,6 +2082,42 @@ const TasksScreen = ({ navigation }) => {
                         </View>
                       </View>
                     </View>
+                  )}
+                  {Platform.OS === 'android' && (
+                    <>
+                      {showTimePicker && (
+                        <View style={styles.customWheelContainer}>
+                          <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select Start Time</Text></View>
+                          <DateTimePicker
+                            value={(() => {
+                              const d = new Date(taskDate);
+                              const [h, m] = newTime.split(':').map(Number);
+                              d.setHours(h, m); return d;
+                            })()}
+                            mode="time"
+                            is24Hour={true}
+                            display="spinner"
+                            onChange={onTimeChange}
+                          />
+                        </View>
+                      )}
+                      {showEndTimePicker && (
+                        <View style={styles.customWheelContainer}>
+                          <View style={styles.wheelHeader}><Text style={styles.wheelHeaderTitle}>Select End Time</Text></View>
+                          <DateTimePicker
+                            value={(() => {
+                              const d = new Date(endDate);
+                              const [h, m] = endTime.split(':').map(Number);
+                              d.setHours(h, m); return d;
+                            })()}
+                            mode="time"
+                            is24Hour={true}
+                            display="spinner"
+                            onChange={onEndTimeChange}
+                          />
+                        </View>
+                      )}
+                    </>
                   )}
 
                   {/* Color Picker Overlay */}
@@ -2424,6 +2537,21 @@ const TasksScreen = ({ navigation }) => {
                           </TouchableOpacity>
                         </>
                       )}
+
+                      {/* Notification Section */}
+                      <View style={styles.timeTreeDivider} />
+                      <View style={styles.timeTreeRow}>
+                        <View style={styles.rowLead}>
+                          {taskNotify ? <Bell size={22} color={Colors.primary} /> : <BellOff size={22} color={Colors.textSecondary} />}
+                          <Text style={styles.timeTreeRowText}>{t('tasks.notify', '알림')}</Text>
+                        </View>
+                        <Switch
+                          value={taskNotify}
+                          onValueChange={setTaskNotify}
+                          trackColor={{ false: '#E2E8F0', true: Colors.primary + '80' }}
+                          thumbColor={taskNotify ? Colors.primary : '#F4F7FE'}
+                        />
+                      </View>
 
                       {/* Memo Section */}
                       <View style={styles.timeTreeDivider} />
@@ -2995,7 +3123,7 @@ const styles = StyleSheet.create({
   rowLead: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   rowTail: { flexDirection: 'row', alignItems: 'center' },
   timeTreeRowText: { fontSize: 16, fontWeight: '700', color: Colors.text, marginLeft: 12 },
-  timeTreeLabel: { fontSize: 15, fontWeight: '700', color: Colors.textSecondary, marginLeft: 12, width: 42 },
+  timeTreeLabel: { fontSize: 15, fontWeight: '700', color: Colors.textSecondary, marginLeft: 12 },
   timeTreeValue: { fontSize: 16, fontWeight: '600', color: Colors.text, marginLeft: 12 },
   timeTreePickerText: { fontSize: 15, fontWeight: '700', color: '#00668a', backgroundColor: '#00668a1A', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   timeTreeTimeText: { fontSize: 15, fontWeight: '700', color: '#00668a' },

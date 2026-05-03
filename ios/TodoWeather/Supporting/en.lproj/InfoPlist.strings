@@ -1,6 +1,7 @@
 common = "[object Object]";
 months = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec";
 home = "[object Object]";
+briefing = "[object Object]";
 management = "[object Object]";
 menu = "[object Object]";
 weather = "[object Object]";

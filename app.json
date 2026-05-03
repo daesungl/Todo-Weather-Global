@@ -28,7 +28,8 @@
         "CFBundleAllowMixedLocalizations": true,
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다.",
-        "NSUserTrackingUsageDescription": "사용자의 관심사에 맞는 맞춤형 광고를 제공하기 위해 권한이 필요합니다."
+        "NSUserTrackingUsageDescription": "사용자의 관심사에 맞는 맞춤형 광고를 제공하기 위해 권한이 필요합니다.",
+        "NSUserNotificationUsageDescription": "일정 및 플로우 스텝 알림을 보내기 위해 권한이 필요합니다."
       },
       "googleServicesFile": "./GoogleService-Info.plist"
     },
@@ -48,7 +49,10 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "com.google.android.gms.permission.AD_ID"
+        "com.google.android.gms.permission.AD_ID",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -133,7 +137,15 @@
       ],
       "./withNonModularIncludes",
       "./withAndroidLint",
-      "expo-tracking-transparency"
+      "expo-tracking-transparency",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#469dd3",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "eas": {
