@@ -60,7 +60,7 @@ export const fetchGlobalWeather = async (lat, lon) => {
       params: {
         key: WEATHER_API_KEY,
         q: `${lat},${lon}`,
-        days: 10,
+        days: 7,
         aqi: 'yes',
         alerts: 'yes'
       }

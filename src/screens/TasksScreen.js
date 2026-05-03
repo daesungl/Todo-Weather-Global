@@ -306,6 +306,21 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
             <View style={styles.calendarSlotContainer}>
               {[0, 1, 2, 3, 4].map(slotIdx => {
                 const weekIndex = Math.floor(i / 7);
+
+                // slot 4: overflow가 있으면 task bar 대신 +N 표시
+                if (slotIdx === 4) {
+                  const overflow = dayTasks.filter(t => taskSlots[`${t.id}_${weekIndex}`] === undefined).length;
+                  if (overflow > 0) {
+                    const slot4Filled = dayTasks.some(t => taskSlots[`${t.id}_${weekIndex}`] === 4);
+                    const total = overflow + (slot4Filled ? 1 : 0);
+                    return (
+                      <View key={slotIdx} style={styles.moreTasksRow}>
+                        <Text style={styles.moreTasksText}>+{total}</Text>
+                      </View>
+                    );
+                  }
+                }
+
                 const task = dayTasks.find(t => taskSlots[`${t.id}_${weekIndex}`] === slotIdx);
                 if (!task) return <View key={slotIdx} style={styles.emptySlotRow} />;
 
@@ -313,7 +328,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                 const isEnd = ds === (task.endDate || task.date);
                 const isMulti = task.endDate && task.endDate !== task.date;
                 const col = task.color || TASK_COLORS[(tasks || []).findIndex(gt => gt.id === task.id) % TASK_COLORS.length];
-                const opacity = task.isCompleted ? '40' : (day.current ? 'CC' : '30');
+                const opacity = task.isCompleted ? '40' : 'CC';
 
                 const startIdx = days.findIndex(d => dateStr(d.date) === task.date);
                 const endIdx = days.findIndex(d => dateStr(d.date) === (task.endDate || task.date));
@@ -382,15 +397,6 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
                   </View>
                 );
               })}
-              {(() => {
-                const wk = Math.floor(i / 7);
-                const hidden = dayTasks.filter(t => taskSlots[`${t.id}_${wk}`] === undefined).length;
-                return hidden > 0 ? (
-                  <View style={styles.moreTasksRow}>
-                    <Text style={[styles.moreTasksText, !day.current && { opacity: 0.5 }]}>+{hidden}</Text>
-                  </View>
-                ) : null;
-              })()}
             </View>
           </TouchableOpacity>
         );

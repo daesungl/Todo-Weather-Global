@@ -165,7 +165,7 @@
     "humidity": "Humidity",
     "pop": "Precip.",
     "wind": "Wind",
-    "daily_forecast": "10-Day Forecast",
+    "daily_forecast": "Weekly Forecast",
     "date": "Date",
     "am": "AM",
     "pm": "PM",
