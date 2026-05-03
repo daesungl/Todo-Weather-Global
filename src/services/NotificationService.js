@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from '../i18n';
@@ -71,9 +72,11 @@ export const scheduleNotification = async (title, body, dateStr, timeStr) => {
     triggerDate.setMinutes(triggerDate.getMinutes() - NOTIFY_BEFORE_MINUTES);
     if (triggerDate <= new Date()) return null; // 과거 시각은 스킵
 
-    const trigger = Platform.OS === 'android'
-      ? { date: triggerDate, channelId: CHANNEL_ID }
-      : { date: triggerDate };
+    const trigger = {
+      type: SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_ID }),
+    };
 
     const body = timeStr
       ? i18n.t('tasks.notify_body', { minutes: NOTIFY_BEFORE_MINUTES })
