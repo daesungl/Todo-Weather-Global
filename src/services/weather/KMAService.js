@@ -280,6 +280,12 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
         }
       }
     });
+    
+    if (liveWeather.temp) {
+      const curT = parseFloat(liveWeather.temp);
+      if (curT > highLimit) highLimit = curT;
+      if (curT < lowLimit) lowLimit = curT;
+    }
 
     const dailyForecast = [];
     const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -322,49 +328,67 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
       let amPop = '0', pmPop = '0', amCond = 'sunny', pmCond = 'sunny';
       let highTemp = highLimit, lowTemp = lowLimit;
 
-      if (i < 3) {
-        let dayHigh = -100, dayLow = 100, ptyAm = '0', ptyPm = '0', skyAm = '1', skyPm = '1', amPopMax = 0, pmPopMax = 0, hasData = false;
-        forecastItems.forEach(item => {
-          if (item.fcstDate === dStr) {
-            hasData = true;
-            const val = parseFloat(item.fcstValue);
-            if (item.category === 'TMP' || item.category === 'TMX' || item.category === 'TMN') {
-              if (val > dayHigh) dayHigh = val;
-              if (val < dayLow) dayLow = val;
-            }
-            const h = parseInt(item.fcstTime.slice(0, 2));
-            if (h < 12) {
-              if (item.category === 'PTY') ptyAm = getWorstPty(ptyAm, item.fcstValue);
-              if (item.category === 'SKY') skyAm = Math.max(parseInt(skyAm), parseInt(item.fcstValue)).toString();
-              if (item.category === 'POP') amPopMax = Math.max(amPopMax, parseInt(item.fcstValue));
-            } else {
-              if (item.category === 'PTY') ptyPm = getWorstPty(ptyPm, item.fcstValue);
-              if (item.category === 'SKY') skyPm = Math.max(parseInt(skyPm), parseInt(item.fcstValue)).toString();
-              if (item.category === 'POP') pmPopMax = Math.max(pmPopMax, parseInt(item.fcstValue));
-            }
+      let dayHigh = -100, dayLow = 100, ptyAm = '0', ptyPm = '0', skyAm = '1', skyPm = '1', amPopMax = 0, pmPopMax = 0, hasData = false;
+      let pmDataCount = 0;
+      
+      forecastItems.forEach(item => {
+        if (item.fcstDate === dStr) {
+          hasData = true;
+          const val = parseFloat(item.fcstValue);
+          if (item.category === 'TMP' || item.category === 'TMX' || item.category === 'TMN') {
+            if (val > dayHigh) dayHigh = val;
+            if (val < dayLow) dayLow = val;
           }
-        });
-        if (hasData) {
-          highTemp = dayHigh !== -100 ? dayHigh : highLimit;
-          lowTemp = dayLow !== 100 ? dayLow : lowLimit;
-          amPop = amPopMax.toString(); pmPop = pmPopMax.toString();
-          amCond = safeMapKMA(skyAm, ptyAm); pmCond = safeMapKMA(skyPm, ptyPm);
-        } else {
-          const idx = getMidIdx(i);
-          amPop = String(midLandData[`rnSt${idx}Am`] ?? midLandData[`rnSt${idx}`] ?? '0');
-          pmPop = String(midLandData[`rnSt${idx}Pm`] ?? midLandData[`rnSt${idx}`] ?? '0');
-          amCond = getMidCond(midLandData[`wf${idx}Am`] ?? midLandData[`wf${idx}`]);
-          pmCond = getMidCond(midLandData[`wf${idx}Pm`] ?? midLandData[`wf${idx}`]);
+          const h = parseInt(item.fcstTime.slice(0, 2));
+          if (h < 12) {
+            if (item.category === 'PTY') ptyAm = getWorstPty(ptyAm, item.fcstValue);
+            if (item.category === 'SKY') skyAm = Math.max(parseInt(skyAm), parseInt(item.fcstValue)).toString();
+            if (item.category === 'POP') amPopMax = Math.max(amPopMax, parseInt(item.fcstValue));
+          } else {
+            pmDataCount++;
+            if (item.category === 'PTY') ptyPm = getWorstPty(ptyPm, item.fcstValue);
+            if (item.category === 'SKY') skyPm = Math.max(parseInt(skyPm), parseInt(item.fcstValue)).toString();
+            if (item.category === 'POP') pmPopMax = Math.max(pmPopMax, parseInt(item.fcstValue));
+          }
         }
+      });
+
+      const idx = getMidIdx(i);
+
+      // 단기예보(VilageFcst)에 오후 데이터가 있거나 오늘(i===0)인 경우 단기예보 데이터 우선 사용
+      // (기상청이 단기예보를 3일 후(글피)까지 연장 제공하므로 이를 동적으로 활용)
+      if (hasData && (pmDataCount > 0 || i === 0)) {
+        highTemp = dayHigh !== -100 ? dayHigh : highLimit;
+        lowTemp = dayLow !== 100 ? dayLow : lowLimit;
+        amPop = amPopMax.toString(); pmPop = pmPopMax.toString();
+        amCond = safeMapKMA(skyAm, ptyAm); pmCond = safeMapKMA(skyPm, ptyPm);
       } else {
-        const idx = getMidIdx(i);
-        const taMax = midTaData[`taMax${idx}`], taMin = midTaData[`taMin${idx}`];
-        highTemp = taMax !== undefined ? taMax : Math.round(highLimit - (i * 0.5));
-        lowTemp = taMin !== undefined ? taMin : Math.round(lowLimit - (i * 0.5));
+        const taMax = midTaData[`taMax${idx}`];
+        const taMin = midTaData[`taMin${idx}`];
+        
+        if (taMax !== undefined && taMin !== undefined) {
+          highTemp = taMax;
+          lowTemp = taMin;
+        } else {
+          // 중기예보 누락 시 이전 날짜와 다음 날짜 보간
+          const prevHigh = dailyForecast[i - 1]?.high ?? highLimit;
+          const prevLow = dailyForecast[i - 1]?.low ?? lowLimit;
+          const nextMax = midTaData[`taMax${idx + 1}`];
+          const nextMin = midTaData[`taMin${idx + 1}`];
+          
+          if (nextMax !== undefined && nextMin !== undefined) {
+            highTemp = (prevHigh + nextMax) / 2;
+            lowTemp = (prevLow + nextMin) / 2;
+          } else {
+            highTemp = prevHigh;
+            lowTemp = prevLow;
+          }
+        }
+        
         if (idx >= 3 && idx <= 7) {
           amPop = String(midLandData[`rnSt${idx}Am`] ?? '0'); pmPop = String(midLandData[`rnSt${idx}Pm`] ?? '0');
           amCond = getMidCond(midLandData[`wf${idx}Am`]); pmCond = getMidCond(midLandData[`wf${idx}Pm`]);
-        } else if (idx >= 8 && idx <= 10) {
+        } else {
           const pop = String(midLandData[`rnSt${idx}`] ?? '0'), wf = midLandData[`wf${idx}`];
           amPop = pmPop = pop; amCond = pmCond = getMidCond(wf);
         }
