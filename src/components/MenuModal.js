@@ -4,11 +4,13 @@ import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-h
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind, Crown } from 'lucide-react-native';
+import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind, Crown, User as UserIcon } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUnits } from '../contexts/UnitContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { useAuth } from '../contexts/AuthContext';
+import { Image } from 'react-native';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.82;
@@ -17,6 +19,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const { t, i18n } = useTranslation();
   const { tempUnit, windUnit, setTempUnit, setWindUnit } = useUnits();
   const { isPremium, devTogglePremium } = useSubscription();
+  const { user, isGuest, logout } = useAuth();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const [isShowing, setIsShowing] = useState(visible);
@@ -25,6 +28,11 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const currentLang = i18n.language;
 
   const handleMenuItemPress = async (id) => {
+    if (id === 'profile') {
+      onClose();
+      navigation.navigate('Profile');
+      return;
+    }
     if (id === 'privacy') {
       Linking.openURL('https://pellongsoft.tistory.com/4');
       return;
@@ -354,8 +362,47 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                   )}
                 </ScrollView>
 
-                {/* Fixed Bottom Premium CTA & Copyright */}
+                {/* Fixed Bottom Profile & Footer */}
                 <View style={styles.fixedFooter}>
+                  {user ? (
+                    <TouchableOpacity 
+                      style={styles.profileSummary}
+                      onPress={() => handleMenuItemPress('profile')}
+                    >
+                      <View style={styles.profileAvatarContainer}>
+                        {user.profileImage ? (
+                          <Image source={{ uri: user.profileImage }} style={styles.profileAvatar} />
+                        ) : (
+                          <View style={styles.profileAvatarPlaceholder}>
+                            <UserIcon size={20} color={Colors.primary} />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.profileInfo}>
+                        <Text style={styles.profileName} numberOfLines={1}>{user.displayName || 'User'}</Text>
+                        <Text style={styles.profileEmail} numberOfLines={1}>{user.email}</Text>
+                      </View>
+                      <ChevronRight size={16} color={Colors.outlineVariant} />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity 
+                      style={styles.loginCta}
+                      onPress={() => {
+                        onClose();
+                        navigation.navigate('Login');
+                      }}
+                    >
+                      <View style={styles.loginCtaIcon}>
+                        <UserIcon size={22} color="white" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.loginCtaTitle}>{t('auth.loginTitle')}</Text>
+                        <Text style={styles.loginCtaSub}>{t('auth.guestSyncMsg')}</Text>
+                      </View>
+                      <ChevronRight size={18} color="white" />
+                    </TouchableOpacity>
+                  )}
+
                   {/* 사업자 등록 전까지 프리미엄 전환 버튼 숨김 */}
                   {false && (
                     <TouchableOpacity
@@ -466,6 +513,36 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
   },
+  toggleTrack: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: 12,
+    padding: 2,
+    width: 68,
+  },
+  toggleChip: {
+    flex: 1,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  activeChip: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  activeToggleText: {
+    color: Colors.primary,
+  },
   footer: {
     marginTop: Spacing.huge,
     paddingTop: Spacing.xl,
@@ -537,80 +614,87 @@ const styles = StyleSheet.create({
     color: Colors.outline,
     letterSpacing: 0.5,
   },
-  profileBox: {
+  profileSummary: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surfaceContainerLow,
     padding: 16,
     borderRadius: 24,
     gap: 12,
+    marginBottom: 24,
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
   },
-  avatar: {
+  profileAvatarContainer: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.primaryContainer,
-  },
-  statusText: {
-    fontSize: 10,
-    color: Colors.primary,
-    fontWeight: '700',
-  },
-  versionText: {
-    marginTop: 24,
-    textAlign: 'center',
-    fontSize: 10,
-    color: Colors.outline,
-    letterSpacing: 1,
-    fontWeight: '600',
-  },
-  toggleTrack: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surfaceContainerHighest,
-    padding: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  toggleChip: {
-    width: 32,
-    height: 24,
-    borderRadius: 8,
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  activeChip: {
-    backgroundColor: 'white',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
   },
-  toggleText: {
-    fontSize: 10,
+  profileAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  profileAvatarPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#e3f2fd',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 16,
     fontWeight: '700',
-    color: Colors.outline,
+    color: Colors.text,
   },
-  activeToggleText: {
-    color: Colors.primary,
+  profileEmail: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
-  prefSection: {
-    gap: 8,
-  },
-  prefSectionHeader: {
+  loginCta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    backgroundColor: Colors.primary,
+    padding: 16,
+    borderRadius: 24,
+    gap: 12,
+    marginBottom: 24,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  prefSectionTitle: {
-    fontSize: 13,
+  loginCtaIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loginCtaTitle: {
+    fontSize: 16,
     fontWeight: '800',
-    color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: 'white',
+  },
+  loginCtaSub: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
   },
 });
 

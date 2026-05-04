@@ -50,3 +50,5 @@ yarn-error.*
 # generated native folders (Keep if you are in Bare Workflow, otherwise ignore)
 # /ios
 # /android
+*.keystore
+android/app/release.keystore

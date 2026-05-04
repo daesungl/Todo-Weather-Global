@@ -443,7 +443,9 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
-      <MainHeader onMenuPress={() => setMenuVisible(true)} />
+      <MainHeader 
+        onMenuPress={() => setMenuVisible(true)} 
+      />
 
       <GHScrollView ref={scrollViewRef} scrollEnabled={isScrollEnabled} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Hero Section */}

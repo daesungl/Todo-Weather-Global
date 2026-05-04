@@ -26,7 +26,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.2</string>
+    <string>1.0.3</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -37,9 +37,15 @@
           <string>com.appswayd.TodoWeatherGlobal</string>
         </array>
       </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>com.googleusercontent.apps.156613478220-7k0jed2lfpt8g13khlcavkv77qgcjuhb</string>
+        </array>
+      </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>23</string>
+    <string>27</string>
     <key>GADApplicationIdentifier</key>
     <string>ca-app-pub-9445741126920983~8209065649</string>
     <key>GADDelayAppMeasurementInit</key>
@@ -57,12 +63,18 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your camera</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your location</string>
     <key>NSLocationAlwaysUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your location</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>사용자의 현재 위치를 기반으로 정확한 날씨 정보를 제공하기 위해 위치 권한이 필요합니다.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>사용자의 프로필 사진을 설정하기 위해 사진 라이브러리에 접근합니다.</string>
     <key>NSUserNotificationUsageDescription</key>
     <string>일정 및 플로우 스텝 알림을 보내기 위해 권한이 필요합니다.</string>
     <key>NSUserTrackingUsageDescription</key>

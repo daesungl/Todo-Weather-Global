@@ -3,7 +3,7 @@
     "name": "Todo Weather",
     "displayName": "Todo Weather",
     "slug": "global-todo-weather",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +19,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "26",
+      "buildNumber": "27",
+      "newArchEnabled": true,
       "infoPlist": {
         "CFBundleLocalizations": [
           "ko",
@@ -71,9 +72,11 @@
             "buildToolsVersion": "35.0.0"
           },
           "ios": {
-            "deploymentTarget": "15.1"
+            "deploymentTarget": "15.1",
+            "useFrameworks": "static"
           }
         }
+
       ],
       [
         "@react-native-firebase/app",
@@ -144,6 +147,12 @@
           "icon": "./assets/icon.png",
           "color": "#469dd3",
           "sounds": []
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "사용자의 프로필 사진을 설정하기 위해 사진 라이브러리에 접근합니다."
         }
       ]
     ],

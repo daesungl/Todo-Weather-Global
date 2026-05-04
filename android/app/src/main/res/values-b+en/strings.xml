@@ -1,5 +1,6 @@
 <resources>
   <string name="common">"[object Object]"</string>
+  <string name="auth">"[object Object]"</string>
   <string name="months">"Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"</string>
   <string name="home">"[object Object]"</string>
   <string name="briefing">"[object Object]"</string>

@@ -13,6 +13,7 @@ import './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
 import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import { useSubscription } from './src/contexts/SubscriptionContext';
+import { AuthProvider } from './src/contexts/AuthContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
 import { refillTaskNotifications, refillStepNotifications, setupAndroidChannel, cancelPastNotifications } from './src/services/NotificationService';
@@ -35,6 +36,9 @@ import RegionManagementScreen from './src/screens/RegionManagementScreen';
 import WeatherDetailScreen from './src/screens/WeatherDetailScreen';
 import PaywallScreen from './src/screens/PaywallScreen';
 import CustomTabBar from './src/components/CustomTabBar';
+import { useAuth } from './src/contexts/AuthContext';
+import LoginScreen from './src/screens/LoginScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -130,6 +134,58 @@ function NotificationRefillHandler() {
   return null;
 }
 
+function AppContent({ navigationRef, routeNameRef, slideFromRight }) {
+  const { user, isGuest, loading } = useAuth();
+  
+  if (loading) return null;
+
+  return (
+    <SubscriptionProvider>
+      <UnitProvider>
+        <SafeAreaProvider>
+          <AppOpenAdHandler />
+          <NotificationRefillHandler />
+          <StatusBar style="dark" />
+          <NavigationContainer
+            ref={navigationRef}
+            onReady={() => {
+              routeNameRef.current = navigationRef.current.getCurrentRoute()?.name;
+            }}
+            onStateChange={async () => {
+              const previousRouteName = routeNameRef.current;
+              const currentRouteName = navigationRef.current.getCurrentRoute()?.name;
+
+              if (previousRouteName !== currentRouteName) {
+                await logEvent(getAnalytics(), 'screen_view', {
+                  firebase_screen: currentRouteName,
+                  firebase_screen_class: currentRouteName,
+                });
+              }
+              routeNameRef.current = currentRouteName;
+            }}
+          >
+            <Stack.Navigator
+              screenOptions={{
+                headerShown: false,
+                gestureEnabled: true,
+                gestureDirection: 'horizontal',
+                ...slideFromRight,
+              }}
+            >
+              <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
+              <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
+              <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
+              <Stack.Screen name="Paywall" component={PaywallScreen} />
+              <Stack.Screen name="Profile" component={ProfileScreen} />
+              <Stack.Screen name="Login" component={LoginScreen} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </UnitProvider>
+    </SubscriptionProvider>
+  );
+}
+
 export default function App() {
   const routeNameRef = React.useRef();
   const navigationRef = React.useRef();
@@ -181,50 +237,13 @@ export default function App() {
     <GestureHandlerRootView 
       style={styles.root}
     >
-      <SubscriptionProvider>
-        <UnitProvider>
-          <SafeAreaProvider>
-            <AppOpenAdHandler />
-            <NotificationRefillHandler />
-            <StatusBar style="dark" />
-            <NavigationContainer
-              ref={navigationRef}
-              onReady={() => {
-                routeNameRef.current = navigationRef.current.getCurrentRoute()?.name;
-              }}
-              onStateChange={async () => {
-                const previousRouteName = routeNameRef.current;
-                const currentRouteName = navigationRef.current.getCurrentRoute()?.name;
-
-                if (previousRouteName !== currentRouteName) {
-                  await logEvent(getAnalytics(), 'screen_view', {
-                    firebase_screen: currentRouteName,
-                    firebase_screen_class: currentRouteName,
-                  });
-                }
-                routeNameRef.current = currentRouteName;
-              }}
-            >
-              <Stack.Navigator
-                screenOptions={{
-                  headerShown: false,
-                  gestureEnabled: true,
-                  gestureDirection: 'horizontal',
-                  ...slideFromRight,
-                }}
-              >
-                {/* 탭 화면 그룹 */}
-                <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
-
-                {/* 상세 화면: 탭바 위에 오른쪽에서 슬라이드 인 */}
-                <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
-                <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
-                <Stack.Screen name="Paywall" component={PaywallScreen} />
-              </Stack.Navigator>
-            </NavigationContainer>
-          </SafeAreaProvider>
-        </UnitProvider>
-      </SubscriptionProvider>
+      <AuthProvider>
+        <AppContent 
+          navigationRef={navigationRef}
+          routeNameRef={routeNameRef}
+          slideFromRight={slideFromRight}
+        />
+      </AuthProvider>
 
       {/* 가짜 스플래시 레이어 (페이드아웃용) - 최상위 레벨로 이동 */}
       {showSplash && (
