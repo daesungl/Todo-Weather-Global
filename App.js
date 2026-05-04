@@ -40,6 +40,7 @@ import { useAuth } from './src/contexts/AuthContext';
 import LoginScreen from './src/screens/LoginScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
+
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -135,7 +136,7 @@ function NotificationRefillHandler() {
 
 function AppContent({ navigationRef, routeNameRef, slideFromRight }) {
   const { user, isGuest, loading } = useAuth();
-  
+
   if (loading) return null;
 
   return (
@@ -220,10 +221,10 @@ export default function App() {
 
     if (Platform.OS === 'android') {
       // 안드로이드: fake splash 없이 native splash만 즉시 숨김
-      SplashScreen.hideAsync().catch(() => {});
+      SplashScreen.hideAsync().catch(() => { });
     } else {
       // iOS: fake splash 페이드아웃 후 숨김
-      SplashScreen.hideAsync().catch(() => {});
+      SplashScreen.hideAsync().catch(() => { });
       Animated.timing(splashOpacity, {
         toValue: 0,
         duration: 500,
@@ -233,11 +234,11 @@ export default function App() {
   }, [appIsReady]);
 
   return (
-    <GestureHandlerRootView 
+    <GestureHandlerRootView
       style={styles.root}
     >
       <AuthProvider>
-        <AppContent 
+        <AppContent
           navigationRef={navigationRef}
           routeNameRef={routeNameRef}
           slideFromRight={slideFromRight}
