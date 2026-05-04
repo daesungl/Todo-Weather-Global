@@ -17,8 +17,8 @@ import { AuthProvider } from './src/contexts/AuthContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
 import { refillTaskNotifications, refillStepNotifications, setupAndroidChannel, cancelPastNotifications } from './src/services/NotificationService';
-import { getTasks } from './src/services/task/TaskService';
-import { getFlows, saveFlows } from './src/services/FlowService';
+import { getTasks, updateTask } from './src/services/task/TaskSyncService';
+import { getFlows, saveFlows } from './src/services/FlowSyncService';
 import { incrementLaunchCount } from './src/services/ReviewService';
 
 // 스플래시 화면 자동 숨김 방지
@@ -101,7 +101,6 @@ function NotificationRefillHandler() {
       try {
         const tasks = await getTasks();
         await refillTaskNotifications(tasks, async (id, patch) => {
-          const { updateTask } = await import('./src/services/task/TaskService');
           await updateTask(id, patch);
         });
 
@@ -157,8 +156,8 @@ function AppContent({ navigationRef, routeNameRef, slideFromRight }) {
 
               if (previousRouteName !== currentRouteName) {
                 await logEvent(getAnalytics(), 'screen_view', {
-                  firebase_screen: currentRouteName,
-                  firebase_screen_class: currentRouteName,
+                  screen_name: currentRouteName,
+                  screen_class: currentRouteName,
                 });
               }
               routeNameRef.current = currentRouteName;

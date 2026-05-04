@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronLeft, Trash2, Plus, Sun, Search, X, MapPin, Droplets, Wind, Zap, CloudRain, Moon, Cloud, CloudSnow, Lock } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
+import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionSyncService';
 import { getWeather } from '../services/weather/WeatherService';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { Alert } from 'react-native';

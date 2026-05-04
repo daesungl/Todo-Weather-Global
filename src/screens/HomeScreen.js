@@ -15,7 +15,7 @@ import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import { getWeather } from '../services/weather/WeatherService';
-import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionService';
+import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionSyncService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 

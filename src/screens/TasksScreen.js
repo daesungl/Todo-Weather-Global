@@ -34,13 +34,13 @@ import {
   Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown, Repeat, Bell, BellOff
 } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
-import { getTasks, addTask, addRepeatTasks, toggleTaskCompletion, deleteTask, deleteRepeatTasks, updateTask, updateRepeatTasks, updateRepeatSeriesEndDate } from '../services/task/TaskService';
+import { getTasks, addTask, addRepeatTasks, toggleTaskCompletion, deleteTask, deleteRepeatTasks, updateTask, updateRepeatTasks, updateRepeatSeriesEndDate, subscribeToTasks } from '../services/task/TaskSyncService';
 import { requestPermission, scheduleNotification, cancelNotification, hasPermission, refillTaskNotifications } from '../services/NotificationService';
 import { onTaskCompleted } from '../services/ReviewService';
 import { getWeather } from '../services/weather/WeatherService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
-import { getFlows } from '../services/FlowService';
+import { getFlows, subscribeToFlows } from '../services/FlowSyncService';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -759,6 +759,22 @@ const TasksScreen = ({ navigation }) => {
       loadHolidays();
     }, [])
   );
+
+  useEffect(() => {
+    const unsubTasks = subscribeToTasks((tasks) => {
+      if (tasks !== null) {
+        setTasks(tasks);
+        fetchTasksWeather(tasks);
+      }
+    });
+    const unsubFlows = subscribeToFlows((flows) => {
+      if (flows !== null) setFlows(flows);
+    });
+    return () => {
+      unsubTasks();
+      unsubFlows();
+    };
+  }, []);
 
   const loadHolidays = async () => {
     const saved = await loadSavedCountries();

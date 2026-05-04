@@ -5,6 +5,9 @@ import firestore from '@react-native-firebase/firestore';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import appleAuth from '@invertase/react-native-apple-authentication';
 import i18n from '../i18n';
+import { initFlowSync } from '../services/FlowSyncService';
+import { initRegionSync } from '../services/weather/RegionSyncService';
+import { initTaskSync } from '../services/task/TaskSyncService';
 
 // Firebase Console > Authentication > Sign-in method > Google > Web SDK configuration > Web client ID
 // Google 로그인 활성화 후 Firebase Console에서 확인 가능
@@ -58,6 +61,10 @@ export const AuthProvider = ({ children }) => {
             }
           }
 
+          initFlowSync(currentUser.uid);
+          initRegionSync(currentUser.uid);
+          initTaskSync(currentUser.uid);
+
           unsubscribeSnapshot.current = userRef.onSnapshot((snapshot) => {
             if (snapshot.exists) {
               const data = snapshot.data();
@@ -103,6 +110,9 @@ export const AuthProvider = ({ children }) => {
           setLoading(false);
         }
       } else {
+        initFlowSync(null);
+        initRegionSync(null);
+        initTaskSync(null);
         setUser(null);
         setLoading(false);
       }
@@ -201,12 +211,18 @@ export const AuthProvider = ({ children }) => {
       unsubscribeSnapshot.current = null;
     }
 
+    // 즉시 상태 초기화 — onAuthStateChanged 비동기 지연 없이 UI가 바로 반영되도록
+    setUser(null);
+    setIsGuest(false);
+    initFlowSync(null);
+    initRegionSync(null);
+    initTaskSync(null);
+
     try {
       const isSignedIn = await GoogleSignin.isSignedIn();
       if (isSignedIn) await GoogleSignin.signOut();
     } catch (_) { }
 
-    setIsGuest(false);
     return auth().signOut();
   };
 

@@ -26,14 +26,23 @@ const ProfileScreen = ({ navigation }) => {
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [newName, setNewName] = useState(user?.displayName || '');
   const [isSaving, setIsSaving] = useState(false);
-
-  React.useEffect(() => {
-    if (!user) {
-      navigation.goBack();
-    }
-  }, [user, navigation]);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const isLoggingOutRef = React.useRef(false);
 
   if (!user) return null;
+
+  const handleLogout = async () => {
+    if (isLoggingOutRef.current) return;
+    isLoggingOutRef.current = true;
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    } catch (_) {
+      isLoggingOutRef.current = false;
+      setIsLoggingOut(false);
+    }
+  };
 
   const handleUpdateProfile = async () => {
     if (!newName.trim()) {
@@ -144,11 +153,15 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.editButtonText}>{t('auth.editProfile', { defaultValue: 'Edit Profile' })}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.logoutButton} 
-          onPress={logout}
+        <TouchableOpacity
+          style={[styles.logoutButton, isLoggingOut && { opacity: 0.5 }]}
+          onPress={handleLogout}
+          disabled={isLoggingOut}
         >
-          <LucideLogOut size={20} color={Colors.error} />
+          {isLoggingOut
+            ? <ActivityIndicator size="small" color={Colors.error} />
+            : <LucideLogOut size={20} color={Colors.error} />
+          }
           <Text style={styles.logoutText}>{t('auth.logout', { defaultValue: 'Logout' })}</Text>
         </TouchableOpacity>
       </View>

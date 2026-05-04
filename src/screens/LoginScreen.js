@@ -65,7 +65,7 @@ const LoginScreen = ({ navigation }) => {
       if (isLogin) {
         try {
           await login(email, password);
-          navigation.goBack();
+          navigateAfterAuth();
         } catch (error) {
           // 이메일 미인증 에러인 경우 재발송 옵션 제공
           if (error.message.includes('이메일 인증이 필요합니다')) {
@@ -121,11 +121,19 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
+  const navigateAfterAuth = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setSocialLoading('google');
     try {
       await signInWithGoogle();
-      navigation.goBack();
+      navigateAfterAuth();
     } catch (error) {
       if (error.message !== 'Google Sign-In cancelled') {
         Alert.alert(t('common.error'), error.message);
@@ -139,7 +147,7 @@ const LoginScreen = ({ navigation }) => {
     setSocialLoading('apple');
     try {
       await signInWithApple();
-      navigation.goBack();
+      navigateAfterAuth();
     } catch (error) {
       if (error.code !== '1001') { // 1001 = user cancelled
         Alert.alert(t('common.error'), error.message);
@@ -278,7 +286,13 @@ const LoginScreen = ({ navigation }) => {
 
             <TouchableOpacity
               style={styles.guestButton}
-              onPress={() => navigation.goBack()}
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+                }
+              }}
             >
               <Text style={styles.guestText}>{t('common.cancel', { defaultValue: '취소' })}</Text>
             </TouchableOpacity>

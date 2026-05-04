@@ -59,7 +59,7 @@ import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
-import { getFlows, saveFlows, addFlow, deleteFlow } from '../services/FlowService';
+import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows } from '../services/FlowSyncService';
 import { requestPermission, scheduleNotification, cancelNotification, refillStepNotifications } from '../services/NotificationService';
 
 const { width, height } = Dimensions.get('window');
@@ -199,6 +199,13 @@ const FlowScreen = ({ navigation, route }) => {
       loadInitialData();
     }, [])
   );
+
+  useEffect(() => {
+    const unsub = subscribeToFlows((flows) => {
+      if (flows !== null) setFlows(flows);
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress', () => {
