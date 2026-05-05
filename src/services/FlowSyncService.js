@@ -312,6 +312,13 @@ export const removeSharedFlowOptimistic = (flowId) => {
 export const updateFlowDoc = async (flow) => {
   if (!flow) return;
   const ownerUid = flow._ownerUid || _userId;
+  const isOwner = !flow._ownerUid || ownerUid === _userId;
+  const isEditor = flow._role === 'editor';
+
+  if (!isOwner && !isEditor) {
+    if (__DEV__) console.log('[FlowSync] updateFlowDoc skipped: User has no edit permission (Role: ' + flow._role + ')');
+    return;
+  }
   if (__DEV__) {
     console.log('[FlowSync] updateFlowDoc called', { 
       flowId: flow.id, 

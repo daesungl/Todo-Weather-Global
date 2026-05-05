@@ -196,6 +196,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [editMemo, setEditMemo] = useState('');
   const [pickerType, setPickerType] = useState(null);
   const scrollY = useRef(new Animated.Value(0)).current;
+  const currentScrollYRef = useRef(0); // 현재 스크롤 위치 추적 (댓글 포커스 시 사용)
   const pickerBackupRef = useRef({ editDate: '', editTime: '', editEndDate: '', editEndTime: '' });
 
   // Step Repeat State
@@ -241,14 +242,22 @@ const FlowScreen = ({ navigation, route }) => {
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [showRangePicker, setShowRangePicker] = useState(false);
-  const [flowModalHeight, setFlowModalHeight] = useState(0);
-  const [editModalHeight, setEditModalHeight] = useState(0);
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
   const flowKeyboardOffset = useRef(new Animated.Value(0)).current;
+  const invitePanY = useRef(new Animated.Value(height)).current;
+  const joinPanY = useRef(new Animated.Value(height)).current;
   const searchPanY = useRef(new Animated.Value(0)).current;
+  const [inviteModalHeight, setInviteModalHeight] = useState(0);
+  const [joinModalHeight, setJoinModalHeight] = useState(0);
+  const [flowModalHeight, setFlowModalHeight] = useState(0);
+  const [editModalHeight, setEditModalHeight] = useState(0);
+  const [searchModalHeight, setSearchModalHeight] = useState(0);
+  const [isSavingPermissions, setIsSavingPermissions] = useState(false);
   const flatListRef = useRef(null);
   const stepScrollRef = useRef(null);
+  const timelineScrollRef = useRef(null);  // 타임라인 전체 스크롤뷰 ref (댓글 입력 시 키보드 대응)
+  const commentInputRefs = useRef({}); // { stepId: ref } 댓글 입력창 위치 파악용
   const memoYRef = useRef(0);
   const activityInputRef = useRef(null);
   const flowTitleRef = useRef(null);
@@ -277,6 +286,14 @@ const FlowScreen = ({ navigation, route }) => {
       if (flows !== null) setFlows(flows);
     });
     return unsub;
+  }, []);
+
+  // 타임라인 스크롤 위치 추적 (댓글 입력 포커스 시 scrollTo 계산용)
+  useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      currentScrollYRef.current = value;
+    });
+    return () => scrollY.removeListener(listenerId);
   }, []);
 
   useEffect(() => {
@@ -508,6 +525,44 @@ const FlowScreen = ({ navigation, route }) => {
     })
   ).current;
 
+  const invitePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) invitePanY.setValue(gestureState.dy);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          Animated.timing(invitePanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+            closeInviteModal();
+          });
+        } else {
+          Animated.spring(invitePanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+        }
+      },
+    })
+  ).current;
+
+  const joinPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) joinPanY.setValue(gestureState.dy);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          Animated.timing(joinPanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+            closeJoinModal();
+          });
+        } else {
+          Animated.spring(joinPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+        }
+      },
+    })
+  ).current;
+
   const openEditModal = (isNew = false) => {
     panY.setValue(height);
     setEditModalVisible(true);
@@ -570,6 +625,19 @@ const FlowScreen = ({ navigation, route }) => {
     return !!flow._permissions.manageComments;
   };
 
+  const handleJoinPress = () => {
+    if (!user) {
+      showConfirm(
+        t('common.login_required'),
+        t('common.login_required_msg'),
+        () => navigation.navigate('Login'),
+        true
+      );
+      return;
+    }
+    openJoinModal();
+  };
+
   const canEditSteps = (flow) => canEdit(flow);
 
   const handleOpenInvite = async () => {
@@ -590,7 +658,38 @@ const FlowScreen = ({ navigation, route }) => {
     setFlowMembers([]);
     setPendingPermissions({});
     setApplyingPermissions({});
+    invitePanY.setValue(height);
     setInviteModalVisible(true);
+    Animated.spring(invitePanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+  };
+
+  const closeInviteModal = () => {
+    Animated.timing(invitePanY, {
+      toValue: height,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setInviteModalVisible(false);
+      setPendingPermissions({});
+    });
+  };
+
+  const openJoinModal = () => {
+    setJoinCode('');
+    joinPanY.setValue(height);
+    setJoinModalVisible(true);
+    Animated.spring(joinPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+  };
+
+  const closeJoinModal = () => {
+    Animated.timing(joinPanY, {
+      toValue: height,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setJoinModalVisible(false);
+      setJoinCode('');
+    });
   };
 
   // Membership Real-time Subscription
@@ -678,18 +777,46 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   const handleApplyPermissions = async (memberUid) => {
+    // 이제 개별 저장은 사용하지 않지만, 내부 로직 유지를 위해 남겨두거나 handleSaveAllPermissions에서 활용
     const pending = pendingPermissions[memberUid];
     if (!pending) return;
     setApplyingPermissions(prev => ({ ...prev, [memberUid]: true }));
     try {
       await updateMemberPermissions(selectedFlow._ownerUid || user?.uid, selectedFlow.id, memberUid, pending);
-      // 로컬 member도 즉시 반영
       setFlowMembers(prev => prev.map(m => m.uid === memberUid ? { ...m, permissions: pending } : m));
       setPendingPermissions(prev => { const n = { ...prev }; delete n[memberUid]; return n; });
     } catch (e) {
       showConfirm(t('common.error'), e.message, null, false);
     } finally {
       setApplyingPermissions(prev => ({ ...prev, [memberUid]: false }));
+    }
+  };
+
+  const handleSaveAllPermissions = async () => {
+    const uids = Object.keys(pendingPermissions);
+    
+    if (uids.length === 0) {
+      closeInviteModal();
+      return;
+    }
+
+    setIsSavingPermissions(true);
+    try {
+      const ownerUid = selectedFlow._ownerUid || user?.uid;
+      // 순차적으로 처리하여 안정성 확보
+      for (const uid of uids) {
+        const pending = pendingPermissions[uid];
+        await updateMemberPermissions(ownerUid, selectedFlow.id, uid, pending);
+        setFlowMembers(prev => prev.map(m => m.uid === uid ? { ...m, permissions: pending } : m));
+      }
+      
+      setPendingPermissions({});
+      closeInviteModal();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      showConfirm(t('common.error'), e.message, null, false);
+    } finally {
+      setIsSavingPermissions(false);
     }
   };
 
@@ -925,7 +1052,9 @@ const FlowScreen = ({ navigation, route }) => {
           // setTimeout을 사용하여 렌더링 사이클 이후에 updateFlowDoc이 실행되도록 지연 (경고 방지)
           setTimeout(() => {
             const flowToUpdate = updated.find(f => f.id === flow.id);
-            if (flowToUpdate) updateFlowDoc(flowToUpdate);
+            if (flowToUpdate && canEditFlow(flowToUpdate)) {
+              updateFlowDoc(flowToUpdate);
+            }
           }, 0);
           
           // 현재 선택된 플로우 동기화 (무한 루프 방지 위해 레퍼런스 활용)
@@ -1984,7 +2113,7 @@ const FlowScreen = ({ navigation, route }) => {
             <Animated.View 
               style={{ 
                 opacity: scrollY.interpolate({
-                  inputRange: [40, 80],
+                  inputRange: [100, 150],
                   outputRange: [0, 1],
                   extrapolate: 'clamp'
                 }),
@@ -2028,6 +2157,7 @@ const FlowScreen = ({ navigation, route }) => {
         </View>
 
         <Animated.ScrollView 
+          ref={timelineScrollRef}
           showsVerticalScrollIndicator={false} 
           contentContainerStyle={styles.detailContent}
           onScroll={Animated.event(
@@ -2035,17 +2165,26 @@ const FlowScreen = ({ navigation, route }) => {
             { useNativeDriver: true }
           )}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
         >
           <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background, padding: 12, borderRadius: 24 }}>
             {/* 히어로 섹션: 제목과 정보 통합 */}
-            <View style={{ marginBottom: 24, paddingHorizontal: 4 }}>
-              <Text style={{ ...Typography.h1, fontSize: 32, color: Colors.onBackground, marginBottom: 6, fontWeight: '900', letterSpacing: -1 }}>{selectedFlow.title}</Text>
+            <View style={{ marginBottom: 28, paddingHorizontal: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <View style={{ width: 12, height: 2, backgroundColor: Colors.primary, borderRadius: 1 }} />
+                <Text style={{ fontSize: 13, fontWeight: '800', color: Colors.primary, letterSpacing: 1 }}>{t('flow.schedule_plan', 'SCHEDULE PLAN')}</Text>
+              </View>
+              <Text style={{ ...Typography.h1, fontSize: 34, color: Colors.onBackground, marginBottom: 10, fontWeight: '900', letterSpacing: -1.2, lineHeight: 40 }}>{selectedFlow.title}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Text style={[styles.heroDate, { color: Colors.primary, fontWeight: '800' }]}>{getLocalizedPeriod(selectedFlow.period)}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.surfaceContainerLow, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                  <Calendar size={14} color={Colors.primary} />
+                  <Text style={{ fontSize: 13, color: Colors.onBackground, fontWeight: '700' }}>{getLocalizedPeriod(selectedFlow.period)}</Text>
+                </View>
                 {!isFlowOwner(selectedFlow) && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '10', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '10', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: Colors.primary + '20' }}>
                     <Users size={12} color={Colors.primary} />
-                    <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '700' }}>{selectedFlow._role}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: '700', textTransform: 'capitalize' }}>{selectedFlow._role}</Text>
                   </View>
                 )}
               </View>
@@ -2144,6 +2283,7 @@ const FlowScreen = ({ navigation, route }) => {
                                   <Pressable 
                                     onPress={(e) => { e.stopPropagation(); handleWeatherIconPress(step); }}
                                     style={styles.stepWeatherMini}
+                                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                                   >
                                     {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 24, Colors.primary, getStepIsDay(step))}
                                     {step.weather.temp !== undefined && (
@@ -2165,12 +2305,13 @@ const FlowScreen = ({ navigation, route }) => {
                                     <Pressable
                                       onPress={(e) => { e.stopPropagation(); toggleComments(step.id, e); }}
                                       style={({ pressed }) => [styles.commentToggleBtn, pressed && { opacity: 0.6 }]}
-                                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                      hitSlop={{ top: 20, bottom: 20, left: 20, right: 80 }}
                                     >
-                                      <MessageCircle size={20} color={count > 0 ? Colors.primary : Colors.outline} strokeWidth={2.2} />
+                                      <MessageCircle size={24} color={count > 0 ? Colors.primary : Colors.outline} strokeWidth={2.4} />
                                       {count > 0 && (
                                         <Text style={[styles.commentCountText, { color: Colors.primary }]}>{count}</Text>
                                       )}
+                                      <View style={{ flex: 1 }} />
                                     </Pressable>
 
                                     {/* 펼쳐진 댓글 영역 */}
@@ -2201,6 +2342,7 @@ const FlowScreen = ({ navigation, route }) => {
                                         {canComment && (
                                           <View style={styles.commentInputRow}>
                                             <TextInput
+                                              ref={(el) => { if (el) commentInputRefs.current[step.id] = el; }}
                                               style={styles.commentInput}
                                               placeholder={t('flow.add_comment', 'Add a comment...')}
                                               placeholderTextColor={Colors.outline}
@@ -2208,6 +2350,28 @@ const FlowScreen = ({ navigation, route }) => {
                                               onChangeText={(val) => setCommentInputs(prev => ({ ...prev, [step.id]: val }))}
                                               returnKeyType="send"
                                               onSubmitEditing={() => handlePostComment(step.id)}
+                                              onFocus={() => {
+                                                // 키보드 표시 후 약간의 지연으로 입력창이 키보드 위로 스크롤되도록 함
+                                                setTimeout(() => {
+                                                  const inputRef = commentInputRefs.current[step.id];
+                                                  if (inputRef && timelineScrollRef.current) {
+                                                    inputRef.measureInWindow((x, y, w, h) => {
+                                                      const keyboardHeight = 320; // 키보드 평균 높이 추정값
+                                                      const screenHeight = Dimensions.get('window').height;
+                                                      const inputBottom = y + h;
+                                                      const visibleBottom = screenHeight - keyboardHeight;
+                                                      if (inputBottom > visibleBottom) {
+                                                        const scrollAmount = inputBottom - visibleBottom + 35;
+                                                        timelineScrollRef.current.scrollTo &&
+                                                          timelineScrollRef.current.scrollTo({
+                                                            y: currentScrollYRef.current + scrollAmount,
+                                                            animated: true,
+                                                          });
+                                                      }
+                                                    });
+                                                  }
+                                                }, 300);
+                                              }}
                                             />
                                             <GHButton
                                               onPress={() => handlePostComment(step.id)}
@@ -2438,7 +2602,7 @@ const FlowScreen = ({ navigation, route }) => {
                                 );
                                 return;
                               }
-                              setJoinModalVisible(true);
+                              openJoinModal();
                             }}
                           >
                             <MaterialCommunityIcons name="account-multiple-plus" size={16} color={Colors.primary} />
@@ -3094,237 +3258,372 @@ const FlowScreen = ({ navigation, route }) => {
         <MenuModal visible={menuVisible} onClose={() => setMenuVisible(false)} onReset={() => { loadInitialData(); }} navigation={navigation} />
 
         {/* 초대 코드 모달 (오너 전용) */}
+        {/* 초대 코드 모달 (오너 전용) - 바텀 시트 스타일 */}
         <Modal
           transparent
           visible={inviteModalVisible}
-          animationType="slide"
-          onRequestClose={() => setInviteModalVisible(false)}
+          onRequestClose={closeInviteModal}
         >
-          <View style={styles.flowMenuOverlay}>
-            {/* 배경 오버레이 - 카드와 형제 관계로 분리하여 터치 충돌 방지 */}
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={() => setInviteModalVisible(false)}
-            />
-            {/* 카드 - 중앙 정렬 팝업 스타일로 복구 */}
-            <View style={[styles.flowMenuCard, { maxHeight: '85%' }]}>
-              <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-                <Text style={styles.flowMenuTitle}>{t('flow.manage_members')}</Text>
-                <View style={styles.flowMenuDivider} />
-
-                {/* 역할 선택 */}
-                <View style={{ flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 8 }}>
-                  {['viewer', 'editor'].map(role => (
-                    <Pressable
-                      key={role}
-                      style={[{ flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, alignItems: 'center' },
-                        inviteRole === role
-                          ? { backgroundColor: Colors.primary, borderColor: Colors.primary }
-                          : { borderColor: Colors.outlineVariant }]}
-                      onPress={() => {
-                        if (isGeneratingCode) return;
-                        setInviteRole(role);
-                        if (inviteCode) handleGenerateCode(role);
-                      }}
-                    >
-                      <Text style={{ color: inviteRole === role ? 'white' : Colors.onBackground, fontWeight: '600', fontSize: 13 }}>
-                        {role === 'viewer' ? t('flow.viewer') : t('flow.editor')}
-                      </Text>
-                    </Pressable>
-                  ))}
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeInviteModal} />
+            <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
+              <Animated.View 
+                style={[
+                  styles.editModalContent, 
+                  { 
+                    height: 'auto',
+                    maxHeight: height * 0.9,
+                    transform: [{ translateY: invitePanY }] 
+                  }
+                ]}
+                onLayout={(e) => setInviteModalHeight(e.nativeEvent.layout.height)}
+              >
+                <View {...invitePanResponder.panHandlers} style={styles.handleArea}>
+                  <View style={styles.modalHandle} />
                 </View>
-
-                {/* 초대 코드 표시 */}
-                <View style={{ alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16 }}>
-                  {inviteCode ? (
-                    <>
-                      <Text style={{ fontSize: 38, fontWeight: '800', letterSpacing: 10, color: Colors.onBackground, fontVariant: ['tabular-nums'] }}>{inviteCode}</Text>
-                      <Text style={{ color: Colors.outline, fontSize: 12, marginTop: 6 }}>{t('flow.valid_7_days')} · {inviteRole === 'viewer' ? t('flow.viewer_only') : t('flow.editable')}</Text>
-                      <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
-                        <Pressable onPress={() => Share.share({ message: t('flow.share_code_msg', { code: inviteCode }) })}>
-                          <Text style={{ color: Colors.primary, fontWeight: '600' }}>{t('flow.share_btn')}</Text>
-                        </Pressable>
-                        <Pressable onPress={handleInvalidateCode}>
-                          <Text style={{ color: Colors.error, fontWeight: '600' }}>{t('flow.remove_code')}</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  ) : (
-                    <Text style={{ color: Colors.outline, fontSize: 14 }}>{t('flow.no_active_code')}</Text>
-                  )}
-                </View>
-
-                {/* 코드 생성 버튼 */}
-                <Pressable
-                  style={({ pressed }) => [{ marginHorizontal: 16, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: (pressed || isGeneratingCode) ? 0.7 : 1 }]}
-                  onPress={() => handleGenerateCode()}
-                  disabled={isGeneratingCode}
-                >
-                  {isGeneratingCode
-                    ? <ActivityIndicator color="white" />
-                    : <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{inviteCode ? t('flow.regenerate_code') : t('flow.generate_code')}</Text>}
-                </Pressable>
-
-                {/* 현재 멤버 목록 영역 - 구분감 강화 */}
-                <View style={{ marginTop: 24, backgroundColor: Colors.surfaceVariant + '30', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 20 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 }}>
-                    <Text style={{ fontWeight: '800', color: Colors.onBackground, fontSize: 15 }}>{t('flow.current_members')}</Text>
-                    <TouchableOpacity 
-                      onPress={handleShowPermissionInfo} 
-                      style={{ 
-                        width: 40, 
-                        height: 40, 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        marginRight: -12
-                      }}
-                      activeOpacity={0.6}
+                <View style={styles.editHeader}>
+                  <View style={{ width: 80, alignItems: 'flex-start' }} />
+                  <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
+                    {t('flow.manage_members')}
+                  </Text>
+                  <View style={{ width: 80, alignItems: 'flex-end' }}>
+                    <GHButton 
+                      onPress={handleSaveAllPermissions} 
+                      style={styles.headerActionBtn}
+                      disabled={isSavingPermissions}
                     >
-                      <Info size={18} color={Colors.outline} />
-                    </TouchableOpacity>
+                      {isSavingPermissions ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <Text style={styles.headerSaveText}>
+                          {t('common.save', 'Save')}
+                        </Text>
+                      )}
+                    </GHButton>
                   </View>
-                {isMembersLoading ? (
-                  <ActivityIndicator style={{ padding: 16 }} color={Colors.primary} />
-                ) : flowMembers.length === 0 ? (
-                  <Text style={{ paddingHorizontal: 16, paddingBottom: 16, color: Colors.outline, fontSize: 13 }}>{t('flow.no_members')}</Text>
-                ) : (
-                  flowMembers.map(member => (
-                    <View key={member.uid} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant + '20' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flex: 1, marginRight: 10 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.onBackground }}>
-                            {member.displayName} 
-                            {member.uid === (selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId) && (
-                              <Text style={{ color: Colors.primary }}> {t('flow.owner_label')}</Text>
-                            )}
-                            {member.uid === user?.uid && (
-                              <Text style={{ color: Colors.outline }}> {t('flow.you_label')}</Text>
-                            )}
-                          </Text>
-                          <Text style={{ fontSize: 12, color: Colors.outline, marginTop: 2 }}>
-                            {member.role === 'owner' ? t('flow.owner_short') : (member.role === 'editor' ? t('flow.editor_short') : t('flow.viewer_short'))}
-                          </Text>
-                        </View>
-                        {isFlowOwner(selectedFlow) && (
-                          <TouchableOpacity
-                            onPress={() => handleRemoveMember(member.uid)}
-                            style={{ 
-                              width: 40, 
-                              height: 40, 
-                              alignItems: 'center', 
-                              justifyContent: 'center',
-                              marginRight: -8
-                            }}
-                            activeOpacity={0.6}
-                          >
-                            <X size={22} color={Colors.error} />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-
-                      {/* 권한 체크박스 섹션 (오너만 조절 가능) */}
-                      {isFlowOwner(selectedFlow) && (() => {
-                        const perms = pendingPermissions[member.uid] ?? member.permissions;
-                        const isDirty = !!pendingPermissions[member.uid];
-                        const isApplying = !!applyingPermissions[member.uid];
-                        return (
-                          <View style={{ marginTop: 12 }}>
-                            <View style={{ flexDirection: 'row', gap: 16 }}>
-                              {[
-                                { key: 'edit', label: t('flow.perm_edit') },
-                                { key: 'manageComments', label: t('flow.perm_comments') }
-                              ].map(perm => (
-                                <Pressable
-                                  key={perm.key}
-                                  onPress={() => handleTogglePermission(member.uid, perm.key)}
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                                >
-                                  <View style={{
-                                    width: 20, height: 20, borderRadius: 4, borderWidth: 1.5,
-                                    borderColor: perms[perm.key] ? Colors.primary : Colors.outlineVariant,
-                                    backgroundColor: perms[perm.key] ? Colors.primary : 'transparent',
-                                    alignItems: 'center', justifyContent: 'center'
-                                  }}>
-                                    {perms[perm.key] && <Check size={14} color="white" strokeWidth={3} />}
-                                  </View>
-                                  <Text style={{ fontSize: 13, fontWeight: '600', color: perms[perm.key] ? Colors.onBackground : Colors.outline }}>{perm.label}</Text>
-                                </Pressable>
-                              ))}
-                            </View>
-                            {isDirty && (
-                              <Pressable
-                                onPress={() => handleApplyPermissions(member.uid)}
-                                disabled={isApplying}
-                                style={({ pressed }) => ({
-                                  marginTop: 10, alignSelf: 'flex-start',
-                                  backgroundColor: Colors.primary, borderRadius: 8,
-                                  paddingHorizontal: 14, paddingVertical: 6,
-                                  opacity: pressed || isApplying ? 0.6 : 1,
-                                })}
-                              >
-                                {isApplying
-                                  ? <ActivityIndicator size="small" color="white" />
-                                  : <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>{t('common.apply', 'Apply')}</Text>}
-                              </Pressable>
-                            )}
-                          </View>
-                        );
-                      })()}
-                    </View>
-                  ))
-                )}
                 </View>
-                <View style={{ height: 20 }} />
-              </ScrollView>
-              {/* iOS 더블 모달 이슈 해결을 위해 모달 내부에도 컨펌 모달 배치 */}
-              {renderConfirmModal()}
+
+                <ScrollView 
+                  bounces={false} 
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 40 }}
+                >
+                  {/* 역할 선택 */}
+                  <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.outline, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('flow.invite_role_label', 'Role for new members')}</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                      {['viewer', 'editor'].map(role => (
+                        <Pressable
+                          key={role}
+                          style={({ pressed }) => [
+                            { 
+                              flex: 1, 
+                              paddingVertical: 14, 
+                              borderRadius: 14, 
+                              borderWidth: 2, 
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              opacity: pressed ? 0.8 : 1
+                            },
+                            inviteRole === role
+                              ? { backgroundColor: Colors.primary + '10', borderColor: Colors.primary }
+                              : { backgroundColor: 'transparent', borderColor: Colors.outlineVariant + '40' }
+                          ]}
+                          onPress={() => {
+                            if (isGeneratingCode) return;
+                            setInviteRole(role);
+                            if (inviteCode) handleGenerateCode(role);
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ 
+                              width: 18, height: 18, borderRadius: 9, borderWidth: 2, 
+                              borderColor: inviteRole === role ? Colors.primary : Colors.outlineVariant,
+                              alignItems: 'center', justifyContent: 'center'
+                            }}>
+                              {inviteRole === role && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary }} />}
+                            </View>
+                            <Text style={{ color: inviteRole === role ? Colors.primary : Colors.onBackground, fontWeight: '700', fontSize: 15 }}>
+                              {role === 'viewer' ? t('flow.viewer') : t('flow.editor')}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* 초대 코드 표시 */}
+                  <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20 }}>
+                    {inviteCode ? (
+                      <View style={{ width: '100%', alignItems: 'center' }}>
+                        <View style={{ backgroundColor: Colors.surfaceContainer, paddingVertical: 16, paddingHorizontal: 30, borderRadius: 20, marginBottom: 12 }}>
+                          <Text style={{ fontSize: 42, fontWeight: '800', letterSpacing: 8, color: Colors.text, fontVariant: ['tabular-nums'] }}>{inviteCode}</Text>
+                        </View>
+                        <Text style={{ color: Colors.outline, fontSize: 13, textAlign: 'center', lineHeight: 18 }}>
+                          {t('flow.valid_7_days')} · <Text style={{ fontWeight: '600', color: Colors.textSecondary }}>{inviteRole === 'viewer' ? t('flow.viewer_only') : t('flow.editable')}</Text>
+                        </Text>
+                        
+                        <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, width: '100%' }}>
+                          <TouchableOpacity 
+                            onPress={() => Share.share({ message: t('flow.share_code_msg', { code: inviteCode }) })}
+                            style={{ 
+                              flex: 1, 
+                              flexDirection: 'row', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              backgroundColor: Colors.primary, 
+                              height: 60,
+                              borderRadius: 18, 
+                              gap: 10,
+                              shadowColor: Colors.primary,
+                              shadowOffset: { width: 0, height: 6 },
+                              shadowOpacity: 0.25,
+                              shadowRadius: 10,
+                              elevation: 5
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Share2 size={22} color="white" />
+                            <Text style={{ color: 'white', fontWeight: '800', fontSize: 17 }}>{t('flow.share_btn')}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            onPress={handleInvalidateCode}
+                            style={{ 
+                              width: 60, 
+                              height: 60,
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              backgroundColor: Colors.error + '12', 
+                              borderRadius: 18, 
+                              borderWidth: 1.5, 
+                              borderColor: Colors.error + '30' 
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Trash2 size={22} color={Colors.error} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                        <Users size={48} color={Colors.outlineVariant} strokeWidth={1.5} style={{ marginBottom: 12 }} />
+                        <Text style={{ color: Colors.outline, fontSize: 15, fontWeight: '500' }}>{t('flow.no_active_code')}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* 코드 생성 버튼 */}
+                  <TouchableOpacity
+                    style={{ 
+                      marginHorizontal: 20, 
+                      backgroundColor: inviteCode ? Colors.surfaceContainerHigh : Colors.primary, 
+                      borderRadius: 16, 
+                      paddingVertical: 16, 
+                      alignItems: 'center',
+                      borderWidth: inviteCode ? 1.5 : 0,
+                      borderColor: Colors.outlineVariant + '50'
+                    }}
+                    onPress={() => handleGenerateCode()}
+                    disabled={isGeneratingCode}
+                    activeOpacity={0.8}
+                  >
+                    {isGeneratingCode ? (
+                      <ActivityIndicator color={inviteCode ? Colors.primary : "white"} />
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Repeat size={18} color={inviteCode ? Colors.textSecondary : "white"} />
+                        <Text style={{ color: inviteCode ? Colors.textSecondary : "white", fontWeight: '700', fontSize: 16 }}>
+                          {inviteCode ? t('flow.regenerate_code') : t('flow.generate_code')}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* 현재 멤버 목록 영역 */}
+                  <View style={{ marginTop: 32, paddingHorizontal: 20 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                      <Text style={{ fontWeight: '800', color: Colors.text, fontSize: 18 }}>{t('flow.current_members')}</Text>
+                      <TouchableOpacity 
+                        onPress={handleShowPermissionInfo} 
+                        activeOpacity={0.6}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Info size={20} color={Colors.outline} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {isMembersLoading ? (
+                      <ActivityIndicator style={{ padding: 32 }} color={Colors.primary} />
+                    ) : flowMembers.length === 0 ? (
+                      <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                        <Text style={{ color: Colors.outline, fontSize: 14 }}>{t('flow.no_members')}</Text>
+                      </View>
+                    ) : (
+                      <View style={{ gap: 4 }}>
+                        {flowMembers.map(member => (
+                          <View key={member.uid} style={{ 
+                            padding: 16, 
+                            borderRadius: 16, 
+                            backgroundColor: Colors.surfaceContainerLowest,
+                            borderWidth: 1,
+                            borderColor: Colors.outlineVariant + '30',
+                            marginBottom: 8
+                          }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={{ fontSize: 16, fontWeight: '700', color: Colors.text }}>
+                                    {member.displayName || 'Unknown'} 
+                                  </Text>
+                                  {member.uid === (selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId) && (
+                                    <View style={{ backgroundColor: Colors.primary + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                      <Text style={{ color: Colors.primary, fontSize: 10, fontWeight: '800' }}>{t('flow.owner_label').toUpperCase()}</Text>
+                                    </View>
+                                  )}
+                                  {member.uid === user?.uid && (
+                                    <Text style={{ color: Colors.outline, fontSize: 12 }}>({t('flow.you_label')})</Text>
+                                  )}
+                                </View>
+                                <Text style={{ fontSize: 13, color: Colors.outline, marginTop: 4 }}>
+                                  {member.email || ''}
+                                </Text>
+                              </View>
+                              {isFlowOwner(selectedFlow) && member.uid !== user?.uid && (
+                                <TouchableOpacity 
+                                  onPress={() => handleRemoveMember(member.uid)} 
+                                  activeOpacity={0.6}
+                                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                                  style={{ padding: 4 }}
+                                >
+                                  <UserMinus size={20} color={Colors.error} />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+
+                            {/* 권한 체크박스 섹션 (오너만 조절 가능) */}
+                            {isFlowOwner(selectedFlow) && member.uid !== user?.uid && (() => {
+                              const perms = pendingPermissions[member.uid] ?? member.permissions ?? { edit: member.role === 'editor', manageComments: true };
+                              return (
+                                <View style={{ marginTop: 16, pt: 16, borderTopWidth: 1, borderTopColor: Colors.outlineVariant + '20', flexDirection: 'row', gap: 16 }}>
+                                  {[
+                                    { key: 'edit', label: t('flow.perm_edit') },
+                                    { key: 'manageComments', label: t('flow.perm_comments') }
+                                  ].map(perm => (
+                                    <Pressable
+                                      key={perm.key}
+                                      onPress={() => handleTogglePermission(member.uid, perm.key)}
+                                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 }}
+                                      hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                                    >
+                                      <View style={{
+                                        width: 24, height: 24, borderRadius: 8, borderWidth: 2,
+                                        borderColor: perms[perm.key] ? Colors.primary : Colors.outlineVariant,
+                                        backgroundColor: perms[perm.key] ? Colors.primary : 'transparent',
+                                        alignItems: 'center', justifyContent: 'center'
+                                      }}>
+                                        {perms[perm.key] && <Check size={18} color="white" strokeWidth={3} />}
+                                      </View>
+                                      <Text style={{ fontSize: 15, fontWeight: '700', color: perms[perm.key] ? Colors.text : Colors.outline }}>{perm.label}</Text>
+                                    </Pressable>
+                                  ))}
+                                </View>
+                              );
+                            })()}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+
+                </ScrollView>
+                {/* iOS 더블 모달 이슈 해결을 위해 모달 내부에도 컨펌 모달 배치 */}
+                {renderConfirmModal()}
+              </Animated.View>
             </View>
-          </View>
+          </GestureHandlerRootView>
         </Modal>
 
-        {/* 공유 플로우 참여 모달 */}
+        {/* 공유 플로우 참여 모달 - 바텀 시트 스타일 */}
         <Modal
           transparent
           visible={joinModalVisible}
-          animationType="slide"
-          onRequestClose={() => { setJoinModalVisible(false); setJoinCode(''); }}
+          onRequestClose={closeJoinModal}
         >
-          <Pressable style={styles.flowMenuOverlay} onPress={() => { setJoinModalVisible(false); setJoinCode(''); }}>
-            <View style={styles.flowMenuCard}>
-              <Text style={styles.flowMenuTitle}>{t('flow.join_shared_flow')}</Text>
-              <View style={styles.flowMenuDivider} />
-              <View style={{ padding: 16 }}>
-                <Text style={{ color: Colors.outline, fontSize: 13, marginBottom: 12 }}>{t('flow.enter_invite_code')}</Text>
-                <TextInput
-                  style={{
-                    borderWidth: 1.5, borderColor: joinCode.length === 6 ? Colors.primary : Colors.outlineVariant,
-                    borderRadius: 12, padding: 14, fontSize: 28, fontWeight: '800',
-                    textAlign: 'center', letterSpacing: 8, color: Colors.onBackground,
-                  }}
-                  value={joinCode}
-                  onChangeText={text => setJoinCode(text.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                  placeholder="XXXXXX"
-                  placeholderTextColor={Colors.outlineVariant}
-                  maxLength={6}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                />
-                <Pressable
-                  style={({ pressed }) => [{
-                    marginTop: 16, backgroundColor: Colors.primary, borderRadius: 12,
-                    paddingVertical: 14, alignItems: 'center',
-                    opacity: (joinCode.length !== 6 || isJoining || pressed) ? 0.5 : 1,
-                  }]}
-                  onPress={handleJoinFlow}
-                  disabled={isJoining || joinCode.length !== 6}
-                >
-                  {isJoining
-                    ? <ActivityIndicator color="white" />
-                    : <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{t('flow.join')}</Text>}
-                </Pressable>
-              </View>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeJoinModal} />
+            <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
+              <Animated.View 
+                style={[
+                  styles.editModalContent, 
+                  { 
+                    height: 'auto',
+                    maxHeight: height * 0.9,
+                    transform: [{ translateY: joinPanY }] 
+                  }
+                ]}
+                onLayout={(e) => setJoinModalHeight(e.nativeEvent.layout.height)}
+              >
+                <View {...joinPanResponder.panHandlers} style={styles.handleArea}>
+                  <View style={styles.modalHandle} />
+                </View>
+                <View style={styles.editHeader}>
+                  <View style={{ width: 80, alignItems: 'flex-start' }}>
+                    <GHButton onPress={closeJoinModal} style={styles.headerActionBtn}>
+                      <Text style={styles.headerSaveText}>{t('common.close', 'Close')}</Text>
+                    </GHButton>
+                  </View>
+                  <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
+                    {t('flow.join_shared_flow')}
+                  </Text>
+                  <View style={{ width: 80, alignItems: 'flex-end' }}>
+                    <GHButton 
+                      onPress={handleJoinFlow} 
+                      style={styles.headerActionBtn}
+                      disabled={isJoining || joinCode.length !== 6}
+                    >
+                      {isJoining ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <Text style={[
+                          styles.headerSaveText, 
+                          joinCode.length !== 6 && { color: Colors.outline }
+                        ]}>
+                          {t('flow.join')}
+                        </Text>
+                      )}
+                    </GHButton>
+                  </View>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+                  <View style={styles.modalContentPadding}>
+                    <Text style={{ color: Colors.outline, fontSize: 13, marginBottom: 12 }}>{t('flow.enter_invite_code')}</Text>
+                    <TextInput
+                      style={{
+                        borderWidth: 1.5, 
+                        borderColor: joinCode.length === 6 ? Colors.primary : Colors.outlineVariant,
+                        borderRadius: 16, 
+                        padding: 18, 
+                        fontSize: 32, 
+                        fontWeight: '800',
+                        textAlign: 'center', 
+                        letterSpacing: 10, 
+                        color: Colors.onBackground,
+                        backgroundColor: Colors.surfaceContainerLowest,
+                      }}
+                      value={joinCode}
+                      onChangeText={text => setJoinCode(text.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                      placeholder="XXXXXX"
+                      placeholderTextColor={Colors.outlineVariant}
+                      maxLength={6}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                    />
+                  </View>
+                </ScrollView>
+              </Animated.View>
             </View>
-          </Pressable>
+          </GestureHandlerRootView>
         </Modal>
 
         {/* Flow 옵션 팝업 메뉴 */}
@@ -3489,8 +3788,8 @@ const styles = StyleSheet.create({
   stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   stepActivity: { ...Typography.h3, fontSize: 18, color: Colors.onBackground, fontWeight: '800', letterSpacing: -0.5, marginTop: 1 },
   stepTime: { fontSize: 11.5, color: Colors.primary, fontWeight: '800', letterSpacing: 0.6, marginBottom: 2 },
-  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 10, lineHeight: 22, fontSize: 15.5 },
-  stepWeatherMini: { alignItems: 'center', justifyContent: 'center', paddingLeft: 10, minWidth: 40 },
+  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 10, lineHeight: 22, fontSize: 17.5 },
+  stepWeatherMini: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, minWidth: 52 },
   stepWeatherTemp: { fontSize: 13.5, fontWeight: '800', color: Colors.onBackground, marginTop: 1 },
   repeatStepBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '18', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
   repeatStepBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.primary },
@@ -3691,17 +3990,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.onBackground,
   },
-  commentsContainer: { marginTop: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingBottom: 2 },
-  commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, marginBottom: 4 },
-  commentText: { fontSize: 13, color: Colors.onSurfaceVariant },
+  commentsContainer: { marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingBottom: 2 },
+  commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 1, marginBottom: 0 },
+  commentText: { fontSize: 15, color: Colors.onSurfaceVariant, lineHeight: 20 },
   commentAuthor: { fontWeight: '800', color: Colors.primary },
-  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8 },
+  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 8 },
   commentInput: { 
     flex: 1, 
     backgroundColor: '#F8FAFC', 
     borderRadius: 14, 
     paddingHorizontal: 14, 
-    height: 44,
+    height: 48,
     fontSize: 14, 
     color: Colors.onBackground, 
     borderWidth: 1, 
@@ -3714,9 +4013,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 4
   },
-  commentWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 6 },
+  commentWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 0, gap: 6 },
   commentDeleteBtn: { padding: 4, opacity: 0.6 },
-  commentToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 4 },
+  commentToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start', paddingVertical: 10, paddingHorizontal: 4, width: '100%' },
   commentCountText: { fontSize: 14, fontWeight: '700' },
   joinFlowChip: {
     flexDirection: 'row',
@@ -3787,6 +4086,62 @@ const styles = StyleSheet.create({
     ...Typography.body,
     fontWeight: '700',
     color: 'white',
+  },
+
+  // Bottom Sheet Styles
+  bottomSheetContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 10 },
+      android: { elevation: 20 }
+    }),
+  },
+  bottomSheetKnob: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.outlineVariant,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 8,
+    opacity: 0.5,
+  },
+  bottomSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.outlineVariant + '20',
+  },
+  bottomSheetCloseBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  bottomSheetCloseText: {
+    fontSize: 15,
+    color: Colors.outline,
+    fontWeight: '600',
+  },
+  bottomSheetTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.onBackground,
+  },
+  bottomSheetSaveBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  bottomSheetSaveText: {
+    fontSize: 15,
+    color: Colors.primary,
+    fontWeight: '800',
   },
 });
 

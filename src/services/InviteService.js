@@ -54,16 +54,23 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
   const memberRef = _membersCollection(invite.ownerUid, invite.flowId).doc(uid);
   const sharedFlowRef = firestore()
     .collection('users').doc(uid).collection('sharedFlows').doc(invite.flowId);
+
+  // Check existence first: batch.set on an existing doc = UPDATE, which members cannot do themselves
+  const existingMember = await memberRef.get();
+  const effectiveRole = existingMember.exists ? existingMember.data().role : invite.role;
+
   const batch = firestore().batch();
-  batch.set(memberRef, {
-    role: invite.role,
-    displayName: displayName || `User ${uid.slice(0, 5)}`,
-    joinedAt: firestore.FieldValue.serverTimestamp(),
-  });
+  if (!existingMember.exists) {
+    batch.set(memberRef, {
+      role: invite.role,
+      displayName: displayName || `User ${uid.slice(0, 5)}`,
+      joinedAt: firestore.FieldValue.serverTimestamp(),
+    });
+  }
   batch.set(sharedFlowRef, {
     ownerUid: invite.ownerUid,
     flowId: invite.flowId,
-    role: invite.role,
+    role: effectiveRole,
     joinedAt: firestore.FieldValue.serverTimestamp(),
   });
   await batch.commit();
@@ -85,7 +92,7 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
     } catch (_2) {}
   }
 
-  return { flowId: invite.flowId, ownerUid: invite.ownerUid, role: invite.role, flowTitle };
+  return { flowId: invite.flowId, ownerUid: invite.ownerUid, role: effectiveRole, flowTitle };
 };
 
 export const leaveFlow = async (uid, ownerUid, flowId) => {

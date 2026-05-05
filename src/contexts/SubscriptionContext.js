@@ -13,7 +13,7 @@ export const LIMITS = {
   },
   PREMIUM: {
     regions: 15,
-    flows: 30,
+    flows: 15,
     stepsPerFlow: 1000,
     stepWeatherLimit: 10,
   },

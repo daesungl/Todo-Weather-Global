@@ -373,7 +373,8 @@
   },
   "flow": {
     "my_flows": "나의 플로우",
-    "curated_journeys": "나만의 여정 계획",
+    "schedule_plan": "일정 계획",
+    "curated_journeys": "추천 여정",
     "multi_day_planning": "일정 계획",
     "day_n": "{{n}}일차",
     "unscheduled": "미정된 일정",

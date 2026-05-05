@@ -373,6 +373,7 @@
   },
   "flow": {
     "my_flows": "My Flows",
+    "schedule_plan": "SCHEDULE PLAN",
     "curated_journeys": "Curated journeys",
     "multi_day_planning": "Multi-day Planning",
     "day_n": "DAY {{n}}",

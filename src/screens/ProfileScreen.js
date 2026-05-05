@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Platform,
   TouchableOpacity,
+  KeyboardAvoidingView,
 } from 'react-native';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -122,8 +123,6 @@ const ProfileScreen = ({ navigation }) => {
 
         {/* Account Settings Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('auth.accountSettings')}</Text>
-          
           {user.providerData?.some(p => p.providerId === 'password') && (
             <TouchableOpacity style={styles.menuItem} onPress={handleChangePassword}>
               <View style={styles.menuItemLeft}>
@@ -173,22 +172,31 @@ const ProfileScreen = ({ navigation }) => {
         transparent={true}
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)} style={styles.modalCloseBtn}>
-                <LucideX size={24} color={Colors.text} />
+              <TouchableOpacity 
+                onPress={() => setEditModalVisible(false)} 
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
+                <LucideX size={24} color={Colors.text} pointerEvents="none" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>{t('auth.editProfile', { defaultValue: 'Edit Profile' })}</Text>
+              {/* 모달 타이틀 제거 (사용자 요청: 화면 가운데 폰트 제거) */}
+              <View style={{ flex: 1 }} />
               <TouchableOpacity 
                 style={[styles.modalSaveBtn, !newName.trim() && { opacity: 0.5 }]} 
                 onPress={handleUpdateProfile} 
                 disabled={isSaving || !newName.trim()}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
               >
                 {isSaving ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <LucideCheck size={24} color={Colors.primary} />
+                  <LucideCheck size={24} color={Colors.primary} pointerEvents="none" />
                 )}
               </TouchableOpacity>
             </View>
@@ -205,7 +213,7 @@ const ProfileScreen = ({ navigation }) => {
               />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -392,14 +400,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   modalCloseBtn: {
-    padding: 4,
+    padding: 12,
+    marginLeft: -12, // 패딩으로 인한 위치 어긋남 보정
   },
   modalTitle: {
     ...Typography.h3,
     color: Colors.text,
   },
   modalSaveBtn: {
-    padding: 4,
+    padding: 12,
+    marginRight: -12, // 패딩으로 인한 위치 어긋남 보정
   },
   inputContainer: {
     marginBottom: Spacing.lg,
