@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity, ToastAndroid } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton } from 'react-native-gesture-handler';
@@ -255,6 +255,9 @@ const FlowScreen = ({ navigation, route }) => {
   const [editModalHeight, setEditModalHeight] = useState(0);
   const [searchModalHeight, setSearchModalHeight] = useState(0);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
+  const [flowToastMsg, setFlowToastMsg] = useState('');
+  const flowToastAnim = useRef(new Animated.Value(0)).current;
+  const flowToastTimeout = useRef(null);
   const flatListRef = useRef(null);
   const stepScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);  // 타임라인 전체 스크롤뷰 ref (댓글 입력 시 키보드 대응)
@@ -1093,10 +1096,25 @@ const FlowScreen = ({ navigation, route }) => {
     return flows.map(f => ({ ...f, inactive: !activeIds.has(f.id) }));
   }, [flows, isPremium, MAX_FLOWS]);
 
+  const showFlowToast = (msg) => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(msg, ToastAndroid.SHORT);
+      return;
+    }
+    if (flowToastTimeout.current) clearTimeout(flowToastTimeout.current);
+    setFlowToastMsg(msg);
+    flowToastAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(flowToastAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(1800),
+      Animated.timing(flowToastAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => setFlowToastMsg(''));
+  };
+
   const saveFlow = async () => {
     if (isSaving) return;
     if (!flowTitle.trim()) {
-      showConfirm(t('flow.alert.title_required'), t('flow.alert.title_required_msg'), null, false);
+      showFlowToast(t('flow.alert.title_required_toast'));
       return;
     }
     if (!editingFlow && displayFlows.filter(f => !f.inactive).length >= MAX_FLOWS) {
@@ -2501,7 +2519,9 @@ const FlowScreen = ({ navigation, route }) => {
                                 hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                                 style={styles.deleteBtnAbsolute}
                               >
-                                <Trash2 size={18} color="rgba(255,255,255,0.8)" />
+                                <View pointerEvents="none">
+                                  <Trash2 size={18} color="rgba(255,255,255,0.8)" />
+                                </View>
                               </TouchableOpacity>
                               <View style={styles.cardMainArea}>
                                 <Text style={styles.cardTitle} numberOfLines={2}>{flow.title}</Text>
@@ -2535,9 +2555,11 @@ const FlowScreen = ({ navigation, route }) => {
                               hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                               style={styles.deleteBtnAbsolute}
                             >
-                              {isFlowOwner(flow)
-                                ? <Trash2 size={18} color="rgba(255,255,255,0.8)" />
-                                : <LogOut size={18} color="rgba(255,255,255,0.8)" />}
+                              <View pointerEvents="none">
+                                {isFlowOwner(flow)
+                                  ? <Trash2 size={18} color="rgba(255,255,255,0.8)" />
+                                  : <LogOut size={18} color="rgba(255,255,255,0.8)" />}
+                              </View>
                             </TouchableOpacity>
 
                             <View style={styles.cardMainArea}>
@@ -2676,8 +2698,13 @@ const FlowScreen = ({ navigation, route }) => {
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeFlowModal} />
+            {Platform.OS === 'ios' && flowToastMsg !== '' && (
+              <Animated.View style={[styles.flowToast, { opacity: flowToastAnim, transform: [{ translateY: flowToastAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }]} pointerEvents="none">
+                <Text style={styles.flowToastText}>{flowToastMsg}</Text>
+              </Animated.View>
+            )}
             <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View 
+              <Animated.View
                 onLayout={(e) => setFlowModalHeight(e.nativeEvent.layout.height)}
                 style={[styles.editModalContent, { transform: [{ translateY: Animated.subtract(flowPanY, flowKeyboardOffset) }] }]}
               >
@@ -4009,6 +4036,8 @@ const styles = StyleSheet.create({
   commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 1, marginBottom: 0 },
   commentText: { fontSize: 15, color: Colors.onSurfaceVariant, lineHeight: 20 },
   commentAuthor: { fontWeight: '800', color: Colors.primary },
+  flowToast: { position: 'absolute', bottom: 100, alignSelf: 'center', backgroundColor: 'rgba(30,30,30,0.88)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 22, zIndex: 9999 },
+  flowToastText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 16, gap: 8 },
   commentInput: {
     flex: 1,

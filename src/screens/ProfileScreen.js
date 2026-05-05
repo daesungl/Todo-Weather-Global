@@ -97,7 +97,9 @@ const ProfileScreen = ({ navigation }) => {
       {/* Custom Header */}
       <View style={styles.navBar}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <LucideArrowLeft size={24} color={Colors.text} />
+          <View pointerEvents="none">
+            <LucideArrowLeft size={24} color={Colors.text} />
+          </View>
         </TouchableOpacity>
         <Text style={styles.navTitle}>{t('auth.profile', { defaultValue: 'Profile' })}</Text>
         <View style={{ width: 44 }} />
@@ -178,20 +180,22 @@ const ProfileScreen = ({ navigation }) => {
         >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                onPress={() => setEditModalVisible(false)} 
+              <TouchableOpacity
+                onPress={() => setEditModalVisible(false)}
                 style={styles.modalCloseBtn}
                 hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 activeOpacity={0.7}
               >
-                <LucideX size={26} color={Colors.text} />
+                <View pointerEvents="none">
+                  <LucideX size={26} color={Colors.text} />
+                </View>
               </TouchableOpacity>
-              
+
               <View style={{ flex: 1 }} />
-              
-              <TouchableOpacity 
-                style={[styles.modalSaveBtn, !newName.trim() && { opacity: 0.5 }]} 
-                onPress={handleUpdateProfile} 
+
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, !newName.trim() && { opacity: 0.5 }]}
+                onPress={handleUpdateProfile}
                 disabled={isSaving || !newName.trim()}
                 hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 activeOpacity={0.7}
@@ -199,7 +203,9 @@ const ProfileScreen = ({ navigation }) => {
                 {isSaving ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <LucideCheck size={26} color={Colors.primary} />
+                  <View pointerEvents="none">
+                    <LucideCheck size={26} color={Colors.primary} />
+                  </View>
                 )}
               </TouchableOpacity>
             </View>

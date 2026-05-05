@@ -438,6 +438,7 @@
     "alert": {
       "title_required": "Title Required",
       "title_required_msg": "Please enter a title for this journey.",
+      "title_required_toast": "Please enter a flow name.",
       "activity_required": "Activity Required",
       "activity_required_msg": "Please enter what you are doing.",
       "invalid_time": "Invalid Time",

@@ -438,6 +438,7 @@
     "alert": {
       "title_required": "제목 필요",
       "title_required_msg": "플로우의 제목을 입력해 주세요.",
+      "title_required_toast": "플로우 이름을 입력해주세요.",
       "activity_required": "내용 필요",
       "activity_required_msg": "수행할 활동 내용을 입력해 주세요.",
       "invalid_time": "시간 형식 오류",

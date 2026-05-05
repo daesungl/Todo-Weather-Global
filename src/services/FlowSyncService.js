@@ -421,11 +421,11 @@ export const saveFlows = async (flows) => {
 };
 
 export const addFlow = async (flow) => {
-  const current = await getFlows();
+  const current = await getFlows(); // already sorted by user's custom order
   const ownFlows = current.filter(f => !f._ownerUid);
-  const updated = [flow, ...ownFlows];
-  await saveFlows(updated);
-  return [...current.filter(f => f._ownerUid), ...updated.map(f => ({ ...f, _role: 'owner' }))];
+  await saveFlows([flow, ...ownFlows]);
+  // Return new flow at top, then all existing flows (own+shared) in their original order
+  return [{ ...flow, _role: 'owner' }, ...current];
 };
 
 export const deleteFlow = async (id) => {
