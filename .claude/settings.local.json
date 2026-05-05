@@ -19,7 +19,8 @@
       "Bash(node *)",
       "Bash(pod update *)",
       "Bash(ln -sf '/Users/charles/Dev_App/Global-Todo-Weather/ios/Pods/Target Support Files/gRPC-Core/gRPC-Core.modulemap' /Users/charles/Dev_App/Global-Todo-Weather/ios/Pods/Headers/Private/grpc/gRPC-Core.modulemap)",
-      "Bash(keytool -list -v -keystore /Users/charles/Dev_App/Global-Todo-Weather/android/app/release.keystore -alias release -storepass android)"
+      "Bash(keytool -list -v -keystore /Users/charles/Dev_App/Global-Todo-Weather/android/app/release.keystore -alias release -storepass android)",
+      "Bash(npx react-native *)"
     ]
   }
 }

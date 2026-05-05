@@ -31,7 +31,7 @@ import {
   Plus, MapPin, Clock, Calendar, ChevronLeft, ChevronRight,
   CheckCircle2, Circle, Search, X, Sun, CloudRain, Cloud,
   CloudSnow, Moon, CheckSquare, Square, Trash2, CalendarDays, Compass,
-  Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown, Repeat, Bell, BellOff
+  Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown, Repeat, Bell, BellOff, Filter
 } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import { getTasks, addTask, addRepeatTasks, toggleTaskCompletion, deleteTask, deleteRepeatTasks, updateTask, updateRepeatTasks, updateRepeatSeriesEndDate, subscribeToTasks } from '../services/task/TaskSyncService';
@@ -152,23 +152,25 @@ const getMonthDays = (baseDate) => {
   return days;
 };
 
-const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMap, onDayPress }) => {
+const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMap, onDayPress, calendarFilter }) => {
   const baseDate = React.useMemo(() => getDateFromIndex(index), [index]);
   const days = React.useMemo(() => getMonthDays(baseDate), [baseDate]);
 
   const { monthTasks, taskSlots } = React.useMemo(() => {
     const monthStart = dateStr(days[0].date);
     const monthEnd = dateStr(days[days.length - 1].date);
+    const f = calendarFilter || {};
 
     // 1. Filter user tasks
-    const mTasksFromUser = (tasks || []).filter(t => {
+    const mTasksFromUser = f.showUserTasks === false ? [] : (tasks || []).filter(t => {
       if (t.isCompleted) return false;
       return t.date <= monthEnd && (t.endDate || t.date) >= monthStart;
     });
 
-    // 2. Convert Flow steps to tasks
+    // 2. Convert Flow steps to tasks (skip hidden flows)
     const fTasks = [];
     (flows || []).forEach(flow => {
+      if (f.hiddenFlowIds && f.hiddenFlowIds.has(flow.id)) return;
       (flow.steps || []).forEach(step => {
         if (step.date && step.date <= monthEnd && (step.endDate || step.date) >= monthStart) {
           fTasks.push({
@@ -187,29 +189,31 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
 
     // 3. Convert public holidays to tasks
     const hTasks = [];
-    let currentH = null;
-    days.forEach(day => {
-      const ds = dateStr(day.date);
-      const hols = (holidaysMap[ds] || []).filter(h => h.type === 'public');
-      if (hols.length > 0) {
-        const name = hols[0].name;
-        if (currentH && currentH.title === name) {
-          currentH.endDate = ds;
+    if (f.showHolidays !== false) {
+      let currentH = null;
+      days.forEach(day => {
+        const ds = dateStr(day.date);
+        const hols = (holidaysMap[ds] || []).filter(h => h.type === 'public');
+        if (hols.length > 0) {
+          const name = hols[0].name;
+          if (currentH && currentH.title === name) {
+            currentH.endDate = ds;
+          } else {
+            currentH = {
+              id: `h_${name}_${ds}`,
+              title: name,
+              date: ds,
+              endDate: ds,
+              color: Colors.error,
+              isHoliday: true
+            };
+            hTasks.push(currentH);
+          }
         } else {
-          currentH = {
-            id: `h_${name}_${ds}`,
-            title: name,
-            date: ds,
-            endDate: ds,
-            color: Colors.error,
-            isHoliday: true
-          };
-          hTasks.push(currentH);
+          currentH = null;
         }
-      } else {
-        currentH = null;
-      }
-    });
+      });
+    }
 
     // 4. Combine and sort
     const combinedTasks = [...mTasksFromUser, ...fTasks, ...hTasks].sort((a, b) => {
@@ -265,7 +269,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
     }
 
     return { monthTasks: combinedTasks, taskSlots: slots };
-  }, [tasks, flows, days, holidaysMap]);
+  }, [tasks, flows, days, holidaysMap, calendarFilter]);
 
   const todayStr = React.useMemo(() => dateStr(new Date()), []);
 
@@ -407,6 +411,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
   if (prev.tasks !== next.tasks) return false;
   if (prev.holidaysMap !== next.holidaysMap) return false;
   if (prev.index !== next.index) return false;
+  if (prev.calendarFilter !== next.calendarFilter) return false;
   if (prev.selectedDateStr !== next.selectedDateStr) {
     const baseDate = getDateFromIndex(prev.index);
     const mYear = baseDate.getFullYear();
@@ -494,6 +499,7 @@ const TasksScreen = ({ navigation }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
   const [isTaskListVisible, setIsTaskListVisible] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
 
@@ -509,6 +515,26 @@ const TasksScreen = ({ navigation }) => {
   // Holiday State
   const [holidayCountries, setHolidayCountries] = useState(['KR']); // Default, will be updated from storage
   const [holidaysMap, setHolidaysMap] = useState({});
+
+  // Calendar Filter State
+  const [calendarFilter, setCalendarFilter] = useState({ showUserTasks: true, showHolidays: true, hiddenFlowIds: new Set() });
+
+  const toggleFilterUserTasks = useCallback(() => {
+    setCalendarFilter(prev => ({ ...prev, showUserTasks: !prev.showUserTasks }));
+  }, []);
+
+  const toggleFilterHolidays = useCallback(() => {
+    setCalendarFilter(prev => ({ ...prev, showHolidays: !prev.showHolidays }));
+  }, []);
+
+  const toggleFilterFlow = useCallback((flowId) => {
+    setCalendarFilter(prev => {
+      const next = new Set(prev.hiddenFlowIds);
+      if (next.has(flowId)) next.delete(flowId);
+      else next.add(flowId);
+      return { ...prev, hiddenFlowIds: next };
+    });
+  }, []);
 
   const { isPremium } = useSubscription();
 
@@ -551,6 +577,7 @@ const TasksScreen = ({ navigation }) => {
   // Modal swipe-to-dismiss logic
   const modalAddY = useRef(new Animated.Value(height)).current;
   const holidayModalY = useRef(new Animated.Value(height)).current;
+  const filterModalY = useRef(new Animated.Value(height)).current;
   const listModalTranslateY = useRef(new Animated.Value(height)).current;
 
   const closeHolidayModal = useCallback(() => {
@@ -564,6 +591,27 @@ const TasksScreen = ({ navigation }) => {
       setCountrySearch('');
     });
   }, [holidayModalY]);
+
+  const openFilterModal = useCallback(() => {
+    setShowFilterModal(true);
+    filterModalY.setValue(height);
+    Animated.spring(filterModalY, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 4,
+      speed: 14,
+    }).start();
+  }, [filterModalY]);
+
+  const closeFilterModal = useCallback(() => {
+    Animated.timing(filterModalY, {
+      toValue: height,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowFilterModal(false);
+    });
+  }, [filterModalY]);
 
   const closeAddModal = useCallback((onAfterClose) => {
     Keyboard.dismiss();
@@ -632,6 +680,7 @@ const TasksScreen = ({ navigation }) => {
 
   const addModalPanResponder = useRef(createModalPanResponder(modalAddY, closeAddModal)).current;
   const holidayModalPanResponder = useRef(createModalPanResponder(holidayModalY, closeHolidayModal)).current;
+  const filterModalPanResponder = useRef(createModalPanResponder(filterModalY, closeFilterModal)).current;
   const listModalPanResponder = useRef(createModalPanResponder(listModalTranslateY, closeTaskListModal)).current;
 
   // Modal open animations are now triggered directly via onPress/onShow for better reliability.
@@ -801,8 +850,36 @@ const TasksScreen = ({ navigation }) => {
   }, [holidayCountries, selectedDate.getFullYear()]);
 
   const loadPreferences = async () => {
-    // Week view removed as per user preference
+    try {
+      const saved = await AsyncStorage.getItem('calendar_filter');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setCalendarFilter({
+          showUserTasks: parsed.showUserTasks ?? true,
+          showHolidays: parsed.showHolidays ?? true,
+          hiddenFlowIds: new Set(parsed.hiddenFlowIds || []),
+        });
+      }
+    } catch (e) {
+      console.log('Failed to load filter preferences:', e);
+    }
   };
+
+  useEffect(() => {
+    const saveFilter = async () => {
+      try {
+        const toSave = {
+          showUserTasks: calendarFilter.showUserTasks,
+          showHolidays: calendarFilter.showHolidays,
+          hiddenFlowIds: Array.from(calendarFilter.hiddenFlowIds),
+        };
+        await AsyncStorage.setItem('calendar_filter', JSON.stringify(toSave));
+      } catch (e) {
+        console.log('Failed to save filter preferences:', e);
+      }
+    };
+    saveFilter();
+  }, [calendarFilter]);
 
   const filteredCountries = useMemo(() => {
     if (!countrySearch) return [];
@@ -1364,9 +1441,10 @@ const TasksScreen = ({ navigation }) => {
         selectedDateStr={dateStr(selectedDate)}
         holidaysMap={holidaysMap}
         onDayPress={handleDayPress}
+        calendarFilter={calendarFilter}
       />
     );
-  }, [tasks, flows, selectedDate, holidaysMap, handleDayPress]);
+  }, [tasks, flows, selectedDate, holidaysMap, handleDayPress, calendarFilter]);
 
   const searchTimerRef = useRef(null);
   const handleSearch = (val) => {
@@ -1426,6 +1504,13 @@ const TasksScreen = ({ navigation }) => {
   };
 
 
+  const activeFilterCount = useMemo(() => {
+    const flowsCount = flows.filter(f => !calendarFilter.hiddenFlowIds.has(f.id)).length;
+    return flowsCount + (calendarFilter.showUserTasks ? 1 : 0) + (calendarFilter.showHolidays ? 1 : 0);
+  }, [flows, calendarFilter]);
+
+  const isAnyFiltered = calendarFilter.hiddenFlowIds.size > 0 || !calendarFilter.showUserTasks || !calendarFilter.showHolidays;
+
   return (
     <>
       <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
@@ -1444,33 +1529,54 @@ const TasksScreen = ({ navigation }) => {
                 <Calendar size={20} color="#1B254B" style={{ marginLeft: 8 }} pointerEvents="none" />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.holidayHeaderBtn, { flexShrink: 1, maxWidth: width * 0.4 }]}
-                onPress={() => {
-                  setShowHolidaySettings(true);
-                  holidayModalY.setValue(height);
-                  Animated.spring(holidayModalY, {
-                    toValue: 0,
-                    useNativeDriver: true,
-                    bounciness: 4,
-                    speed: 14,
-                  }).start();
-                }}
-              >
-                <MapPin size={14} color={Colors.primary} />
-                <Text style={styles.holidayHeaderText} numberOfLines={1} ellipsizeMode="tail">
-                  {t('tasks.holidays_label')}{(holidayCountries || []).join(', ')}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.headerControlsRow}>
+                <View style={styles.controlGroup}>
+                  <TouchableOpacity
+                    style={styles.groupItem}
+                    onPress={() => {
+                      setShowHolidaySettings(true);
+                      holidayModalY.setValue(height);
+                      Animated.spring(holidayModalY, {
+                        toValue: 0,
+                        useNativeDriver: true,
+                        bounciness: 4,
+                        speed: 14,
+                      }).start();
+                    }}
+                  >
+                    <MapPin size={18} color={Colors.primary} />
+                  </TouchableOpacity>
+
+                  <View style={styles.groupDivider} />
+
+                  <TouchableOpacity
+                    onPress={openFilterModal}
+                    style={[
+                      styles.groupItem,
+                      isAnyFiltered && styles.groupItemActive
+                    ]}
+                  >
+                    <Filter size={18} color={isAnyFiltered ? Colors.primary : Colors.textSecondary} />
+                    {isAnyFiltered && (
+                      <View style={styles.filterBadgeSmall}>
+                        <Text style={styles.filterBadgeTextSmall}>{activeFilterCount}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           </View>
+
+          {/* Ad/Premium Banner space if needed */}
+          <View style={{ height: 8 }} />
 
           {!isPremium && !topAdHidden ? (
             <View style={{ marginVertical: 10 }}>
               <AdBanner onFail={() => setTopAdHidden(true)} />
             </View>
           ) : (
-            <View style={{ height: 12 }} />
+            <View style={{ height: 8 }} />
           )}
 
           <View style={styles.calendarArea}>
@@ -1594,7 +1700,7 @@ const TasksScreen = ({ navigation }) => {
                           <View style={styles.holidaySection}>
                             {holidaysMap[dateStr(selectedDate)].map((h, idx) => (
                               <View key={idx} style={styles.holidayBadge}>
-                                <Text style={styles.holidayNameText}>[{h.country}] {h.name}</Text>
+                                <Text style={styles.holidayNameText}>{h.name}</Text>
                                 <Text style={styles.holidayTypeText}>{h.type === 'public' ? t('tasks.public_holiday', 'Public Holiday') : t('tasks.observance', 'Observance')}</Text>
                               </View>
                             ))}
@@ -2951,7 +3057,145 @@ const TasksScreen = ({ navigation }) => {
               </View>
             </Animated.View>
           </View>
+        </Modal>
 
+        {/* Filter Modal */}
+        <Modal
+          visible={showFilterModal}
+          transparent={true}
+          animationType="none"
+          statusBarTranslucent={true}
+          onRequestClose={closeFilterModal}
+        >
+          <View style={styles.modalBg}>
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: 'black',
+                  opacity: filterModalY.interpolate({
+                    inputRange: [0, height],
+                    outputRange: [0.5, 0],
+                    extrapolate: 'clamp'
+                  })
+                }
+              ]}
+            />
+            <Animated.View style={[styles.modalContent, { transform: [{ translateY: filterModalY }] }]}>
+              <View style={styles.modalHeader} {...filterModalPanResponder.panHandlers}>
+                <View style={styles.modalHandle} />
+                <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 10, paddingBottom: 10 }}>
+                  <View style={{ flex: 1.2 }} />
+                  <View style={{ flex: 3, alignItems: 'center' }}>
+                    <Text style={styles.modalTitle} numberOfLines={1}>{t('tasks.filter_title')}</Text>
+                  </View>
+                  <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
+                    <TouchableOpacity
+                      onPress={closeFilterModal}
+                      style={styles.headerSaveBtn}
+                      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                    >
+                      <Text style={styles.headerSaveText} numberOfLines={1}>{t('common.done')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 16 }}>
+                <Text style={{ fontSize: 13, color: Colors.textSecondary, marginBottom: 20, paddingHorizontal: 20, textAlign: 'center', lineHeight: 18 }}>
+                  {t('tasks.filter_guide')}
+                </Text>
+
+                <Text style={styles.sectionSmallTitle}>{t('tasks.filter_categories', 'Categories')}</Text>
+                
+                {/* My Tasks */}
+                <TouchableOpacity
+                  style={styles.filterListItem}
+                  onPress={toggleFilterUserTasks}
+                >
+                  <View style={[styles.filterCheck, calendarFilter.showUserTasks && styles.filterCheckActive]}>
+                    {calendarFilter.showUserTasks && <CheckCircle2 size={20} color="white" />}
+                  </View>
+                  <Text style={[styles.filterItemText, !calendarFilter.showUserTasks && styles.filterItemTextHidden]}>
+                    {t('tasks.filter_my_tasks', 'My Tasks')}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Holidays */}
+                <TouchableOpacity
+                  style={styles.filterListItem}
+                  onPress={toggleFilterHolidays}
+                >
+                  <View style={[styles.filterCheck, calendarFilter.showHolidays && { backgroundColor: Colors.error, borderColor: Colors.error }]}>
+                    {calendarFilter.showHolidays && <CheckCircle2 size={20} color="white" />}
+                  </View>
+                  <Text style={[styles.filterItemText, !calendarFilter.showHolidays && styles.filterItemTextHidden]}>
+                    {t('tasks.filter_holidays', 'Holidays')}
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 }} />
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}>
+                  <Text style={styles.sectionSmallTitle}>{t('tasks.filter_flows', 'Flows')}</Text>
+                  {flows.length > 0 && (
+                    <TouchableOpacity 
+                      onPress={() => {
+                        const allHidden = flows.every(f => calendarFilter.hiddenFlowIds.has(f.id));
+                        const newHidden = new Set(calendarFilter.hiddenFlowIds);
+                        if (allHidden) {
+                          flows.forEach(f => newHidden.delete(f.id));
+                        } else {
+                          flows.forEach(f => newHidden.add(f.id));
+                        }
+                        setCalendarFilter({ ...calendarFilter, hiddenFlowIds: newHidden });
+                      }}
+                      style={{ paddingVertical: 4, paddingHorizontal: 8 }}
+                    >
+                      <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: '600' }}>
+                        {flows.every(f => calendarFilter.hiddenFlowIds.has(f.id)) ? t('common.select_all', 'Select All') : t('common.deselect_all', 'Deselect All')}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {flows.length === 0 ? (
+                  <View style={{ alignItems: 'center', marginTop: 40, paddingHorizontal: 40 }}>
+                    <Text style={{ fontSize: 14, color: Colors.outline, textAlign: 'center', lineHeight: 20 }}>
+                      {t('tasks.no_flows', 'No active flows')}
+                    </Text>
+                  </View>
+                ) : (
+                  flows.map(flow => {
+                    const isVisible = !calendarFilter.hiddenFlowIds.has(flow.id);
+                    const flowColor = (flow.gradient && flow.gradient[0]) || flow.color || Colors.primary;
+                    return (
+                      <TouchableOpacity
+                        key={flow.id}
+                        style={styles.filterListItem}
+                        onPress={() => toggleFilterFlow(flow.id)}
+                      >
+                        <View style={[styles.filterCheck, isVisible && { backgroundColor: flowColor, borderColor: flowColor }]}>
+                          {isVisible && <CheckCircle2 size={20} color="white" />}
+                        </View>
+                        <Text style={[styles.filterItemText, !isVisible && styles.filterItemTextHidden]}>
+                          {flow.title}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+
+                <TouchableOpacity
+                  style={[styles.todayBtn, { marginTop: 32, marginBottom: 60, alignSelf: 'center', width: '100%' }]}
+                  onPress={() => {
+                    setCalendarFilter({ showUserTasks: true, showHolidays: true, hiddenFlowIds: new Set() });
+                  }}
+                >
+                  <Text style={styles.todayBtnText}>{t('tasks.reset_filters', 'Reset Filters')}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </Animated.View>
+          </View>
         </Modal>
 
         <MenuModal
@@ -2989,6 +3233,49 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { backgroundColor: 'white', borderBottomLeftRadius: 32, borderBottomRightRadius: 32, paddingBottom: Spacing.xl, elevation: 4, zIndex: 10 },
   monthHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0, paddingHorizontal: Spacing.lg - Spacing.sm },
+  headerControlsRow: { flexDirection: 'row', alignItems: 'center' },
+  controlGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F4F7FE',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden'
+  },
+  groupItem: {
+    width: 44,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  groupItemActive: {
+    backgroundColor: Colors.primary + '10',
+  },
+  groupDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#E2E8F0',
+  },
+  filterBadgeSmall: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: Colors.primary,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: 'white'
+  },
+  filterBadgeTextSmall: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '800',
+  },
   monthSelectBtn: { flexDirection: 'row', alignItems: 'center' },
   monthText: { fontSize: 24, fontWeight: '800', color: '#1B254B' },
   viewToggleBtn: { padding: 8, backgroundColor: '#F4F7FE', borderRadius: 12 },
@@ -3306,6 +3593,30 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sheetAddBtnText: { color: 'white', fontSize: 15, fontWeight: '800' },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: Colors.surface,
+  },
+  filterChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '18',
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: Colors.outline,
+    fontWeight: '500',
+    maxWidth: 80,
+  },
+  filterChipTextActive: {
+    color: Colors.primary,
+    fontWeight: '600',
+  },
   holidayHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3539,6 +3850,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 8,
+  },
+
+  // New Filter Styles
+  filterHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 6
+  },
+  filterHeaderBtnActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08'
+  },
+  filterHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary
+  },
+  filterListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    gap: 14
+  },
+  filterCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.outlineVariant,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white'
+  },
+  filterCheckActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary
+  },
+  filterItemText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    flex: 1
+  },
+  filterItemTextHidden: {
+    color: Colors.outline,
+    fontWeight: '400'
+  },
+  flowIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: -4
   },
 });
 
