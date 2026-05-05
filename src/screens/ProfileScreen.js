@@ -182,21 +182,24 @@ const ProfileScreen = ({ navigation }) => {
                 onPress={() => setEditModalVisible(false)} 
                 style={styles.modalCloseBtn}
                 hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                activeOpacity={0.7}
               >
-                <LucideX size={24} color={Colors.text} pointerEvents="none" />
+                <LucideX size={26} color={Colors.text} />
               </TouchableOpacity>
-              {/* 모달 타이틀 제거 (사용자 요청: 화면 가운데 폰트 제거) */}
+              
               <View style={{ flex: 1 }} />
+              
               <TouchableOpacity 
                 style={[styles.modalSaveBtn, !newName.trim() && { opacity: 0.5 }]} 
                 onPress={handleUpdateProfile} 
                 disabled={isSaving || !newName.trim()}
                 hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                activeOpacity={0.7}
               >
                 {isSaving ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <LucideCheck size={24} color={Colors.primary} pointerEvents="none" />
+                  <LucideCheck size={26} color={Colors.primary} />
                 )}
               </TouchableOpacity>
             </View>
@@ -400,16 +403,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   modalCloseBtn: {
-    padding: 12,
-    marginLeft: -12, // 패딩으로 인한 위치 어긋남 보정
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalTitle: {
     ...Typography.h3,
     color: Colors.text,
   },
   modalSaveBtn: {
-    padding: 12,
-    marginRight: -12, // 패딩으로 인한 위치 어긋남 보정
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   inputContainer: {
     marginBottom: Spacing.lg,

@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "31",
+      "buildNumber": "33",
       "newArchEnabled": true,
       "infoPlist": {
         "CFBundleLocalizations": [
@@ -42,7 +42,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",
-      "versionCode": 5,
+      "versionCode": 10,
       "googleServicesFile": "./google-services.json",
       "notification": {
         "color": "#b2ebf2"

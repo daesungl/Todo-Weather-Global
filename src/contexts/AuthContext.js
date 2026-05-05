@@ -23,6 +23,7 @@ export const AuthProvider = ({ children }) => {
   const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
   const unsubscribeSnapshot = useRef(null);
+  const isLoggingOutRef = useRef(false);
 
   useEffect(() => {
     const subscriber = auth().onAuthStateChanged(async (currentUser) => {
@@ -30,6 +31,11 @@ export const AuthProvider = ({ children }) => {
       if (unsubscribeSnapshot.current) {
         unsubscribeSnapshot.current();
         unsubscribeSnapshot.current = null;
+      }
+
+      if (currentUser && isLoggingOutRef.current) {
+        // 로그아웃 진행 중 토큰 갱신 등으로 재발화된 경우 무시
+        return;
       }
 
       if (currentUser) {
@@ -115,6 +121,7 @@ export const AuthProvider = ({ children }) => {
           setLoading(false);
         }
       } else {
+        isLoggingOutRef.current = false;
         initFlowSync(null);
         initRegionSync(null);
         initTaskSync(null);
@@ -211,12 +218,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    isLoggingOutRef.current = true;
+
     if (unsubscribeSnapshot.current) {
       unsubscribeSnapshot.current();
       unsubscribeSnapshot.current = null;
     }
 
-    // 즉시 상태 초기화 — onAuthStateChanged 비동기 지연 없이 UI가 바로 반영되도록
     setUser(null);
     setIsGuest(false);
     initFlowSync(null);
@@ -228,7 +236,13 @@ export const AuthProvider = ({ children }) => {
       if (isSignedIn) await GoogleSignin.signOut();
     } catch (_) { }
 
-    return auth().signOut();
+    try {
+      await auth().signOut();
+    } catch (e) {
+      console.warn('[AuthContext] signOut error:', e);
+      isLoggingOutRef.current = false;
+      throw e;
+    }
   };
 
   const signInWithGoogle = async () => {

@@ -247,6 +247,7 @@ const FlowScreen = ({ navigation, route }) => {
   const flowKeyboardOffset = useRef(new Animated.Value(0)).current;
   const invitePanY = useRef(new Animated.Value(height)).current;
   const joinPanY = useRef(new Animated.Value(height)).current;
+  const joinKeyboardOffset = useRef(new Animated.Value(0)).current;
   const searchPanY = useRef(new Animated.Value(0)).current;
   const [inviteModalHeight, setInviteModalHeight] = useState(0);
   const [joinModalHeight, setJoinModalHeight] = useState(0);
@@ -430,7 +431,7 @@ const FlowScreen = ({ navigation, route }) => {
       setKeyboardHeight(kbHeight);
       
       // Calculate offset based on modal height and keyboard height
-      const currentModalHeight = flowModalVisible ? flowModalHeight : (editModalVisible ? editModalHeight : 0);
+      const currentModalHeight = flowModalVisible ? flowModalHeight : (editModalVisible ? editModalHeight : (joinModalVisible ? joinModalHeight : 0));
       if (currentModalHeight > 0) {
         const maxShift = height - currentModalHeight - (Platform.OS === 'ios' ? 60 : 40);
         const shift = Math.min(kbHeight, Math.max(0, maxShift));
@@ -447,13 +448,19 @@ const FlowScreen = ({ navigation, route }) => {
             duration: e.duration || 250,
             useNativeDriver: true,
           }).start();
+        } else if (joinModalVisible) {
+          Animated.timing(joinKeyboardOffset, {
+            toValue: shift,
+            duration: e.duration || 250,
+            useNativeDriver: true,
+          }).start();
         }
       }
     });
     const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', (e) => {
       setIsKeyboardVisible(false);
       setKeyboardHeight(0);
-      const targetAnim = flowModalVisible ? flowKeyboardOffset : panY;
+      const targetAnim = flowModalVisible ? flowKeyboardOffset : (joinModalVisible ? joinKeyboardOffset : panY);
       Animated.timing(targetAnim, {
         toValue: 0,
         duration: e.duration || 200,
@@ -1973,16 +1980,18 @@ const FlowScreen = ({ navigation, route }) => {
     const snowColor = color === 'white' ? 'white' : "#94a3b8";
     const thunderColor = color === 'white' ? 'white' : "#E53935";
 
+    let icon;
     switch (key) {
-      case 'sunny': case 'clear': return isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />;
-      case 'clear_night': case 'mostly_clear_night': return <Moon size={size} color={moonColor} />;
-      case 'partly_cloudy': case 'mostly_sunny': return isDay ? <CloudSun size={size} color={color} /> : <CloudMoon size={size} color={moonColor} />;
-      case 'cloudy': case 'overcast': return <Cloud size={size} color={color} />;
-      case 'light_rain': case 'moderate_rain': case 'heavy_rain': case 'rainy': case 'rain': return <CloudRain size={size} color={rainColor} />;
-      case 'light_snow': case 'heavy_snow': case 'snowy': case 'snow': return <CloudSnow size={size} color={snowColor} />;
-      case 'thunderstorm': case 'lightning': return <CloudLightning size={size} color={thunderColor} />;
-      default: return isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />;
+      case 'sunny': case 'clear': icon = isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />; break;
+      case 'clear_night': case 'mostly_clear_night': icon = <Moon size={size} color={moonColor} />; break;
+      case 'partly_cloudy': case 'mostly_sunny': icon = isDay ? <CloudSun size={size} color={color} /> : <CloudMoon size={size} color={moonColor} />; break;
+      case 'cloudy': case 'overcast': icon = <Cloud size={size} color={color} />; break;
+      case 'light_rain': case 'moderate_rain': case 'heavy_rain': case 'rainy': case 'rain': icon = <CloudRain size={size} color={rainColor} />; break;
+      case 'light_snow': case 'heavy_snow': case 'snowy': case 'snow': icon = <CloudSnow size={size} color={snowColor} />; break;
+      case 'thunderstorm': case 'lightning': icon = <CloudLightning size={size} color={thunderColor} />; break;
+      default: icon = isDay ? <Sun size={size} color={sunColor} /> : <Moon size={size} color={moonColor} />;
     }
+    return <View pointerEvents="none">{icon}</View>;
   };
 
   const onDateChange = (event, selectedDate) => {
@@ -2305,12 +2314,14 @@ const FlowScreen = ({ navigation, route }) => {
                                     <Pressable
                                       onPress={(e) => { e.stopPropagation(); toggleComments(step.id, e); }}
                                       style={({ pressed }) => [styles.commentToggleBtn, pressed && { opacity: 0.6 }]}
-                                      hitSlop={{ top: 20, bottom: 20, left: 20, right: 80 }}
+                                      hitSlop={{ top: 15, bottom: 15, left: 20, right: 100 }}
                                     >
-                                      <MessageCircle size={24} color={count > 0 ? Colors.primary : Colors.outline} strokeWidth={2.4} />
-                                      {count > 0 && (
-                                        <Text style={[styles.commentCountText, { color: Colors.primary }]}>{count}</Text>
-                                      )}
+                                      <View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <MessageCircle size={24} color={count > 0 ? Colors.primary : Colors.outline} strokeWidth={2.4} />
+                                        {count > 0 && (
+                                          <Text style={[styles.commentCountText, { color: Colors.primary }]}>{count}</Text>
+                                        )}
+                                      </View>
                                       <View style={{ flex: 1 }} />
                                     </Pressable>
 
@@ -2351,17 +2362,17 @@ const FlowScreen = ({ navigation, route }) => {
                                               returnKeyType="send"
                                               onSubmitEditing={() => handlePostComment(step.id)}
                                               onFocus={() => {
-                                                // 키보드 표시 후 약간의 지연으로 입력창이 키보드 위로 스크롤되도록 함
                                                 setTimeout(() => {
                                                   const inputRef = commentInputRefs.current[step.id];
                                                   if (inputRef && timelineScrollRef.current) {
                                                     inputRef.measureInWindow((x, y, w, h) => {
-                                                      const keyboardHeight = 320; // 키보드 평균 높이 추정값
-                                                      const screenHeight = Dimensions.get('window').height;
+                                                      const kbHeight = 320;
+                                                      const buffer = 100;
+                                                      const screenH = Dimensions.get('window').height;
                                                       const inputBottom = y + h;
-                                                      const visibleBottom = screenHeight - keyboardHeight;
-                                                      if (inputBottom > visibleBottom) {
-                                                        const scrollAmount = inputBottom - visibleBottom + 35;
+                                                      const visibleBottom = screenH - kbHeight;
+                                                      if (inputBottom > visibleBottom - buffer) {
+                                                        const scrollAmount = inputBottom - visibleBottom + buffer;
                                                         timelineScrollRef.current.scrollTo &&
                                                           timelineScrollRef.current.scrollTo({
                                                             y: currentScrollYRef.current + scrollAmount,
@@ -3551,14 +3562,18 @@ const FlowScreen = ({ navigation, route }) => {
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeJoinModal} />
-            <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View 
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'flex-end' }}
+              pointerEvents="box-none"
+            >
+              <Animated.View
                 style={[
-                  styles.editModalContent, 
-                  { 
+                  styles.editModalContent,
+                  {
                     height: 'auto',
                     maxHeight: height * 0.9,
-                    transform: [{ translateY: joinPanY }] 
+                    transform: [{ translateY: joinPanY }]
                   }
                 ]}
                 onLayout={(e) => setJoinModalHeight(e.nativeEvent.layout.height)}
@@ -3622,7 +3637,7 @@ const FlowScreen = ({ navigation, route }) => {
                   </View>
                 </ScrollView>
               </Animated.View>
-            </View>
+            </KeyboardAvoidingView>
           </GestureHandlerRootView>
         </Modal>
 
@@ -3892,7 +3907,7 @@ const styles = StyleSheet.create({
     ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 }, android: { elevation: 2 } })
   },
   compactInputText: { flex: 1, ...Typography.body, fontSize: 16, color: Colors.onBackground, fontWeight: '600' },
-  compactInput: { flex: 1, ...Typography.body, fontSize: 16, color: Colors.onBackground, fontWeight: '600', paddingVertical: 0, textAlignVertical: 'center', lineHeight: undefined },
+  compactInput: { flex: 1, fontSize: 16, color: Colors.onBackground, fontWeight: '600', paddingVertical: 0, textAlignVertical: 'center', letterSpacing: 0 },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingRight: 4 },
   regionDisplay: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceContainerLow, padding: 12, borderRadius: 16, gap: 10, borderWidth: 1, borderColor: Colors.outlineVariant, opacity: 0.9 },
   memoInlineInput: {
@@ -3994,19 +4009,20 @@ const styles = StyleSheet.create({
   commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 1, marginBottom: 0 },
   commentText: { fontSize: 15, color: Colors.onSurfaceVariant, lineHeight: 20 },
   commentAuthor: { fontWeight: '800', color: Colors.primary },
-  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 8 },
-  commentInput: { 
-    flex: 1, 
-    backgroundColor: '#F8FAFC', 
-    borderRadius: 14, 
-    paddingHorizontal: 14, 
+  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 16, gap: 8 },
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    paddingHorizontal: 14,
     height: 48,
-    fontSize: 14, 
-    color: Colors.onBackground, 
-    borderWidth: 1, 
+    fontSize: 14,
+    color: Colors.onBackground,
+    borderWidth: 1,
     borderColor: Colors.outlineVariant,
     textAlignVertical: 'center',
     paddingVertical: Platform.OS === 'ios' ? 12 : 0,
+    letterSpacing: 0,
   },
   commentSendBtn: { 
     justifyContent: 'center', 

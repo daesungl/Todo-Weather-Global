@@ -55,12 +55,12 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
   const sharedFlowRef = firestore()
     .collection('users').doc(uid).collection('sharedFlows').doc(invite.flowId);
 
-  // Check existence first: batch.set on an existing doc = UPDATE, which members cannot do themselves
-  const existingMember = await memberRef.get();
-  const effectiveRole = existingMember.exists ? existingMember.data().role : invite.role;
+  const existingMemberSnap = await memberRef.get();
+  const existingMemberData = existingMemberSnap.data(); // undefined if doc does not exist
+  const effectiveRole = existingMemberData ? existingMemberData.role : invite.role;
 
   const batch = firestore().batch();
-  if (!existingMember.exists) {
+  if (!existingMemberData) {
     batch.set(memberRef, {
       role: invite.role,
       displayName: displayName || `User ${uid.slice(0, 5)}`,
@@ -81,7 +81,8 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
     const flowDoc = await firestore()
       .collection('users').doc(invite.ownerUid).collection('flows').doc(invite.flowId)
       .get();
-    if (flowDoc.exists) flowTitle = flowDoc.data().title || '';
+    const flowData = flowDoc.data();
+    if (flowData) flowTitle = flowData.title || '';
   };
   try {
     await readFlowTitle();

@@ -21,7 +21,7 @@ import appleAuth from '@invertase/react-native-apple-authentication';
 import auth from '@react-native-firebase/auth';
 
 const GoogleIcon = () => (
-  <Svg width={20} height={20} viewBox="0 0 48 48">
+  <Svg width={20} height={20} viewBox="0 0 48 48" pointerEvents="none">
     <Path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
     <Path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
     <Path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
@@ -31,7 +31,7 @@ const GoogleIcon = () => (
 );
 
 const AppleIcon = () => (
-  <Svg width={20} height={20} viewBox="0 0 814 1000">
+  <Svg width={20} height={20} viewBox="0 0 814 1000" pointerEvents="none">
     <Path
       fill="#FFFFFF"
       d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 405.5 3.6 269.7 3.6 145.5c0-72.2 23.2-145.5 65.6-204.5 37.7-52.2 97.8-87.4 163.4-87.4 63.2 0 113.3 43.9 167.4 43.9 51.7 0 111.7-47.5 175.1-47.5 24.9 0 108.2 2.6 168.3 80.9zm-202.8-99.1c-25.2-31.3-65-54.2-107.8-54.2-8.3 0-16.7 1.3-24.4 2.6 2.6-29 17.3-55.7 35.1-75.9 21.8-24.4 59.4-43.2 92.9-43.2 3.2 0 6.4 0 8.9 1.3-2.5 29-16 57-28.3 74.4-13.1 18.6-32.1 35-76.4 95z"
@@ -251,6 +251,8 @@ const LoginScreen = ({ navigation }) => {
                 style={[styles.socialIconButton, styles.googleIconButton]}
                 onPress={handleGoogleSignIn}
                 disabled={loading || socialLoading !== null}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                activeOpacity={0.7}
               >
                 {socialLoading === 'google' ? (
                   <ActivityIndicator color="#333" size="small" />
@@ -265,6 +267,8 @@ const LoginScreen = ({ navigation }) => {
                   style={[styles.socialIconButton, styles.appleIconButton]}
                   onPress={handleAppleSignIn}
                   disabled={loading || socialLoading !== null}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  activeOpacity={0.7}
                 >
                   {socialLoading === 'apple' ? (
                     <ActivityIndicator color="#fff" size="small" />

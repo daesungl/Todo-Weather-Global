@@ -387,6 +387,7 @@
     "new_flow": "새 플로우",
     "flow_title": "플로우 이름",
     "flow_title_placeholder": "예) 하와이 여행, 아침 루틴",
+    "add_comment": "댓글을 입력하세요...",
     "base_region": "날씨 기준 지역",
     "not_set_global": "선택된 지역 없음",
     "description": "설명",
