@@ -694,7 +694,7 @@ const FlowScreen = ({ navigation, route }) => {
     setIsJoining(true);
     
     try {
-      const result = await joinFlowByCode(user.uid, joinCode);
+      const result = await joinFlowByCode(user.uid, joinCode, user.displayName || user.email || '');
       const alreadyExists = flows.some(f => f.id === result.flowId);
       
       if (alreadyExists) {

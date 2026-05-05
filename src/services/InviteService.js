@@ -43,7 +43,7 @@ export const invalidateInviteCode = async (uid, flowId, code) => {
   } catch (_) {}
 };
 
-export const joinFlowByCode = async (uid, code) => {
+export const joinFlowByCode = async (uid, code, displayName = '') => {
   const inviteRef = firestore().collection('inviteCodes').doc(code.toUpperCase().trim());
   const inviteDoc = await inviteRef.get();
   const invite = inviteDoc.data();
@@ -57,6 +57,7 @@ export const joinFlowByCode = async (uid, code) => {
   const batch = firestore().batch();
   batch.set(memberRef, {
     role: invite.role,
+    displayName: displayName || `User ${uid.slice(0, 5)}`,
     joinedAt: firestore.FieldValue.serverTimestamp(),
   });
   batch.set(sharedFlowRef, {
@@ -98,46 +99,36 @@ export const removeMember = async (ownerUid, flowId, memberUid) => {
 
 export const getFlowMembers = async (ownerUid, flowId) => {
   const snapshot = await _membersCollection(ownerUid, flowId).get();
-  return snapshot.docs.map(doc => ({ 
-    uid: doc.id, 
-    role: doc.data().role,
-    permissions: doc.data().permissions || {
-      edit: doc.data().role === 'editor',
-      manageComments: doc.data().role === 'editor',
-    }
-  }));
+  return snapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      uid: doc.id,
+      role: data.role,
+      displayName: data.displayName || `User ${doc.id.slice(0, 5)}`,
+      permissions: data.permissions || {
+        edit: data.role === 'editor',
+        manageComments: data.role === 'editor',
+      },
+    };
+  });
 };
 
 export const subscribeToFlowMembers = (ownerUid, flowId, onUpdate) => {
   if (!ownerUid || !flowId) return () => {};
-  return _membersCollection(ownerUid, flowId).onSnapshot(async snapshot => {
-    try {
-      const memberPromises = snapshot.docs.map(async doc => {
-        const m = { 
-          uid: doc.id, 
-          role: doc.data().role,
-          permissions: doc.data().permissions || {
-            edit: doc.data().role === 'editor',
-            manageComments: doc.data().role === 'editor',
-          }
-        };
-        try {
-          const userDoc = await firestore().collection('users').doc(m.uid).get();
-          const userData = userDoc.data();
-          return { 
-            ...m, 
-            displayName: userData?.displayName || userData?.email || `User ${m.uid.slice(0, 5)}`
-          };
-        } catch (e) {
-          console.warn(`[InviteService] Failed to fetch name for ${m.uid}:`, e);
-          return { ...m, displayName: `User ${m.uid.slice(0, 5)}` };
-        }
-      });
-      const members = await Promise.all(memberPromises);
-      onUpdate(members);
-    } catch (e) {
-      console.warn('[InviteService] Processing members error:', e);
-    }
+  return _membersCollection(ownerUid, flowId).onSnapshot(snapshot => {
+    const members = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        uid: doc.id,
+        role: data.role,
+        displayName: data.displayName || `User ${doc.id.slice(0, 5)}`,
+        permissions: data.permissions || {
+          edit: data.role === 'editor',
+          manageComments: data.role === 'editor',
+        },
+      };
+    });
+    onUpdate(members);
   }, err => {
     console.warn('[InviteService] subscribe members error:', err);
   });
