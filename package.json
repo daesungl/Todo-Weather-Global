@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "babel-preset-expo": "~54.0.10",
+    "firebase-tools": "^15.16.0",
     "patch-package": "^8.0.1"
   },
   "private": true

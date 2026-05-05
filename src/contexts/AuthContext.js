@@ -44,20 +44,25 @@ export const AuthProvider = ({ children }) => {
           const userRef = firestore().collection('users').doc(currentUser.uid);
           
           const doc = await userRef.get();
+          const displayName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+          const profileImage = currentUser.photoURL || '';
+
+          const userData = {
+            uid: currentUser.uid,
+            email: currentUser.email || '',
+            displayName,
+            profileImage,
+            updatedAt: firestore.FieldValue.serverTimestamp(),
+          };
+
           if (!doc.exists) {
-            const displayName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
-            const userData = {
-              uid: currentUser.uid,
-              email: currentUser.email || '',
-              displayName,
-              profileImage: currentUser.photoURL || '',
-              createdAt: firestore.FieldValue.serverTimestamp(),
-              updatedAt: firestore.FieldValue.serverTimestamp(),
-            };
-            try {
-              await userRef.set(userData, { merge: true });
-            } catch (setErr) {
-              console.warn('[AuthContext] Failed to create user doc:', setErr);
+            userData.createdAt = firestore.FieldValue.serverTimestamp();
+            await userRef.set(userData);
+          } else {
+            // 정보가 바뀌었을 때만 업데이트
+            const existing = doc.data();
+            if (existing.displayName !== displayName || existing.profileImage !== profileImage) {
+              await userRef.update({ displayName, profileImage, updatedAt: firestore.FieldValue.serverTimestamp() });
             }
           }
 

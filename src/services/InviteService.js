@@ -24,42 +24,33 @@ export const generateInviteCode = async (uid, flowId, role = 'viewer') => {
     createdAt: firestore.FieldValue.serverTimestamp(),
     expiresAt: expiresTs,
   });
-  batch.update(
+  // set+merge so this never fails with NOT_FOUND even if the flow doc is momentarily absent
+  batch.set(
     firestore().collection('users').doc(uid).collection('flows').doc(flowId),
-    { inviteCode: code, inviteRole: role, inviteCodeExpiresAt: expiresTs }
+    { inviteCode: code, inviteRole: role, inviteCodeExpiresAt: expiresTs },
+    { merge: true }
   );
   await batch.commit();
   return code;
 };
 
 export const invalidateInviteCode = async (uid, flowId, code) => {
-  const batch = firestore().batch();
-  batch.delete(firestore().collection('inviteCodes').doc(code));
-  batch.update(
-    firestore().collection('users').doc(uid).collection('flows').doc(flowId),
-    {
-      inviteCode: firestore.FieldValue.delete(),
-      inviteRole: firestore.FieldValue.delete(),
-      inviteCodeExpiresAt: firestore.FieldValue.delete(),
-    }
-  );
-  await batch.commit();
+  // inviteCodes 도큐먼트만 삭제 — flow 문서의 inviteCode 필드는 건드리지 않는다.
+  // generateInviteCode가 set+merge로 새 코드를 덮어쓰기 때문에 flow 문서를 수정할 필요가 없고,
+  // 수정할 경우 FlowSyncService의 onSnapshot이 트리거되어 무한 업데이트 루프가 발생한다.
+  try {
+    await firestore().collection('inviteCodes').doc(code).delete();
+  } catch (_) {}
 };
 
 export const joinFlowByCode = async (uid, code) => {
-  // 1. Read invite code (allowed for all authenticated users)
   const inviteRef = firestore().collection('inviteCodes').doc(code.toUpperCase().trim());
   const inviteDoc = await inviteRef.get();
-  if (!inviteDoc.exists) throw new Error('INVALID_CODE');
-
   const invite = inviteDoc.data();
+  if (!invite || !invite.expiresAt) throw new Error('INVALID_CODE');
   if (invite.expiresAt.toDate() < new Date()) throw new Error('EXPIRED_CODE');
   if (invite.ownerUid === uid) throw new Error('OWN_FLOW');
 
-  // 2. Self-join: always upsert membership doc + sharedFlows pointer.
-  //    Using set() (not create) so this is idempotent and heals orphaned state
-  //    (e.g. membership doc exists but sharedFlows pointer is missing, or vice versa).
-  //    "Already a member" is surfaced by the caller checking their own flows list.
   const memberRef = _membersCollection(invite.ownerUid, invite.flowId).doc(uid);
   const sharedFlowRef = firestore()
     .collection('users').doc(uid).collection('sharedFlows').doc(invite.flowId);
@@ -76,7 +67,6 @@ export const joinFlowByCode = async (uid, code) => {
   });
   await batch.commit();
 
-  // 4. Read flow title now that membership exists
   let flowTitle = '';
   try {
     const flowDoc = await firestore()
@@ -108,5 +98,62 @@ export const removeMember = async (ownerUid, flowId, memberUid) => {
 
 export const getFlowMembers = async (ownerUid, flowId) => {
   const snapshot = await _membersCollection(ownerUid, flowId).get();
-  return snapshot.docs.map(doc => ({ uid: doc.id, role: doc.data().role }));
+  return snapshot.docs.map(doc => ({ 
+    uid: doc.id, 
+    role: doc.data().role,
+    permissions: doc.data().permissions || {
+      edit: doc.data().role === 'editor',
+      manageComments: doc.data().role === 'editor',
+    }
+  }));
+};
+
+export const subscribeToFlowMembers = (ownerUid, flowId, onUpdate) => {
+  if (!ownerUid || !flowId) return () => {};
+  return _membersCollection(ownerUid, flowId).onSnapshot(async snapshot => {
+    try {
+      const memberPromises = snapshot.docs.map(async doc => {
+        const m = { 
+          uid: doc.id, 
+          role: doc.data().role,
+          permissions: doc.data().permissions || {
+            edit: doc.data().role === 'editor',
+            manageComments: doc.data().role === 'editor',
+          }
+        };
+        try {
+          const userDoc = await firestore().collection('users').doc(m.uid).get();
+          const userData = userDoc.data();
+          return { 
+            ...m, 
+            displayName: userData?.displayName || userData?.email || `User ${m.uid.slice(0, 5)}`
+          };
+        } catch (e) {
+          console.warn(`[InviteService] Failed to fetch name for ${m.uid}:`, e);
+          return { ...m, displayName: `User ${m.uid.slice(0, 5)}` };
+        }
+      });
+      const members = await Promise.all(memberPromises);
+      onUpdate(members);
+    } catch (e) {
+      console.warn('[InviteService] Processing members error:', e);
+    }
+  }, err => {
+    console.warn('[InviteService] subscribe members error:', err);
+  });
+};
+
+export const updateMemberPermissions = async (ownerUid, flowId, memberUid, permissions) => {
+  const batch = firestore().batch();
+  const memberRef = _membersCollection(ownerUid, flowId).doc(memberUid);
+  const sharedFlowRef = firestore()
+    .collection('users').doc(memberUid).collection('sharedFlows').doc(flowId);
+
+  const updateData = { permissions };
+  if (permissions.edit) updateData.role = 'editor';
+  else updateData.role = 'viewer';
+
+  batch.set(memberRef, updateData, { merge: true });
+  batch.set(sharedFlowRef, updateData, { merge: true });
+  await batch.commit();
 };

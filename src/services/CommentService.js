@@ -35,10 +35,31 @@ export const addComment = async (ownerUid, flowId, stepId, user, text) => {
     createdAt: firestore.FieldValue.serverTimestamp(),
   };
 
-  await _commentsCol(ownerUid, flowId).add(commentData);
+  // Comment creation is the critical write — block on this.
+  await _commentsCol(ownerUid, flowId).doc().set(commentData);
+
+  // commentCounts is a denormalized cache on the flow doc.
+  // Viewers can create comments but cannot update the flow doc, so this
+  // must be fire-and-forget and never block or throw.
+  firestore()
+    .collection('users').doc(ownerUid).collection('flows').doc(flowId)
+    .update({ [`commentCounts.${stepId}`]: firestore.FieldValue.increment(1) })
+    .catch(() => {});
 };
 
-export const deleteComment = async (ownerUid, flowId, commentId) => {
+export const deleteComment = async (ownerUid, flowId, stepId, commentId) => {
   if (!ownerUid || !flowId || !commentId) return;
-  await _commentsCol(ownerUid, flowId).doc(commentId).delete();
+
+  const batch = firestore().batch();
+  const commentRef = _commentsCol(ownerUid, flowId).doc(commentId);
+  const flowRef = firestore().collection('users').doc(ownerUid).collection('flows').doc(flowId);
+
+  batch.delete(commentRef);
+  if (stepId) {
+    batch.update(flowRef, {
+      [`commentCounts.${stepId}`]: firestore.FieldValue.increment(-1)
+    });
+  }
+
+  await batch.commit();
 };

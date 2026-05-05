@@ -13,45 +13,80 @@ let _sharedFlowListeners = new Map(); // flowId → unsubscribe fn
 let _ownFlows = [];           // own flow documents (raw, no _role)
 let _sharedFlowsData = [];    // shared flow documents (with _ownerUid, _role)
 let _cachedFlows = null;      // merged: own (_role:'owner') + shared
+let _isRemoteUpdate = false;  // true when change originated from Firestore (not local)
+
+// Firestore 원격 업데이트 여부를 외부에서 확인할 수 있도록 export
+export const isRemoteFlowUpdate = () => _isRemoteUpdate;
 
 // ─── Internal Firestore helpers ───────────────────────────────────────────────
 
 const _flowsCollection = (uid) =>
   firestore().collection('users').doc(uid).collection('flows');
 
-const _docToFlow = (doc) => ({ id: doc.id, ...doc.data() });
+const _docToFlow = (doc, index) => {
+  const data = doc.data();
+  return { 
+    id: doc.id, 
+    ...data,
+    order: (data.order !== undefined && data.order !== null) ? data.order : (1000000 + index)
+  };
+};
 
 const _flowsFromSnapshot = (snapshot) =>
-  snapshot.docs.map(_docToFlow).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  snapshot.docs.map((doc, i) => _docToFlow(doc, i)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-const _stripMeta = ({ _role, _ownerUid, ...rest }) => rest;
+const _stripMeta = ({ _role, _ownerUid, _permissions, ...rest }) => rest;
 
-const _mergeAndNotify = () => {
+const _mergeAndNotify = (fromRemote = false) => {
   const merged = [
     ..._ownFlows.map(f => ({ ...f, _role: 'owner' })),
     ..._sharedFlowsData,
-  ];
+  ].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   _cachedFlows = merged;
+  if (__DEV__) {
+    console.log('[FlowSync] _mergeAndNotify', {
+      own: _ownFlows.length,
+      shared: _sharedFlowsData.length,
+      merged: merged.length,
+      list: merged.map(f => `${f.id.slice(-4)}:${f.order ?? 'none'}:${f._role || 'no-role'}`)
+    });
+  }
   if (_userId) {
     AsyncStorage.setItem(SHARED_FLOWS_STORAGE_KEY, JSON.stringify(_sharedFlowsData)).catch(e => console.warn('[FlowSync] Failed to save shared flows:', e));
   }
+  _isRemoteUpdate = fromRemote;
   _snapshotListeners.forEach(cb => cb(merged));
+  // 콜백 실행 후 플래그 초기화 (동기 콜백 체인이 끝난 직후)
+  Promise.resolve().then(() => { _isRemoteUpdate = false; });
 };
 
-const _saveToFirestore = async (uid, ownFlows) => {
+const _saveAllFlowOrdersToFirestore = async (uid, flows) => {
+  if (!uid) return;
   const batch = firestore().batch();
-  const col = _flowsCollection(uid);
+  const ownCol = _flowsCollection(uid);
+  const sharedCol = firestore().collection('users').doc(uid).collection('sharedFlows');
 
-  ownFlows.forEach((flow, index) => {
-    const { id, ...data } = flow;
-    batch.set(col.doc(id), { ...data, order: index, ownerUid: uid });
+  const ownFlows = flows.filter(f => f._role === 'owner' || !f._ownerUid);
+  const sharedFlows = flows.filter(f => f._role && f._role !== 'owner');
+
+  // Update own flows orders
+  ownFlows.forEach((flow) => {
+    const { id, ...data } = _stripMeta(flow);
+    // order is already on the flow object from saveFlows
+    batch.set(ownCol.doc(id), { ...data, order: flow.order, ownerUid: uid });
   });
 
-  // Diff only against _ownFlows (never attempt to delete shared flow docs)
-  const newIds = new Set(ownFlows.map(f => f.id));
+  // Update shared flows pointer orders
+  sharedFlows.forEach((flow) => {
+    // Use set with merge: true to be more robust than update
+    batch.set(sharedCol.doc(flow.id), { order: flow.order }, { merge: true });
+  });
+
+  // Handle deletions (only for own flows)
+  const newOwnIds = new Set(ownFlows.map(f => f.id));
   (_ownFlows || [])
-    .filter(f => !newIds.has(f.id))
-    .forEach(f => batch.delete(col.doc(f.id)));
+    .filter(f => !newOwnIds.has(f.id))
+    .forEach(f => batch.delete(ownCol.doc(f.id)));
 
   await batch.commit();
 };
@@ -70,7 +105,8 @@ const _migrateIfNeeded = async (uid) => {
     if (localFlows.length > 0) {
       const snapshot = await _flowsCollection(uid).limit(1).get();
       if (snapshot.empty) {
-        await _saveToFirestore(uid, localFlows);
+        // Use the existing saveFlows logic for migration
+        await saveFlows(localFlows);
       }
     }
 
@@ -90,7 +126,7 @@ const _startOwnFlowsSubscription = (uid) => {
     .onSnapshot(
       snapshot => {
         _ownFlows = _flowsFromSnapshot(snapshot);
-        _mergeAndNotify();
+        _mergeAndNotify(true); // true = Firestore 원격 변경
       },
       error => console.warn('[FlowSync] Own flows snapshot error:', error)
     );
@@ -115,25 +151,47 @@ const _startSharedFlowsSubscription = (uid) => {
       }
     });
 
-    // CRUCIAL: Remove stale flows from data cache (handles case where app restarts and no listener exists yet)
+    // CRUCIAL: Remove stale flows from data cache
     _sharedFlowsData = _sharedFlowsData.filter(f => currentIds.has(f.id));
 
     // If all shared flows removed, notify immediately
     if (currentIds.size === 0 && _sharedFlowsData.length === 0) {
-      _mergeAndNotify();
+      _mergeAndNotify(true);
       return;
     }
 
-    // Add listeners for newly shared flows
-    snapshot.docs.forEach(pointerDoc => {
-      const { ownerUid, role } = pointerDoc.data();
+    // Add/Update listeners for shared flows
+    snapshot.docs.forEach((pointerDoc, pointerIdx) => {
+      const pointerData = pointerDoc.data();
+      const { ownerUid, role } = pointerData;
+      // order 필드가 없는 기존 문서는 큰 값으로 fallback → 맨 뒤에 정렬
+      const order = pointerData.order !== undefined ? pointerData.order : (Date.now() + pointerIdx);
       const flowId = pointerDoc.id;
 
-      // If a listener exists AND the flow is already in _sharedFlowsData, it's healthy — skip.
-      // If a listener exists but the flow is NOT in _sharedFlowsData, the listener likely died
-      // (e.g. permission error before membership was fully written) — tear it down and retry.
       if (_sharedFlowListeners.has(flowId)) {
-        if (_sharedFlowsData.some(f => f.id === flowId)) return;
+        const existing = _sharedFlowsData.find(f => f.id === flowId);
+        if (existing) {
+          const roleChanged = existing._role !== role;
+          const permChanged = JSON.stringify(existing._permissions) !== JSON.stringify(pointerData.permissions);
+          const orderChanged = existing.order !== order;
+
+          // Nothing relevant changed — skip
+          if (!roleChanged && !permChanged && !orderChanged) return;
+
+          // Only order changed — safe to patch in place; no need to restart the listener
+          if (!roleChanged && !permChanged) {
+            existing.order = order;
+            _mergeAndNotify();
+            return;
+          }
+
+          // Role or permissions changed → must restart the listener so its closure
+          // captures the new values. In-place patch would be overwritten the next
+          // time the flow doc fires (it still uses old role from the old closure).
+          // Do NOT remove from _sharedFlowsData here — keep the stale entry visible
+          // until the new listener fires and overwrites it. Removing it would cause
+          // a momentary absence that FlowScreen misreads as a kick.
+        }
         _sharedFlowListeners.get(flowId)();
         _sharedFlowListeners.delete(flowId);
       }
@@ -148,6 +206,8 @@ const _startSharedFlowsSubscription = (uid) => {
                 ...flowDoc.data(),
                 _ownerUid: ownerUid,
                 _role: role,
+                _permissions: pointerData.permissions,
+                order: order,
               };
               const idx = _sharedFlowsData.findIndex(f => f.id === flowId);
               if (idx >= 0) _sharedFlowsData[idx] = flowData;
@@ -155,11 +215,10 @@ const _startSharedFlowsSubscription = (uid) => {
             } else {
               _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
             }
-            _mergeAndNotify();
+            _mergeAndNotify(true); // true = Firestore 원격 변경
           },
           err => {
             console.warn('[FlowSync] Shared flow snapshot error:', err);
-            // Remove dead listener so the next sharedFlows snapshot can retry.
             _sharedFlowListeners.delete(flowId);
           }
         );
@@ -251,6 +310,7 @@ export const removeSharedFlowOptimistic = (flowId) => {
 // ─── Flow document update (own or shared) ────────────────────────────────────
 
 export const updateFlowDoc = async (flow) => {
+  if (!flow) return;
   const ownerUid = flow._ownerUid || _userId;
   if (__DEV__) {
     console.log('[FlowSync] updateFlowDoc called', { 
@@ -265,12 +325,22 @@ export const updateFlowDoc = async (flow) => {
     if (__DEV__) console.warn('[FlowSync] No ownerUid found for updateFlowDoc');
     return;
   }
-  const { id, _ownerUid, _role, ...data } = flow;
+  const { id, ...rest } = flow;
+  // Firestore는 undefined 값을 허용하지 않으므로 제거, _role/_ownerUid/_permissions 메타 필드 제외
+  const cleanData = Object.fromEntries(
+    Object.entries(_stripMeta(rest)).filter(([, v]) => v !== undefined)
+  );
   try {
-    await firestore().collection('users').doc(ownerUid).collection('flows').doc(id).update(data);
+    if (__DEV__) console.log(`[FlowSync] Attempting update on: users/${ownerUid}/flows/${id}`, cleanData);
+    await firestore().collection('users').doc(ownerUid).collection('flows').doc(id).update(cleanData);
     if (__DEV__) console.log('[FlowSync] Firestore update success for flow:', id);
   } catch (e) {
-    if (__DEV__) console.error('[FlowSync] Firestore update FAILED:', e);
+    if (__DEV__) {
+      console.error('[FlowSync] Firestore update FAILED:', e);
+      console.error('[FlowSync] Target Path:', `users/${ownerUid}/flows/${id}`);
+      console.error('[FlowSync] Current User:', _userId);
+      console.error('[FlowSync] Flow Role:', flow._role);
+    }
     throw e;
   }
 };
@@ -306,15 +376,32 @@ export const getFlows = async () => {
 // saveFlows only persists own flows; shared flows must use updateFlowDoc directly
 export const saveFlows = async (flows) => {
   const arr = Array.isArray(flows) ? flows : [];
-  const ownFlows = arr.filter(f => !f._ownerUid).map(_stripMeta);
+  // 드래그 순서대로 강제 순번 할당
+  const ordered = arr.map((f, i) => ({ ...f, order: i }));
+  
+  // ownFlows: _ownerUid가 없거나 _role이 'owner'인 경우
+  const ownFlows = ordered.filter(f => !f._ownerUid || f._role === 'owner').map(_stripMeta);
+  // sharedFlows: _ownerUid가 있거나 _role이 'owner'가 아닌 경우
+  const sharedFlows = ordered.filter(f => f._ownerUid || (f._role && f._role !== 'owner'));
+
+  if (__DEV__) {
+    console.log('[FlowSync] saveFlows sync', {
+      total: arr.length,
+      own: ownFlows.length,
+      shared: sharedFlows.length,
+      sharedIds: sharedFlows.map(f => f.id)
+    });
+  }
 
   _ownFlows = ownFlows;
+  _sharedFlowsData = sharedFlows;
+
   _mergeAndNotify();
 
   if (_userId) {
     try {
-      if (__DEV__) console.log('[FlowSync] saveFlows - Syncing to Firestore...', { count: ownFlows.length });
-      await _saveToFirestore(_userId, ownFlows);
+      if (__DEV__) console.log('[FlowSync] saveFlows - Syncing to Firestore...', { count: ordered.length });
+      await _saveAllFlowOrdersToFirestore(_userId, ordered);
     } catch (e) {
       if (__DEV__) console.warn('[FlowSync] saveFlows Firestore error:', e);
     }

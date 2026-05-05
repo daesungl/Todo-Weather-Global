@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton } from 'react-native-gesture-handler';
@@ -50,11 +50,16 @@ import {
   BellOff,
   Users,
   LogOut,
+  MessageCircle,
+  UserMinus,
+  Send,
+  Info,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography } from '../theme';
 import { useUnits } from '../contexts/UnitContext';
 import MenuModal from '../components/MenuModal';
@@ -62,11 +67,20 @@ import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
-import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, updateFlowDoc, removeSharedFlowOptimistic, refreshSharedFlowListener } from '../services/FlowSyncService';
-import { generateInviteCode, invalidateInviteCode, joinFlowByCode, leaveFlow, removeMember, getFlowMembers } from '../services/InviteService';
+import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, updateFlowDoc, removeSharedFlowOptimistic, refreshSharedFlowListener, isRemoteFlowUpdate } from '../services/FlowSyncService';
+import { 
+  generateInviteCode, 
+  invalidateInviteCode, 
+  joinFlowByCode, 
+  leaveFlow, 
+  removeMember, 
+  getFlowMembers,
+  subscribeToFlowMembers,
+  updateMemberPermissions,
+} from '../services/InviteService';
 import { requestPermission, scheduleNotification, cancelNotification, refillStepNotifications } from '../services/NotificationService';
 import * as CommentService from '../services/CommentService';
-import { MessageCircle, Send } from 'lucide-react-native';
+
 
 const { width, height } = Dimensions.get('window');
 
@@ -135,6 +149,29 @@ const FlowScreen = ({ navigation, route }) => {
   const [isSharingImage, setIsSharingImage] = useState(false);
   const viewShotRef = useRef();
   
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmOnPress, setConfirmOnPress] = useState(null);
+  const [confirmIsDestructive, setConfirmIsDestructive] = useState(false);
+  const [confirmShowCancel, setConfirmShowCancel] = useState(true);
+  const [confirmOkText, setConfirmOkText] = useState('');
+
+  const showConfirm = (title, message, onPress, isDestructive = true, okText = '', showCancel = true) => {
+    setConfirmTitle(title || t('common.info'));
+    setConfirmMessage(message);
+    setConfirmOnPress(() => onPress);
+    setConfirmIsDestructive(isDestructive);
+    setConfirmOkText(okText || t('common.confirm'));
+    setConfirmShowCancel(showCancel);
+    setConfirmModalVisible(true);
+  };
+  
+  const handleConfirm = () => {
+    setConfirmModalVisible(false);
+    if (confirmOnPress) confirmOnPress();
+  };
+  
   const [flows, setFlows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const { isPremium, limits } = useSubscription();
@@ -192,6 +229,11 @@ const FlowScreen = ({ navigation, route }) => {
   const [inviteRole, setInviteRole] = useState('viewer');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [flowMembers, setFlowMembers] = useState([]);
+  const [pendingPermissions, setPendingPermissions] = useState({});  // { [uid]: permissions }
+  const [applyingPermissions, setApplyingPermissions] = useState({});  // { [uid]: bool }
+  const [isLeaving, setIsLeaving] = useState(false);
+  const prevSelectedFlowRoleRef = useRef(null); // tracks { _role, _permissions } to detect perm changes
+  const [comments, setComments] = useState([]);
   const [isMembersLoading, setIsMembersLoading] = useState(false);
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinCode, setJoinCode] = useState('');
@@ -212,9 +254,14 @@ const FlowScreen = ({ navigation, route }) => {
   const focusedFlowInputRef = useRef(null);
 
   // Comments State
-  const [comments, setComments] = useState([]);
   const [commentInputs, setCommentInputs] = useState({}); // { stepId: 'text' }
   const [isPostingComment, setIsPostingComment] = useState(false);
+  const [expandedCommentSteps, setExpandedCommentSteps] = useState({}); // { stepId: bool }
+
+  const toggleComments = (stepId, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    setExpandedCommentSteps(prev => ({ ...prev, [stepId]: !prev[stepId] }));
+  };
 
   // --- Initialization ---
   useFocusEffect(
@@ -253,10 +300,43 @@ const FlowScreen = ({ navigation, route }) => {
   useEffect(() => {
     if (selectedFlow) {
       const latest = flows.find(f => f.id === selectedFlow.id);
-      if (latest && JSON.stringify(latest.steps) !== JSON.stringify(selectedFlow.steps)) {
-        if (__DEV__) console.log('[FlowScreen] Syncing selectedFlow steps with latest from subscription');
-        setSelectedFlow(latest);
+      if (latest) {
+        const prev = prevSelectedFlowRoleRef.current;
+        const sameFlow = prev && prev.flowId === latest.id;
+        const roleChanged = sameFlow && prev._role !== latest._role;
+        const permChanged = sameFlow && JSON.stringify(prev._permissions) !== JSON.stringify(latest._permissions);
+
+        if (roleChanged || permChanged) {
+          // Permission change — notify without ejecting
+          const becameEditor = latest._role === 'editor';
+          const msg = becameEditor
+            ? t('flow.alert.perm_changed_editor')
+            : t('flow.alert.perm_changed_viewer');
+          showConfirm(t('common.info'), msg, null, false, t('common.confirm'), false);
+        }
+
+        prevSelectedFlowRoleRef.current = { flowId: latest.id, _role: latest._role, _permissions: latest._permissions };
+
+        if (JSON.stringify(latest.steps) !== JSON.stringify(selectedFlow.steps) || roleChanged || permChanged) {
+          if (__DEV__) console.log('[FlowScreen] Syncing selectedFlow with latest from subscription');
+          setSelectedFlow(latest);
+        }
+      } else if (!isFlowOwner(selectedFlow) && !isLeaving) {
+        // Kick detected: User is not owner AND flow is gone from the list AND user didn't leave voluntarily
+        prevSelectedFlowRoleRef.current = null;
+        setInviteModalVisible(false);
+        setFlowMenuVisible(false);
+        showConfirm(
+          t('common.info'),
+          t('flow.alert.kicked_msg'),
+          () => setSelectedFlow(null),
+          false,
+          t('common.confirm'),
+          false
+        );
       }
+    } else {
+      prevSelectedFlowRoleRef.current = null;
     }
   }, [flows, selectedFlow]);
 
@@ -267,48 +347,61 @@ const FlowScreen = ({ navigation, route }) => {
       return;
     }
 
-    const ownerUid = selectedFlow._ownerUid || user.uid;
+    const ownerUid = selectedFlow._ownerUid || user?.uid;
     const unsub = CommentService.subscribeToComments(ownerUid, selectedFlow.id, (data) => {
       setComments(data);
     });
 
     return unsub;
-  }, [selectedFlow, user.uid]);
+  }, [selectedFlow, user?.uid]);
 
   const handlePostComment = async (stepId) => {
     const text = commentInputs[stepId];
     if (!text || !text.trim() || isPostingComment) return;
 
     setIsPostingComment(true);
-    const ownerUid = selectedFlow._ownerUid || user.uid;
+    const ownerUid = selectedFlow._ownerUid || user?.uid;
     try {
       await CommentService.addComment(ownerUid, selectedFlow.id, stepId, user, text);
       setCommentInputs(prev => ({ ...prev, [stepId]: '' }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      console.warn('[FlowScreen] Post comment error:', e);
-      Alert.alert(t('common.error'), t('flow.comment_error', 'Failed to post comment.'));
+      showConfirm(t('common.error'), t('flow.comment_error', 'Failed to post comment.'), null, false);
     } finally {
       setIsPostingComment(false);
     }
   };
 
-  const handleDeleteComment = (commentId) => {
-    const ownerUid = selectedFlow._ownerUid || user.uid;
-    Alert.alert(t('common.delete'), t('flow.delete_comment_confirm', 'Delete this comment?'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { 
-        text: t('common.delete'), 
-        style: 'destructive', 
-        onPress: async () => {
-          try {
-            await CommentService.deleteComment(ownerUid, selectedFlow.id, commentId);
-          } catch (e) {
-            console.warn('[FlowScreen] Delete comment error:', e);
-          }
+  const handleDeleteComment = async (commentId) => {
+    const ownerUid = selectedFlow._ownerUid || selectedFlow.ownerUid || user?.uid;
+    const foundComment = comments.find(c => c.id === commentId);
+    if (!foundComment) return;
+    
+    // 권한 체크: 본인 댓글이거나, 관리 권한이 있거나
+    const isAuthor = foundComment.uid === user?.uid;
+    const hasPermission = isAuthor || canManageComments(selectedFlow);
+
+    if (!hasPermission) {
+      showConfirm(t('common.info'), t('flow.no_permission_comment'), null, false);
+      return;
+    }
+
+    const targetStepId = foundComment.stepId;
+    if (!targetStepId) return;
+
+    showConfirm(
+      t('flow.alert.delete_comment'),
+      t('flow.alert.delete_comment_msg'),
+      async () => {
+        try {
+          await CommentService.deleteComment(ownerUid, selectedFlow.id, targetStepId, commentId);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (e) {
+          showConfirm(t('common.error'), t('flow.delete_comment_error', 'Failed to delete comment.'), null, false);
         }
-      }
-    ]);
+      },
+      true // 취소 버튼 포함
+    );
   };
 
   useEffect(() => {
@@ -461,37 +554,67 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   const isFlowOwner = (flow) => !flow?._ownerUid;
-  const canEditSteps = (flow) => flow?._role !== 'viewer';
+  const canEditFlow = (flow) => !flow || !flow._ownerUid || flow._role === 'owner' || flow._role === 'editor';
+  
+  const canEdit = (flow) => {
+    if (isFlowOwner(flow)) return true;
+    if (!flow?._permissions) return flow?._role === 'editor';
+    return !!flow._permissions.edit;
+  };
+
+  const canManageComments = (flow) => {
+    if (isFlowOwner(flow)) return true;
+    if (!flow?._permissions) return flow?._role === 'editor';
+    return !!flow._permissions.manageComments;
+  };
+
+  const canEditSteps = (flow) => canEdit(flow);
 
   const handleOpenInvite = async () => {
     setFlowMenuVisible(false);
     setInviteCode(selectedFlow.inviteCode || '');
     setInviteRole(selectedFlow.inviteRole || 'viewer');
     setFlowMembers([]);
-    setIsMembersLoading(true);
+    setPendingPermissions({});
+    setApplyingPermissions({});
     setInviteModalVisible(true);
-    try {
-      const members = await getFlowMembers(user.uid, selectedFlow.id);
-      setFlowMembers(members);
-    } catch (e) {
-      console.warn('[FlowScreen] getFlowMembers error:', e);
-    } finally {
-      setIsMembersLoading(false);
-    }
   };
 
-  const handleGenerateCode = async () => {
+  // Membership Real-time Subscription
+  useEffect(() => {
+    if (!inviteModalVisible || !selectedFlow) return;
+
+    const ownerUid = selectedFlow._ownerUid || user?.uid;
+    setIsMembersLoading(true);
+    const unsub = subscribeToFlowMembers(ownerUid, selectedFlow.id, (members) => {
+      setFlowMembers(members);
+      setIsMembersLoading(false);
+    });
+
+    // selectedFlow 전체가 아닌 식별자만 의존성으로 추가하여 초대 코드 갱신 시 재구독 방지
+    return unsub;
+  }, [inviteModalVisible, selectedFlow?.id, selectedFlow?._ownerUid, user?.uid]);
+
+  const handleGenerateCode = async (forcedRole = null) => {
     if (!user?.uid) return;
     setIsGeneratingCode(true);
+    const targetRole = forcedRole || inviteRole;
     try {
-      if (inviteCode) await invalidateInviteCode(user.uid, selectedFlow.id, inviteCode);
-      const code = await generateInviteCode(user.uid, selectedFlow.id, inviteRole);
+      // 구 코드의 inviteCodes 도큐먼트만 비동기로 삭제 (fire-and-forget)
+      // flow 문서는 generateInviteCode의 set+merge가 원자적으로 덮어쓰기 때문에
+      // await할 필요 없음 → FlowSyncService 루프 방지
+      if (inviteCode) {
+        invalidateInviteCode(user?.uid, selectedFlow.id, inviteCode).catch(e =>
+          console.warn('[Flow] invalidate code cleanup error:', e)
+        );
+      }
+      const code = await generateInviteCode(user?.uid, selectedFlow.id, targetRole);
       setInviteCode(code);
-      const updatedFlow = { ...selectedFlow, inviteCode: code, inviteRole };
+      const updatedFlow = { ...selectedFlow, inviteCode: code, inviteRole: targetRole };
       setSelectedFlow(updatedFlow);
       setFlows(prev => prev.map(f => f.id === selectedFlow.id ? updatedFlow : f));
     } catch (e) {
-      Alert.alert(t('common.error'), e.message);
+      showConfirm(t('common.error'), e.message, null, false);
     } finally {
       setIsGeneratingCode(false);
     }
@@ -500,49 +623,103 @@ const FlowScreen = ({ navigation, route }) => {
   const handleInvalidateCode = async () => {
     if (!inviteCode || !user?.uid) return;
     try {
-      await invalidateInviteCode(user.uid, selectedFlow.id, inviteCode);
+      await invalidateInviteCode(user?.uid, selectedFlow.id, inviteCode);
       setInviteCode('');
       const updatedFlow = { ...selectedFlow, inviteCode: null, inviteRole: null };
       setSelectedFlow(updatedFlow);
       setFlows(prev => prev.map(f => f.id === selectedFlow.id ? updatedFlow : f));
     } catch (e) {
-      Alert.alert(t('common.error'), e.message);
+      showConfirm(t('common.error'), e.message, null, false);
     }
   };
 
   const handleRemoveMember = async (memberUid) => {
-    try {
-      await removeMember(user.uid, selectedFlow.id, memberUid);
-      setFlowMembers(prev => prev.filter(m => m.uid !== memberUid));
-    } catch (e) {
-      Alert.alert(t('common.error'), e.message);
+    if (!isFlowOwner(selectedFlow)) {
+      showConfirm(t('common.error'), '멤버 강퇴 권한은 오너에게만 있습니다.', null, false);
+      return;
     }
+    showConfirm(
+      t('flow.alert.kick_member'),
+      t('flow.alert.kick_member_msg'),
+      async () => {
+        try {
+          await removeMember(selectedFlow._ownerUid || user?.uid, selectedFlow.id, memberUid);
+          setFlowMembers(prev => prev.filter(m => m.uid !== memberUid));
+        } catch (e) {
+          showConfirm(t('common.error'), e.message, null, false);
+        }
+      },
+      true,
+      '내보내기'
+    );
+  };
+
+  const handleTogglePermission = (memberUid, key) => {
+    const member = flowMembers.find(m => m.uid === memberUid);
+    if (!member) return;
+    const base = pendingPermissions[memberUid] ?? member.permissions;
+    setPendingPermissions(prev => ({
+      ...prev,
+      [memberUid]: { ...base, [key]: !base[key] },
+    }));
+  };
+
+  const handleApplyPermissions = async (memberUid) => {
+    const pending = pendingPermissions[memberUid];
+    if (!pending) return;
+    setApplyingPermissions(prev => ({ ...prev, [memberUid]: true }));
+    try {
+      await updateMemberPermissions(selectedFlow._ownerUid || user?.uid, selectedFlow.id, memberUid, pending);
+      // 로컬 member도 즉시 반영
+      setFlowMembers(prev => prev.map(m => m.uid === memberUid ? { ...m, permissions: pending } : m));
+      setPendingPermissions(prev => { const n = { ...prev }; delete n[memberUid]; return n; });
+    } catch (e) {
+      showConfirm(t('common.error'), e.message, null, false);
+    } finally {
+      setApplyingPermissions(prev => ({ ...prev, [memberUid]: false }));
+    }
+  };
+
+  const handleShowPermissionInfo = () => {
+    showConfirm(
+      t('flow.permission_info_title', '권한 안내'),
+      '• ' + t('flow.permission_edit_desc', '편집: 플로우의 스텝을 추가, 수정, 삭제할 수 있습니다.') + '\n' +
+      '• ' + t('flow.permission_comment_desc', '댓글 관리: 본인뿐만 아니라 모든 멤버의 댓글을 삭제할 수 있습니다.'),
+      null, false
+    );
   };
 
   const handleJoinFlow = async () => {
     if (!joinCode.trim() || !user?.uid) return;
     setIsJoining(true);
+    
     try {
       const result = await joinFlowByCode(user.uid, joinCode);
-      // Immediately (re)start the flow doc listener so the shared flow appears
-      // without waiting for the sharedFlows collection snapshot to re-fire.
-      refreshSharedFlowListener(result.ownerUid, result.flowId, result.role);
-      setJoinModalVisible(false);
-      setJoinCode('');
-      const alreadyVisible = flows.some(f => f.id === result.flowId);
-      if (alreadyVisible) {
-        Alert.alert('이미 참여 중', `"${result.flowTitle || ''}" 플로우에 이미 참여하고 있습니다.`);
+      const alreadyExists = flows.some(f => f.id === result.flowId);
+      
+      if (alreadyExists) {
+        showConfirm(
+          t('flow.alert.already_member'), 
+          `"${result.flowTitle || ''}" ${t('flow.alert.already_member_msg')}`,
+          null, false
+        );
       } else {
-        Alert.alert(t('common.success', '성공'), `"${result.flowTitle}"에 참여했습니다!`);
+        showConfirm(
+          t('flow.alert.join_success'), 
+          `"${result.flowTitle}"${t('flow.alert.join_success_msg')}`,
+          null, false
+        );
       }
+      setJoinCode('');
+      setJoinModalVisible(false);
     } catch (e) {
       const msgMap = {
-        INVALID_CODE: '올바르지 않은 초대 코드입니다',
-        EXPIRED_CODE: '만료된 초대 코드입니다',
-        OWN_FLOW: '본인 플로우에는 참여할 수 없습니다',
-        FLOW_NOT_FOUND: '플로우를 찾을 수 없습니다',
+        'INVALID_CODE': t('flow.alert.invalid_code'),
+        'EXPIRED_CODE': t('flow.alert.expired_code'),
+        'OWN_FLOW': t('flow.alert.own_flow_error'),
       };
-      Alert.alert(t('common.error'), msgMap[e.message] || e.message);
+      const errorMsg = msgMap[e.message] || e.message;
+      showConfirm(t('common.error'), errorMsg, null, false, t('common.confirm'));
     } finally {
       setIsJoining(false);
     }
@@ -597,8 +774,12 @@ const FlowScreen = ({ navigation, route }) => {
         );
         // setTimeout을 사용하여 렌더링 사이클 이후에 updateFlowDoc이 실행되도록 지연
         setTimeout(() => {
-          const updatedFlow = updated.find(f => f.id === flow.id);
-          if (updatedFlow) updateFlowDoc(updatedFlow);
+          if (!selectedFlowRef.current) return;
+          const updatedFlow = updated.find(f => f.id === selectedFlowRef.current.id);
+          // Firestore 원격 변경(예: 초대 코드 발급))에 의한 re-notify일 경우 write-back 안 함
+          if (updatedFlow && canEditFlow(updatedFlow) && !isRemoteFlowUpdate()) {
+            updateFlowDoc(updatedFlow);
+          }
         }, 0);
         return updated;
       });
@@ -761,14 +942,14 @@ const FlowScreen = ({ navigation, route }) => {
   const saveFlow = async () => {
     if (isSaving) return;
     if (!flowTitle.trim()) {
-      Alert.alert(t('flow.alert.title_required'), t('flow.alert.title_required_msg'));
+      showConfirm(t('flow.alert.title_required'), t('flow.alert.title_required_msg'), null, false);
       return;
     }
     if (!editingFlow && displayFlows.filter(f => !f.inactive).length >= MAX_FLOWS) {
       const msg = isPremium
         ? t('flow.alert.limit_msg', `최대 ${MAX_FLOWS}개 플로우까지 만들 수 있습니다.`)
         : t('flow.alert.premium_limit_msg', `무료 플랜은 최대 ${MAX_FLOWS}개 플로우까지 만들 수 있습니다. 더 만들려면 프리미엄을 이용해 주세요.`);
-      Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), msg);
+      showConfirm(t('flow.alert.limit_title', 'Flow Limit'), msg, null, false);
       return;
     }
     
@@ -835,14 +1016,14 @@ const FlowScreen = ({ navigation, route }) => {
   const saveStep = async () => {
     if (isSaving) return;
     if (!editActivity.trim()) {
-      Alert.alert(t('flow.alert.activity_required'), t('flow.alert.activity_required_msg'));
+      showConfirm(t('flow.alert.activity_required'), t('flow.alert.activity_required_msg'), null, false);
       return;
     }
     if (!editingStep && (selectedFlow?.steps?.length || 0) >= MAX_STEPS) {
       const msg = isPremium
         ? t('flow.alert.step_limit_msg', `플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`)
         : t('flow.alert.step_limit_free_msg', `무료 플랜은 플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`);
-      Alert.alert(t('flow.alert.limit_title', 'Flow Limit'), msg);
+      showConfirm(t('flow.alert.limit_title', 'Flow Limit'), msg, null, false);
       return;
     }
 
@@ -867,15 +1048,15 @@ const FlowScreen = ({ navigation, route }) => {
       const msg = isPremium
         ? t('flow.alert.weather_limit_msg', { count: WEATHER_LIMIT })
         : t('flow.alert.weather_limit_free_msg', { count: WEATHER_LIMIT });
-      Alert.alert(t('flow.alert.limit_title', 'Weather Limit'), msg);
+      showConfirm(t('flow.alert.limit_title', 'Weather Limit'), msg, null, false);
       return;
     }
     if (editTime && !editTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
-      Alert.alert(t('flow.alert.invalid_time'), t('flow.alert.invalid_time_msg'));
+      showConfirm(t('flow.alert.invalid_time'), t('flow.alert.invalid_time_msg'), null, false);
       return;
     }
     if (stepRepeatType && !stepRepeatEndDate) {
-      Alert.alert('', t('tasks.repeat_end_required', '반복 종료일을 선택해주세요'));
+      showConfirm('', t('tasks.repeat_end_required', '반복 종료일을 선택해주세요'), null, false);
       return;
     }
 
@@ -917,8 +1098,12 @@ const FlowScreen = ({ navigation, route }) => {
         
         try {
           if (selectedFlow._ownerUid) {
-            if (__DEV__) console.log('[FlowScreen] Shared flow detected. Updating via updateFlowDoc...');
-            await updateFlowDoc(updatedF);
+            if (canEditFlow(selectedFlow)) {
+              if (__DEV__) console.log('[FlowScreen] Shared flow (editor/owner). Updating via updateFlowDoc...');
+              await updateFlowDoc(updatedF);
+            } else {
+              if (__DEV__) console.log('[FlowScreen] Shared flow (viewer). Skipping Firestore update.');
+            }
           } else {
             if (__DEV__) console.log('[FlowScreen] Own flow detected. Saving via saveFlows...');
             await saveFlows(updatedFlows);
@@ -926,7 +1111,7 @@ const FlowScreen = ({ navigation, route }) => {
           if (__DEV__) console.log('[FlowScreen] applyToFlow success.');
         } catch (err) {
           if (__DEV__) console.error('[FlowScreen] applyToFlow error:', err);
-          Alert.alert(t('common.error', 'Error'), t('flow.update_failed', 'Failed to update flow on server. Please check your connection.'));
+          showConfirm(t('common.error', 'Error'), t('flow.update_failed', 'Failed to update flow on server. Please check your connection.'), null, false);
         } finally {
           setIsSaving(false); // 여기서도 확실히 해제
         }
@@ -941,14 +1126,14 @@ const FlowScreen = ({ navigation, route }) => {
       // 알림 처리: time 없으면 알림 불가
       let notificationId = editingStep?.notificationId || null;
       if (stepNotify && !editTime) {
-        Alert.alert('', t('flow.notify_time_required', '알림을 설정하려면 시작 시간이 필요합니다'));
+        showConfirm('', t('flow.notify_time_required', '알림을 설정하려면 시작 시간이 필요합니다'), null, false);
         setIsSaving(false);
         return;
       }
       if (stepNotify) {
         const granted = await requestPermission();
         if (!granted) {
-          Alert.alert('', t('tasks.notify_permission_denied', '알림 권한이 필요합니다'));
+          showConfirm('', t('tasks.notify_permission_denied', '알림 권한이 필요합니다'), null, false);
           setIsSaving(false);
           return;
         }
@@ -1279,7 +1464,7 @@ const FlowScreen = ({ navigation, route }) => {
     });
     setFlows(updatedFlows);
     if (selectedFlow._ownerUid) {
-      await updateFlowDoc(updatedF);
+      if (canEditFlow(selectedFlow)) await updateFlowDoc(updatedF);
     } else {
       await saveFlows(updatedFlows);
     }
@@ -1287,11 +1472,21 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   const deleteStep = () => {
-    if (editingStep?.repeatGroupId) {
-      doDeleteStep('all');
-    } else {
-      doDeleteStep('this');
-    }
+    const title = editingStep?.repeatGroupId ? t('tasks.delete_repeat_title') : t('tasks.delete_confirm');
+    const msg = editingStep?.repeatGroupId ? t('tasks.delete_repeat_msg') : t('tasks.delete_confirm_msg');
+
+    showConfirm(
+      title,
+      msg,
+      () => {
+        if (editingStep?.repeatGroupId) {
+          doDeleteStep('all');
+        } else {
+          doDeleteStep('this');
+        }
+      },
+      true
+    );
   };
 
   const deleteStepById = async (stepId) => {
@@ -1310,7 +1505,7 @@ const FlowScreen = ({ navigation, route }) => {
     });
     setFlows(updatedFlows);
     if (selectedFlow._ownerUid) {
-      await updateFlowDoc(updatedF);
+      if (canEditFlow(selectedFlow)) await updateFlowDoc(updatedF);
     } else {
       await saveFlows(updatedFlows);
     }
@@ -1334,12 +1529,12 @@ const FlowScreen = ({ navigation, route }) => {
             UTI: 'public.png',
           });
         } else {
-          Alert.alert(t('flow.alert.sharing_not_available'), t('flow.alert.sharing_not_available_msg'));
+          showConfirm(t('flow.alert.sharing_not_available'), t('flow.alert.sharing_not_available_msg'), null, false);
         }
       }
     } catch (e) {
       console.error("Capture failed", e);
-      Alert.alert(t('flow.alert.share_failed'), t('flow.alert.share_failed_msg'));
+      showConfirm(t('flow.alert.share_failed'), t('flow.alert.share_failed_msg'), null, false);
     } finally {
       setIsSharingImage(false);
     }
@@ -1431,30 +1626,72 @@ const FlowScreen = ({ navigation, route }) => {
   const handleDeleteFlow = (id) => {
     const flow = flows.find(f => f.id === id);
     if (!flow || isFlowOwner(flow)) {
-      Alert.alert(t('flow.alert.delete_flow'), t('flow.alert.delete_flow_msg'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.delete'), style: 'destructive', onPress: async () => {
-            const updated = flows.filter(f => f.id !== id);
-            setFlows(updated);
-            if (selectedFlow?.id === id) setSelectedFlow(null);
-            await deleteFlow(id);
-          }
-        }
-      ]);
+      showConfirm(
+        t('flow.alert.delete_flow'),
+        t('flow.alert.delete_flow_msg'),
+        async () => {
+          const updated = flows.filter(f => f.id !== id);
+          setFlows(updated);
+          if (selectedFlow?.id === id) setSelectedFlow(null);
+          await deleteFlow(id);
+        },
+        true,
+        t('common.delete')
+      );
     } else {
-      Alert.alert('플로우 나가기', '이 공유 플로우에서 나갑니다. 초대 코드로 다시 참여할 수 있습니다.', [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: '나가기', style: 'destructive', onPress: async () => {
-            // Optimistic: remove from cache immediately before Firestore write
-            removeSharedFlowOptimistic(flow.id);
-            if (selectedFlow?.id === id) setSelectedFlow(null);
-            try { await leaveFlow(user.uid, flow._ownerUid, flow.id); }
-            catch (e) { console.warn('[FlowScreen] leaveFlow error:', e); }
+      showConfirm(
+        t('flow.alert.leave_flow'),
+        t('flow.alert.leave_flow_msg'),
+        async () => {
+          setIsLeaving(true);
+          try {
+            await leaveFlow(user?.uid, flow._ownerUid, flow.id);
+            setSelectedFlow(null);
+          } catch (e) {
+            console.warn('[FlowScreen] leaveFlow error:', e);
+            showConfirm(t('common.error'), e.message, null, false);
+          } finally {
+            setIsLeaving(false);
           }
-        }
-      ]);
+        },
+        true,
+        '나가기'
+      );
     }
   };
+
+  const renderConfirmModal = () => (
+    <Modal visible={confirmModalVisible} transparent animationType="fade">
+      <View style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
+        <View style={styles.confirmModal}>
+          <Text style={styles.confirmTitle}>{confirmTitle}</Text>
+          <Text style={styles.confirmMessage}>{confirmMessage}</Text>
+          <View style={styles.confirmActions}>
+            {confirmShowCancel && (
+              <Pressable 
+                style={({ pressed }) => [styles.confirmBtn, { opacity: pressed ? 0.6 : 1 }]} 
+                onPress={() => setConfirmModalVisible(false)}
+              >
+                <Text style={styles.confirmCancelText}>{t('common.cancel')}</Text>
+              </Pressable>
+            )}
+            <Pressable 
+              style={({ pressed }) => [
+                styles.confirmBtn, 
+                confirmIsDestructive && { backgroundColor: Colors.error },
+                { opacity: pressed ? 0.8 : 1 }
+              ]} 
+              onPress={handleConfirm}
+            >
+              <Text style={confirmIsDestructive ? styles.confirmDestructiveText : styles.confirmText}>
+                {confirmOkText}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const handleWeatherIconPress = (step) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1859,47 +2096,76 @@ const FlowScreen = ({ navigation, route }) => {
                                 </View>
                               </View>
 
-                              {/* Comments Section */}
-                              <View style={styles.commentsContainer}>
-                                {comments.filter(c => c.stepId === step.id).slice(-5).map(comment => (
-                                  <Pressable 
-                                    key={comment.id} 
-                                    onLongPress={() => {
-                                      const isOwner = isFlowOwner(selectedFlow);
-                                      const isEditor = selectedFlow._role === 'editor';
-                                      const isAuthor = comment.uid === user.uid;
-                                      if (isOwner || isEditor || isAuthor) {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        handleDeleteComment(comment.id);
-                                      }
-                                    }}
-                                    style={({ pressed }) => [styles.commentBubble, pressed && { opacity: 0.7 }]}
-                                  >
-                                    <Text style={styles.commentText}>
-                                      <Text style={styles.commentAuthor}>{comment.displayName}</Text> : {comment.text}
-                                    </Text>
-                                  </Pressable>
-                                ))}
-                                
-                                <Pressable style={styles.commentInputRow} onPress={(e) => e.stopPropagation()}>
-                                  <TextInput
-                                    style={styles.commentInput}
-                                    placeholder={t('flow.add_comment', 'Add a comment...')}
-                                    placeholderTextColor={Colors.outline}
-                                    value={commentInputs[step.id] || ''}
-                                    onChangeText={(val) => setCommentInputs(prev => ({ ...prev, [step.id]: val }))}
-                                    returnKeyType="send"
-                                    onSubmitEditing={() => handlePostComment(step.id)}
-                                  />
-                                  <GHButton 
-                                    onPress={() => handlePostComment(step.id)}
-                                    disabled={!commentInputs[step.id]?.trim() || isPostingComment}
-                                    style={styles.commentSendBtn}
-                                  >
-                                    <Send size={16} color={commentInputs[step.id]?.trim() ? Colors.primary : Colors.outline} />
-                                  </GHButton>
-                                </Pressable>
-                              </View>
+                              {/* Comments Section — Instagram style */}
+                              {(() => {
+                                const stepComments = comments.filter(c => c.stepId === step.id);
+                                const count = stepComments.length;
+                                const isExpanded = !!expandedCommentSteps[step.id];
+                                const canComment = !!(selectedFlow._role && selectedFlow._role !== '');
+                                return (
+                                  <View>
+                                    {/* 말풍선 버튼 */}
+                                    <Pressable
+                                      onPress={(e) => { e.stopPropagation(); toggleComments(step.id, e); }}
+                                      style={({ pressed }) => [styles.commentToggleBtn, pressed && { opacity: 0.6 }]}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                      <MessageCircle size={16} color={count > 0 ? Colors.primary : Colors.outline} />
+                                      {count > 0 && (
+                                        <Text style={[styles.commentCountText, { color: Colors.primary }]}>{count}</Text>
+                                      )}
+                                    </Pressable>
+
+                                    {/* 펼쳐진 댓글 영역 */}
+                                    {isExpanded && (
+                                      <Pressable onPress={(e) => e.stopPropagation()} style={styles.commentsContainer}>
+                                        {stepComments.slice(-10).map(comment => (
+                                          <View key={comment.id} style={styles.commentWrapper}>
+                                            <Pressable
+                                              onLongPress={() => {
+                                                const isOwner = isFlowOwner(selectedFlow);
+                                                const isEditor = selectedFlow._role === 'editor';
+                                                const isAuthor = comment.uid === user?.uid;
+                                                if (isOwner || isEditor || isAuthor) {
+                                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                                  handleDeleteComment(comment.id);
+                                                }
+                                              }}
+                                              style={({ pressed }) => [styles.commentBubble, pressed && { opacity: 0.7 }]}
+                                            >
+                                              <Text style={styles.commentText}>
+                                                <Text style={styles.commentAuthor}>{comment.displayName}</Text> : {comment.text}
+                                              </Text>
+                                            </Pressable>
+                                          </View>
+                                        ))}
+
+                                        {/* 댓글 입력창 */}
+                                        {canComment && (
+                                          <View style={styles.commentInputRow}>
+                                            <TextInput
+                                              style={styles.commentInput}
+                                              placeholder={t('flow.add_comment', 'Add a comment...')}
+                                              placeholderTextColor={Colors.outline}
+                                              value={commentInputs[step.id] || ''}
+                                              onChangeText={(val) => setCommentInputs(prev => ({ ...prev, [step.id]: val }))}
+                                              returnKeyType="send"
+                                              onSubmitEditing={() => handlePostComment(step.id)}
+                                            />
+                                            <GHButton
+                                              onPress={() => handlePostComment(step.id)}
+                                              disabled={!commentInputs[step.id]?.trim() || isPostingComment}
+                                              style={styles.commentSendBtn}
+                                            >
+                                              <Send size={16} color={commentInputs[step.id]?.trim() ? Colors.primary : Colors.outline} />
+                                            </GHButton>
+                                          </View>
+                                        )}
+                                      </Pressable>
+                                    )}
+                                  </View>
+                                );
+                              })()}
                             </Pressable>
                             {step.weather && (
                               <GHButton
@@ -2025,13 +2291,13 @@ const FlowScreen = ({ navigation, route }) => {
                             </LinearGradient>
                           </View>
                         ) : (
-                        <GHButton
-                          onLongPress={isFlowOwner(flow) ? () => {
+                        <TouchableOpacity
+                          onLongPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             drag();
-                          } : undefined}
+                          }}
                           onPress={() => setSelectedFlow(flow)}
-                          style={[isActive && { opacity: 0.8, transform: [{ scale: 1.02 }] }]}
+                          style={isActive ? { opacity: 0.8 } : undefined}
                           activeOpacity={0.9}
                           delayLongPress={250}
                         >
@@ -2049,15 +2315,14 @@ const FlowScreen = ({ navigation, route }) => {
                                 : <LogOut size={18} color="rgba(255,255,255,0.8)" />}
                             </BorderlessButton>
 
-                            {/* Shared flow badge */}
-                            {!isFlowOwner(flow) && (
-                              <View style={{ position: 'absolute', top: 14, left: 18, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
-                                <Users size={11} color="white" />
-                                <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>{flow._role}</Text>
-                              </View>
-                            )}
-
                             <View style={styles.cardMainArea}>
+                              {/* Shared flow badge */}
+                              {!isFlowOwner(flow) && (
+                                <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8 }}>
+                                  <Users size={11} color="white" />
+                                  <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>{flow._role}</Text>
+                                </View>
+                              )}
                               <Text style={styles.cardTitle} numberOfLines={2}>{flow.title}</Text>
                               <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{getLocalizedPeriod(flow.period)}</Text></View>
                             </View>
@@ -2095,7 +2360,7 @@ const FlowScreen = ({ navigation, route }) => {
                               </View>
                             </View>
                           </LinearGradient>
-                        </GHButton>
+                        </TouchableOpacity>
                         )}
                       </View>
                     </ScaleDecorator>
@@ -2103,18 +2368,24 @@ const FlowScreen = ({ navigation, route }) => {
                   ListHeaderComponent={
                     <View>
                       <View style={styles.listHeader}>
-                        <View style={styles.headerTopRow}>
+                        <View style={[styles.headerTopRow, { alignItems: 'flex-start', justifyContent: 'space-between' }]}>
                           <View>
                             <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Flows')}</Text>
                             <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Curated journeys')}</Text>
                           </View>
-                          <View style={{ width: 52 }} />
+                          {user && (
+                            <Pressable 
+                              style={({ pressed }) => [
+                                styles.joinFlowChip,
+                                { opacity: pressed ? 0.7 : 1 }
+                              ]} 
+                              onPress={() => setJoinModalVisible(true)}
+                            >
+                              <MaterialCommunityIcons name="account-multiple-plus" size={16} color={Colors.primary} />
+                              <Text style={styles.joinFlowChipText}>{t('flow.join_shared_flow_btn')}</Text>
+                            </Pressable>
+                          )}
                         </View>
-                        {user && (
-                          <Pressable style={{ marginTop: 8, alignSelf: 'flex-start' }} onPress={() => setJoinModalVisible(true)}>
-                            <Text style={{ color: Colors.primary, fontSize: 13, fontWeight: '600' }}>+ 공유 플로우 참여</Text>
-                          </Pressable>
-                        )}
                       </View>
 
                       {!isPremium && !topAdHidden ? (
@@ -2770,10 +3041,16 @@ const FlowScreen = ({ navigation, route }) => {
           animationType="slide"
           onRequestClose={() => setInviteModalVisible(false)}
         >
-          <Pressable style={styles.flowMenuOverlay} onPress={() => setInviteModalVisible(false)}>
+          <View style={styles.flowMenuOverlay}>
+            {/* 배경 오버레이 - 카드와 형제 관계로 분리하여 터치 충돌 방지 */}
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setInviteModalVisible(false)}
+            />
+            {/* 카드 - 중앙 정렬 팝업 스타일로 복구 */}
             <View style={[styles.flowMenuCard, { maxHeight: '85%' }]}>
               <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-                <Text style={styles.flowMenuTitle}>멤버 초대 / 관리</Text>
+                <Text style={styles.flowMenuTitle}>{t('flow.manage_members')}</Text>
                 <View style={styles.flowMenuDivider} />
 
                 {/* 역할 선택 */}
@@ -2785,10 +3062,14 @@ const FlowScreen = ({ navigation, route }) => {
                         inviteRole === role
                           ? { backgroundColor: Colors.primary, borderColor: Colors.primary }
                           : { borderColor: Colors.outlineVariant }]}
-                      onPress={() => setInviteRole(role)}
+                      onPress={() => {
+                        if (isGeneratingCode) return;
+                        setInviteRole(role);
+                        if (inviteCode) handleGenerateCode(role);
+                      }}
                     >
                       <Text style={{ color: inviteRole === role ? 'white' : Colors.onBackground, fontWeight: '600', fontSize: 13 }}>
-                        {role === 'viewer' ? '뷰어 (읽기전용)' : '에디터 (편집가능)'}
+                        {role === 'viewer' ? t('flow.viewer') : t('flow.editor')}
                       </Text>
                     </Pressable>
                   ))}
@@ -2799,58 +3080,147 @@ const FlowScreen = ({ navigation, route }) => {
                   {inviteCode ? (
                     <>
                       <Text style={{ fontSize: 38, fontWeight: '800', letterSpacing: 10, color: Colors.onBackground, fontVariant: ['tabular-nums'] }}>{inviteCode}</Text>
-                      <Text style={{ color: Colors.outline, fontSize: 12, marginTop: 6 }}>유효기간 7일 · {inviteRole === 'viewer' ? '읽기 전용' : '편집 가능'}</Text>
+                      <Text style={{ color: Colors.outline, fontSize: 12, marginTop: 6 }}>{t('flow.valid_7_days')} · {inviteRole === 'viewer' ? t('flow.viewer_only') : t('flow.editable')}</Text>
                       <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
-                        <Pressable onPress={() => Share.share({ message: `플로우 초대 코드: ${inviteCode}\n앱에서 "공유 플로우 참여"를 탭하고 코드를 입력하세요.` })}>
-                          <Text style={{ color: Colors.primary, fontWeight: '600' }}>공유</Text>
+                        <Pressable onPress={() => Share.share({ message: t('flow.share_code_msg', { code: inviteCode }) })}>
+                          <Text style={{ color: Colors.primary, fontWeight: '600' }}>{t('flow.share_btn')}</Text>
                         </Pressable>
                         <Pressable onPress={handleInvalidateCode}>
-                          <Text style={{ color: Colors.error, fontWeight: '600' }}>코드 삭제</Text>
+                          <Text style={{ color: Colors.error, fontWeight: '600' }}>{t('flow.remove_code')}</Text>
                         </Pressable>
                       </View>
                     </>
                   ) : (
-                    <Text style={{ color: Colors.outline, fontSize: 14 }}>활성 초대 코드가 없습니다</Text>
+                    <Text style={{ color: Colors.outline, fontSize: 14 }}>{t('flow.no_active_code')}</Text>
                   )}
                 </View>
 
                 {/* 코드 생성 버튼 */}
                 <Pressable
                   style={({ pressed }) => [{ marginHorizontal: 16, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: (pressed || isGeneratingCode) ? 0.7 : 1 }]}
-                  onPress={handleGenerateCode}
+                  onPress={() => handleGenerateCode()}
                   disabled={isGeneratingCode}
                 >
                   {isGeneratingCode
                     ? <ActivityIndicator color="white" />
-                    : <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{inviteCode ? '코드 재발급' : '초대 코드 생성'}</Text>}
+                    : <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{inviteCode ? t('flow.regenerate_code') : t('flow.generate_code')}</Text>}
                 </Pressable>
 
-                {/* 현재 멤버 목록 */}
-                <View style={styles.flowMenuDivider} />
-                <Text style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8, fontWeight: '700', color: Colors.onBackground, fontSize: 14 }}>현재 멤버</Text>
+                {/* 현재 멤버 목록 영역 - 구분감 강화 */}
+                <View style={{ marginTop: 24, backgroundColor: Colors.surfaceVariant + '30', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 }}>
+                    <Text style={{ fontWeight: '800', color: Colors.onBackground, fontSize: 15 }}>{t('flow.current_members')}</Text>
+                    <TouchableOpacity 
+                      onPress={handleShowPermissionInfo} 
+                      style={{ 
+                        width: 40, 
+                        height: 40, 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        marginRight: -12
+                      }}
+                      activeOpacity={0.6}
+                    >
+                      <Info size={18} color={Colors.outline} />
+                    </TouchableOpacity>
+                  </View>
                 {isMembersLoading ? (
                   <ActivityIndicator style={{ padding: 16 }} color={Colors.primary} />
                 ) : flowMembers.length === 0 ? (
-                  <Text style={{ paddingHorizontal: 16, paddingBottom: 16, color: Colors.outline, fontSize: 13 }}>아직 참여한 멤버가 없습니다</Text>
+                  <Text style={{ paddingHorizontal: 16, paddingBottom: 16, color: Colors.outline, fontSize: 13 }}>{t('flow.no_members')}</Text>
                 ) : (
                   flowMembers.map(member => (
-                    <View key={member.uid} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
-                      <View>
-                        <Text style={{ color: Colors.onBackground, fontSize: 13, fontWeight: '500' }}>
-                          {member.uid.length > 12 ? `${member.uid.substring(0, 12)}...` : member.uid}
-                        </Text>
-                        <Text style={{ color: Colors.outline, fontSize: 11, marginTop: 2 }}>{member.role === 'viewer' ? '뷰어' : '에디터'}</Text>
+                    <View key={member.uid} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant + '20' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flex: 1, marginRight: 10 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.onBackground }}>
+                            {member.displayName} 
+                            {member.uid === (selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId) && (
+                              <Text style={{ color: Colors.primary }}> {t('flow.owner_label')}</Text>
+                            )}
+                            {member.uid === user?.uid && (
+                              <Text style={{ color: Colors.outline }}> {t('flow.you_label')}</Text>
+                            )}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: Colors.outline, marginTop: 2 }}>
+                            {member.role === 'owner' ? t('flow.owner_short') : (member.role === 'editor' ? t('flow.editor_short') : t('flow.viewer_short'))}
+                          </Text>
+                        </View>
+                        {isFlowOwner(selectedFlow) && (
+                          <TouchableOpacity
+                            onPress={() => handleRemoveMember(member.uid)}
+                            style={{ 
+                              width: 40, 
+                              height: 40, 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              marginRight: -8
+                            }}
+                            activeOpacity={0.6}
+                          >
+                            <X size={22} color={Colors.error} />
+                          </TouchableOpacity>
+                        )}
                       </View>
-                      <Pressable onPress={() => handleRemoveMember(member.uid)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                        <X size={16} color={Colors.error} />
-                      </Pressable>
+
+                      {/* 권한 체크박스 섹션 (오너만 조절 가능) */}
+                      {isFlowOwner(selectedFlow) && (() => {
+                        const perms = pendingPermissions[member.uid] ?? member.permissions;
+                        const isDirty = !!pendingPermissions[member.uid];
+                        const isApplying = !!applyingPermissions[member.uid];
+                        return (
+                          <View style={{ marginTop: 12 }}>
+                            <View style={{ flexDirection: 'row', gap: 16 }}>
+                              {[
+                                { key: 'edit', label: t('flow.perm_edit') },
+                                { key: 'manageComments', label: t('flow.perm_comments') }
+                              ].map(perm => (
+                                <Pressable
+                                  key={perm.key}
+                                  onPress={() => handleTogglePermission(member.uid, perm.key)}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                                >
+                                  <View style={{
+                                    width: 20, height: 20, borderRadius: 4, borderWidth: 1.5,
+                                    borderColor: perms[perm.key] ? Colors.primary : Colors.outlineVariant,
+                                    backgroundColor: perms[perm.key] ? Colors.primary : 'transparent',
+                                    alignItems: 'center', justifyContent: 'center'
+                                  }}>
+                                    {perms[perm.key] && <Check size={14} color="white" strokeWidth={3} />}
+                                  </View>
+                                  <Text style={{ fontSize: 13, fontWeight: '600', color: perms[perm.key] ? Colors.onBackground : Colors.outline }}>{perm.label}</Text>
+                                </Pressable>
+                              ))}
+                            </View>
+                            {isDirty && (
+                              <Pressable
+                                onPress={() => handleApplyPermissions(member.uid)}
+                                disabled={isApplying}
+                                style={({ pressed }) => ({
+                                  marginTop: 10, alignSelf: 'flex-start',
+                                  backgroundColor: Colors.primary, borderRadius: 8,
+                                  paddingHorizontal: 14, paddingVertical: 6,
+                                  opacity: pressed || isApplying ? 0.6 : 1,
+                                })}
+                              >
+                                {isApplying
+                                  ? <ActivityIndicator size="small" color="white" />
+                                  : <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>적용</Text>}
+                              </Pressable>
+                            )}
+                          </View>
+                        );
+                      })()}
                     </View>
                   ))
                 )}
+                </View>
                 <View style={{ height: 20 }} />
               </ScrollView>
+              {/* iOS 더블 모달 이슈 해결을 위해 모달 내부에도 컨펌 모달 배치 */}
+              {renderConfirmModal()}
             </View>
-          </Pressable>
+          </View>
         </Modal>
 
         {/* 공유 플로우 참여 모달 */}
@@ -2862,10 +3232,10 @@ const FlowScreen = ({ navigation, route }) => {
         >
           <Pressable style={styles.flowMenuOverlay} onPress={() => { setJoinModalVisible(false); setJoinCode(''); }}>
             <View style={styles.flowMenuCard}>
-              <Text style={styles.flowMenuTitle}>공유 플로우 참여</Text>
+              <Text style={styles.flowMenuTitle}>{t('flow.join_shared_flow')}</Text>
               <View style={styles.flowMenuDivider} />
               <View style={{ padding: 16 }}>
-                <Text style={{ color: Colors.outline, fontSize: 13, marginBottom: 12 }}>친구에게 받은 6자리 초대 코드를 입력하세요</Text>
+                <Text style={{ color: Colors.outline, fontSize: 13, marginBottom: 12 }}>{t('flow.enter_invite_code')}</Text>
                 <TextInput
                   style={{
                     borderWidth: 1.5, borderColor: joinCode.length === 6 ? Colors.primary : Colors.outlineVariant,
@@ -2891,7 +3261,7 @@ const FlowScreen = ({ navigation, route }) => {
                 >
                   {isJoining
                     ? <ActivityIndicator color="white" />
-                    : <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>참여하기</Text>}
+                    : <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{t('flow.join')}</Text>}
                 </Pressable>
               </View>
             </View>
@@ -2928,7 +3298,7 @@ const FlowScreen = ({ navigation, route }) => {
                     onPress={handleOpenInvite}
                   >
                     <Users size={18} color={Colors.primary} />
-                    <Text style={styles.flowMenuItemText}>멤버 초대 / 관리</Text>
+                    <Text style={styles.flowMenuItemText}>{t('flow.manage_members')}</Text>
                   </Pressable>
                 </>
               )}
@@ -2970,6 +3340,8 @@ const FlowScreen = ({ navigation, route }) => {
             </View>
           </Pressable>
         </Modal>
+
+        {renderConfirmModal()}
       </View>
     </GestureHandlerRootView>
   );
@@ -3258,13 +3630,87 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.onBackground,
   },
-  commentsContainer: { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.03)' },
-  commentBubble: { alignSelf: 'flex-start', backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, marginBottom: 4 },
+  commentsContainer: { marginTop: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingBottom: 2 },
+  commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, marginBottom: 4 },
   commentText: { fontSize: 13, color: Colors.onSurfaceVariant },
   commentAuthor: { fontWeight: '800', color: Colors.primary },
-  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 },
+  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
   commentInput: { flex: 1, backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: Colors.onBackground, borderWidth: 1, borderColor: Colors.outlineVariant },
   commentSendBtn: { padding: 6 },
+  commentWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 },
+  commentDeleteBtn: { padding: 4, opacity: 0.6 },
+  commentToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start', paddingVertical: 2, paddingHorizontal: 2 },
+  commentCountText: { fontSize: 13, fontWeight: '600' },
+  joinFlowChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '15', 
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  joinFlowChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  
+  // Confirm Modal Styles
+  confirmModal: {
+    width: width * 0.8,
+    backgroundColor: 'white',
+    borderRadius: 24,
+    padding: 24,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20 },
+      android: { elevation: 12 }
+    }),
+  },
+  confirmTitle: {
+    ...Typography.h2,
+    fontSize: 20,
+    color: Colors.onBackground,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  confirmMessage: {
+    ...Typography.body,
+    fontSize: 15,
+    color: Colors.onSurfaceVariant,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+  confirmCancelText: {
+    ...Typography.body,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+  },
+  confirmText: {
+    ...Typography.body,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  confirmDestructiveText: {
+    ...Typography.body,
+    fontWeight: '700',
+    color: 'white',
+  },
 });
 
 export default FlowScreen;
