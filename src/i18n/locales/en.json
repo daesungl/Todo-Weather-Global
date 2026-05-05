@@ -11,6 +11,7 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "delete": "Delete",
+    "leave": "Leave",
     "info": "Info",
     "close": "Close",
     "done": "Done",
@@ -36,7 +37,8 @@
     "select_date": "Select Date",
     "go_to_today": "Go to Today",
     "success": "Success",
-    "error": "Error"
+    "error": "Error",
+    "apply": "Apply"
   },
   "auth": {
     "loginTitle": "Login",
@@ -414,6 +416,9 @@
     "no_active_code": "No active invite code",
     "enter_invite_code": "Enter the 6-digit invite code",
     "share_code_msg": "Flow Invite Code: {{code}}\nTap 'Join Shared Flow' in the app and enter this code.",
+    "permission_info_title": "Permission Information",
+    "permission_edit_desc": "Edit: Add, modify, or delete flow steps.",
+    "permission_comment_desc": "Manage Comments: Delete any member's comments, not just your own.",
     "alert": {
       "title_required": "Title Required",
       "title_required_msg": "Please enter a title for this journey.",
@@ -436,6 +441,7 @@
       "delete_comment_msg": "Are you sure you want to delete this comment?",
       "kick_member": "Kick Member",
       "kick_member_msg": "Are you sure you want to kick this member from the flow?",
+      "only_owner_can_kick": "Only the owner can remove members.",
       "leave_flow": "Leave Flow",
       "leave_flow_msg": "You will leave this shared flow. You can rejoin using the invite code.",
       "kicked_msg": "You have been removed from this flow by the owner.",

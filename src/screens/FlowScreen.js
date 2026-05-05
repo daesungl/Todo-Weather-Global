@@ -635,7 +635,7 @@ const FlowScreen = ({ navigation, route }) => {
 
   const handleRemoveMember = async (memberUid) => {
     if (!isFlowOwner(selectedFlow)) {
-      showConfirm(t('common.error'), '멤버 강퇴 권한은 오너에게만 있습니다.', null, false);
+      showConfirm(t('common.error'), t('flow.alert.only_owner_can_kick', 'Only the owner can remove members.'), null, false);
       return;
     }
     showConfirm(
@@ -650,7 +650,7 @@ const FlowScreen = ({ navigation, route }) => {
         }
       },
       true,
-      '내보내기'
+      t('common.confirm', 'Confirm')
     );
   };
 
@@ -1655,7 +1655,7 @@ const FlowScreen = ({ navigation, route }) => {
           }
         },
         true,
-        '나가기'
+        t('common.leave')
       );
     }
   };
@@ -2268,7 +2268,7 @@ const FlowScreen = ({ navigation, route }) => {
                         {flow.inactive ? (
                           <View style={styles.flowCardLocked}>
                             <LinearGradient colors={['#9ca3af', '#6b7280']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.flowCard, { opacity: 0.7 }]}>
-                              <BorderlessButton
+                              <TouchableOpacity
                                 onPress={() => {
                                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                                   handleDeleteFlow(flow.id);
@@ -2277,7 +2277,7 @@ const FlowScreen = ({ navigation, route }) => {
                                 style={styles.deleteBtnAbsolute}
                               >
                                 <Trash2 size={18} color="rgba(255,255,255,0.8)" />
-                              </BorderlessButton>
+                              </TouchableOpacity>
                               <View style={styles.cardMainArea}>
                                 <Text style={styles.cardTitle} numberOfLines={2}>{flow.title}</Text>
                                 <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{getLocalizedPeriod(flow.period)}</Text></View>
@@ -2302,7 +2302,7 @@ const FlowScreen = ({ navigation, route }) => {
                           delayLongPress={250}
                         >
                           <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
-                            <BorderlessButton
+                            <TouchableOpacity
                               onPress={() => {
                                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                                 handleDeleteFlow(flow.id);
@@ -2313,7 +2313,7 @@ const FlowScreen = ({ navigation, route }) => {
                               {isFlowOwner(flow)
                                 ? <Trash2 size={18} color="rgba(255,255,255,0.8)" />
                                 : <LogOut size={18} color="rgba(255,255,255,0.8)" />}
-                            </BorderlessButton>
+                            </TouchableOpacity>
 
                             <View style={styles.cardMainArea}>
                               {/* Shared flow badge */}
@@ -3205,7 +3205,7 @@ const FlowScreen = ({ navigation, route }) => {
                               >
                                 {isApplying
                                   ? <ActivityIndicator size="small" color="white" />
-                                  : <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>적용</Text>}
+                                  : <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>{t('common.apply', 'Apply')}</Text>}
                               </Pressable>
                             )}
                           </View>
@@ -3286,7 +3286,7 @@ const FlowScreen = ({ navigation, route }) => {
                 onPress={() => { setFlowMenuVisible(false); handleShareFlowImage(); }}
               >
                 <Share2 size={18} color={Colors.primary} />
-                <Text style={styles.flowMenuItemText}>{t('flow.share_as_image', '이미지로 공유')}</Text>
+                <Text style={styles.flowMenuItemText}>{t('flow.share_as_image', 'Share as Image')}</Text>
               </Pressable>
 
               {/* 멤버 초대 — 오너만 */}
@@ -3334,7 +3334,7 @@ const FlowScreen = ({ navigation, route }) => {
                   onPress={() => { setFlowMenuVisible(false); handleDeleteFlow(selectedFlow?.id); }}
                 >
                   <LogOut size={18} color={Colors.error} />
-                  <Text style={[styles.flowMenuItemText, { color: Colors.error }]}>플로우 나가기</Text>
+                  <Text style={[styles.flowMenuItemText, { color: Colors.error }]}>{t('flow.alert.leave_flow', 'Leave Flow')}</Text>
                 </Pressable>
               )}
             </View>

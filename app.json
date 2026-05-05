@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "27",
+      "buildNumber": "28",
       "newArchEnabled": true,
       "infoPlist": {
         "CFBundleLocalizations": [
@@ -42,7 +42,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",
-      "versionCode": 3,
+      "versionCode": 5,
       "googleServicesFile": "./google-services.json",
       "notification": {
         "color": "#b2ebf2"
@@ -76,7 +76,6 @@
             "useFrameworks": "static"
           }
         }
-
       ],
       [
         "@react-native-firebase/app",
