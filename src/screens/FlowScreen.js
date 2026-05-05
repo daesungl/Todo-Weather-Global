@@ -51,8 +51,9 @@ import {
   Users,
   LogOut,
   MessageCircle,
+  ArrowUp,
+  ArrowUpCircle,
   UserMinus,
-  Send,
   Info,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -194,6 +195,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [editActivity, setEditActivity] = useState('');
   const [editMemo, setEditMemo] = useState('');
   const [pickerType, setPickerType] = useState(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
   const pickerBackupRef = useRef({ editDate: '', editTime: '', editEndDate: '', editEndTime: '' });
 
   // Step Repeat State
@@ -572,6 +574,17 @@ const FlowScreen = ({ navigation, route }) => {
 
   const handleOpenInvite = async () => {
     setFlowMenuVisible(false);
+    
+    if (!user) {
+      showConfirm(
+        t('common.login_required'),
+        t('common.login_required_msg'),
+        () => navigation.navigate('Login'),
+        true
+      );
+      return;
+    }
+
     setInviteCode(selectedFlow.inviteCode || '');
     setInviteRole(selectedFlow.inviteRole || 'viewer');
     setFlowMembers([]);
@@ -696,23 +709,28 @@ const FlowScreen = ({ navigation, route }) => {
     try {
       const result = await joinFlowByCode(user.uid, joinCode, user.displayName || user.email || '');
       const alreadyExists = flows.some(f => f.id === result.flowId);
-      
+
+      setJoinCode('');
+      setJoinModalVisible(false);
+
       if (alreadyExists) {
         showConfirm(
-          t('flow.alert.already_member'), 
+          t('flow.alert.already_member'),
           `"${result.flowTitle || ''}" ${t('flow.alert.already_member_msg')}`,
           null, false
         );
       } else {
+        const titleLabel = result.flowTitle ? `"${result.flowTitle}"` : t('flow.alert.join_success');
         showConfirm(
-          t('flow.alert.join_success'), 
-          `"${result.flowTitle}"${t('flow.alert.join_success_msg')}`,
+          t('flow.alert.join_success'),
+          `${titleLabel}${t('flow.alert.join_success_msg')}`,
           null, false
         );
       }
-      setJoinCode('');
-      setJoinModalVisible(false);
     } catch (e) {
+      // 에러 모달이 join 모달 위에 겹치면 iOS에서 표시 안 됨 — 먼저 닫기
+      setJoinModalVisible(false);
+      setJoinCode('');
       const msgMap = {
         'INVALID_CODE': t('flow.alert.invalid_code'),
         'EXPIRED_CODE': t('flow.alert.expired_code'),
@@ -1963,13 +1981,24 @@ const FlowScreen = ({ navigation, route }) => {
           </View>
 
           <View style={styles.headerCenter}>
-            <Text style={styles.detailHeaderTitle} numberOfLines={1}>{selectedFlow.title}</Text>
-            {!isFlowOwner(selectedFlow) && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
-                <Users size={10} color={Colors.outline} />
-                <Text style={{ fontSize: 11, color: Colors.outline }}>{selectedFlow._role}</Text>
-              </View>
-            )}
+            <Animated.View 
+              style={{ 
+                opacity: scrollY.interpolate({
+                  inputRange: [40, 80],
+                  outputRange: [0, 1],
+                  extrapolate: 'clamp'
+                }),
+                alignItems: 'center'
+              }}
+            >
+              <Text style={styles.detailHeaderTitle} numberOfLines={1}>{selectedFlow.title}</Text>
+              {!isFlowOwner(selectedFlow) && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 }}>
+                  <Users size={10} color={Colors.outline} />
+                  <Text style={{ fontSize: 10, color: Colors.outline }}>{selectedFlow._role}</Text>
+                </View>
+              )}
+            </Animated.View>
           </View>
 
           <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
@@ -1998,12 +2027,28 @@ const FlowScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
-          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background, padding: 20, borderRadius: 24 }}>
-            {/* 공유 이미지 전용 헤더 (제목 추가) */}
-            <View style={{ marginBottom: 24 }}>
-              <Text style={{ ...Typography.h1, fontSize: 28, color: Colors.onBackground, marginBottom: 4 }}>{selectedFlow.title}</Text>
-              <Text style={styles.heroDate}>{getLocalizedPeriod(selectedFlow.period)}</Text>
+        <Animated.ScrollView 
+          showsVerticalScrollIndicator={false} 
+          contentContainerStyle={styles.detailContent}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          scrollEventThrottle={16}
+        >
+          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background, padding: 12, borderRadius: 24 }}>
+            {/* 히어로 섹션: 제목과 정보 통합 */}
+            <View style={{ marginBottom: 24, paddingHorizontal: 4 }}>
+              <Text style={{ ...Typography.h1, fontSize: 32, color: Colors.onBackground, marginBottom: 6, fontWeight: '900', letterSpacing: -1 }}>{selectedFlow.title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={[styles.heroDate, { color: Colors.primary, fontWeight: '800' }]}>{getLocalizedPeriod(selectedFlow.period)}</Text>
+                {!isFlowOwner(selectedFlow) && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '10', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                    <Users size={12} color={Colors.primary} />
+                    <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '700' }}>{selectedFlow._role}</Text>
+                  </View>
+                )}
+              </View>
             </View>
 
             {!!selectedFlow.location && selectedFlow.location !== 'No Region' && (
@@ -2079,7 +2124,7 @@ const FlowScreen = ({ navigation, route }) => {
                               onPress={canEditSteps(selectedFlow) ? () => openEditStep(step) : undefined}
                             >
                               <View style={styles.stepHeader}>
-                                <View style={{ flex: 1 }}>
+                                <View style={{ flex: 1, marginRight: 10 }}>
                                   <Text style={[styles.stepTime, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                     <Text style={styles.stepActivity} numberOfLines={2}>
@@ -2094,6 +2139,18 @@ const FlowScreen = ({ navigation, route }) => {
                                   </View>
                                   {step.memo ? <Text style={styles.stepMemo} numberOfLines={2} ellipsizeMode="tail">{step.memo}</Text> : null}
                                 </View>
+
+                                {step.weather && (
+                                  <Pressable 
+                                    onPress={(e) => { e.stopPropagation(); handleWeatherIconPress(step); }}
+                                    style={styles.stepWeatherMini}
+                                  >
+                                    {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 24, Colors.primary, getStepIsDay(step))}
+                                    {step.weather.temp !== undefined && (
+                                      <Text style={styles.stepWeatherTemp}>{formatTemp(step.weather.temp)}</Text>
+                                    )}
+                                  </Pressable>
+                                )}
                               </View>
 
                               {/* Comments Section — Instagram style */}
@@ -2108,9 +2165,9 @@ const FlowScreen = ({ navigation, route }) => {
                                     <Pressable
                                       onPress={(e) => { e.stopPropagation(); toggleComments(step.id, e); }}
                                       style={({ pressed }) => [styles.commentToggleBtn, pressed && { opacity: 0.6 }]}
-                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                     >
-                                      <MessageCircle size={16} color={count > 0 ? Colors.primary : Colors.outline} />
+                                      <MessageCircle size={20} color={count > 0 ? Colors.primary : Colors.outline} strokeWidth={2.2} />
                                       {count > 0 && (
                                         <Text style={[styles.commentCountText, { color: Colors.primary }]}>{count}</Text>
                                       )}
@@ -2157,7 +2214,11 @@ const FlowScreen = ({ navigation, route }) => {
                                               disabled={!commentInputs[step.id]?.trim() || isPostingComment}
                                               style={styles.commentSendBtn}
                                             >
-                                              <Send size={16} color={commentInputs[step.id]?.trim() ? Colors.primary : Colors.outline} />
+                                              <ArrowUpCircle 
+                                                size={28} 
+                                                color={commentInputs[step.id]?.trim() ? Colors.primary : Colors.outline} 
+                                                strokeWidth={2.2}
+                                              />
                                             </GHButton>
                                           </View>
                                         )}
@@ -2167,17 +2228,6 @@ const FlowScreen = ({ navigation, route }) => {
                                 );
                               })()}
                             </Pressable>
-                            {step.weather && (
-                              <GHButton
-                                onPress={() => handleWeatherIconPress(step)}
-                                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-                                style={{ paddingHorizontal: 10, paddingVertical: 8, marginLeft: 4 }}
-                              >
-                                <View pointerEvents="none">
-                                  {renderWeatherIcon(typeof step.weather === 'object' ? step.weather.condKey : 'sunny', 22, Colors.primary, getStepIsDay(step))}
-                                </View>
-                              </GHButton>
-                            )}
                           </View>
                         )}
                       </View>
@@ -2199,7 +2249,7 @@ const FlowScreen = ({ navigation, route }) => {
             </View>
           </ViewShot>
 
-        </ScrollView>
+        </Animated.ScrollView>
 
         {/* Floating Add Step Button — hidden for viewers */}
         {canEditSteps(selectedFlow) && (
@@ -2373,18 +2423,27 @@ const FlowScreen = ({ navigation, route }) => {
                             <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Flows')}</Text>
                             <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Curated journeys')}</Text>
                           </View>
-                          {user && (
-                            <Pressable 
-                              style={({ pressed }) => [
-                                styles.joinFlowChip,
-                                { opacity: pressed ? 0.7 : 1 }
-                              ]} 
-                              onPress={() => setJoinModalVisible(true)}
-                            >
-                              <MaterialCommunityIcons name="account-multiple-plus" size={16} color={Colors.primary} />
-                              <Text style={styles.joinFlowChipText}>{t('flow.join_shared_flow_btn')}</Text>
-                            </Pressable>
-                          )}
+                          <Pressable 
+                            style={({ pressed }) => [
+                              styles.joinFlowChip,
+                              { opacity: pressed ? 0.7 : 1 }
+                            ]} 
+                            onPress={() => {
+                              if (!user) {
+                                showConfirm(
+                                  t('common.login_required'),
+                                  t('common.login_required_msg'),
+                                  () => navigation.navigate('Login'),
+                                  true
+                                );
+                                return;
+                              }
+                              setJoinModalVisible(true);
+                            }}
+                          >
+                            <MaterialCommunityIcons name="account-multiple-plus" size={16} color={Colors.primary} />
+                            <Text style={styles.joinFlowChipText}>{t('flow.join_shared_flow_btn')}</Text>
+                          </Pressable>
                         </View>
                       </View>
 
@@ -3290,7 +3349,7 @@ const FlowScreen = ({ navigation, route }) => {
               </Pressable>
 
               {/* 멤버 초대 — 오너만 */}
-              {isFlowOwner(selectedFlow) && user && (
+              {isFlowOwner(selectedFlow) && (
                 <>
                   <View style={styles.flowMenuDivider} />
                   <Pressable
@@ -3391,7 +3450,7 @@ const styles = StyleSheet.create({
   headerRight: { width: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   detailHeaderTitle: { ...Typography.h3, fontSize: 17, color: Colors.onBackground, textAlign: 'center' },
   iconBtn: { padding: 8 },
-  detailContent: { paddingHorizontal: Spacing.sm, paddingBottom: 200, paddingTop: Spacing.sm },
+  detailContent: { paddingHorizontal: 4, paddingBottom: 200, paddingTop: Spacing.sm },
   heroSection: { marginBottom: Spacing.xl },
   heroDate: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
   heroLocationRow: { 
@@ -3407,16 +3466,16 @@ const styles = StyleSheet.create({
   dayBadge: { backgroundColor: Colors.primary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginRight: 8 },
   dayBadgeText: { ...Typography.labelSmall, color: 'white', fontWeight: '800' },
   dayDateText: { ...Typography.bodyLarge, fontWeight: '800', color: Colors.onBackground },
-  stepRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 14 },
-  timelineCol: { width: 18, alignItems: 'center' },
-  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.outlineVariant, marginTop: 18, borderWidth: 2, borderColor: 'white' },
+  stepRow: { flexDirection: 'row', paddingHorizontal: 2, marginBottom: 14 },
+  timelineCol: { width: 10, alignItems: 'center' },
+  timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.outlineVariant, marginTop: 18, borderWidth: 1.5, borderColor: 'white' },
   dotCurrent: { backgroundColor: Colors.primary, width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: 'rgba(0, 102, 138, 0.2)' },
   dotCompleted: { backgroundColor: Colors.secondary },
   timelineLine: { width: 2, flex: 1, backgroundColor: Colors.outlineVariant, opacity: 0.3, marginVertical: 4 },
   stepInfoCard: {
-    backgroundColor: 'white', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 14, marginLeft: 6, marginBottom: Spacing.sm, minHeight: 68, justifyContent: 'center',
+    backgroundColor: 'white', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 14, marginLeft: 8, marginBottom: Spacing.xs, minHeight: 74, justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)',
-    ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 8 }, android: { elevation: 2 } })
+    ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 12 }, android: { elevation: 2 } })
   },
   deleteBtnInner: {
     padding: 6,
@@ -3427,10 +3486,12 @@ const styles = StyleSheet.create({
   },
   activeStepCard: { borderColor: 'rgba(0, 102, 138, 0.15)', ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20 }, android: { elevation: 6 } }) },
   warningStepCard: { borderWidth: 1.5, borderColor: 'rgba(239, 68, 68, 0.2)' },
-  stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  stepActivity: { ...Typography.h3, fontSize: 16, color: Colors.onBackground, fontWeight: '700', letterSpacing: -0.3, marginTop: 2 },
-  stepTime: { fontSize: 12, color: Colors.primary, fontWeight: '800', letterSpacing: 0.5 },
-  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 6, lineHeight: 18 },
+  stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stepActivity: { ...Typography.h3, fontSize: 18, color: Colors.onBackground, fontWeight: '800', letterSpacing: -0.5, marginTop: 1 },
+  stepTime: { fontSize: 11.5, color: Colors.primary, fontWeight: '800', letterSpacing: 0.6, marginBottom: 2 },
+  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 10, lineHeight: 22, fontSize: 15.5 },
+  stepWeatherMini: { alignItems: 'center', justifyContent: 'center', paddingLeft: 10, minWidth: 40 },
+  stepWeatherTemp: { fontSize: 13.5, fontWeight: '800', color: Colors.onBackground, marginTop: 1 },
   repeatStepBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '18', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
   repeatStepBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.primary },
   stepRepeatPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 8 },
@@ -3634,13 +3695,29 @@ const styles = StyleSheet.create({
   commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, marginBottom: 4 },
   commentText: { fontSize: 13, color: Colors.onSurfaceVariant },
   commentAuthor: { fontWeight: '800', color: Colors.primary },
-  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
-  commentInput: { flex: 1, backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: Colors.onBackground, borderWidth: 1, borderColor: Colors.outlineVariant },
-  commentSendBtn: { padding: 6 },
-  commentWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 },
+  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8 },
+  commentInput: { 
+    flex: 1, 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 14, 
+    paddingHorizontal: 14, 
+    height: 44,
+    fontSize: 14, 
+    color: Colors.onBackground, 
+    borderWidth: 1, 
+    borderColor: Colors.outlineVariant,
+    textAlignVertical: 'center',
+    paddingVertical: Platform.OS === 'ios' ? 12 : 0,
+  },
+  commentSendBtn: { 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    marginLeft: 4
+  },
+  commentWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 6 },
   commentDeleteBtn: { padding: 4, opacity: 0.6 },
-  commentToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start', paddingVertical: 2, paddingHorizontal: 2 },
-  commentCountText: { fontSize: 13, fontWeight: '600' },
+  commentToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 4 },
+  commentCountText: { fontSize: 14, fontWeight: '700' },
   joinFlowChip: {
     flexDirection: 'row',
     alignItems: 'center',

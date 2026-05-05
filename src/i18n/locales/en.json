@@ -40,7 +40,9 @@
     "go_to_today": "Go to Today",
     "success": "Success",
     "error": "Error",
-    "apply": "Apply"
+    "apply": "Apply",
+    "login_required": "Login Required",
+    "login_required_msg": "This feature requires login. Would you like to go to the login screen?"
   },
   "auth": {
     "loginTitle": "Login",

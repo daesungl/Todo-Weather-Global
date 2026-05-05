@@ -5,5 +5,10 @@ module.exports = function(api) {
     plugins: [
       'react-native-reanimated/plugin', // @react-navigation/stack에 필요
     ],
+    env: {
+      production: {
+        plugins: ['transform-remove-console'],
+      },
+    },
   };
 };

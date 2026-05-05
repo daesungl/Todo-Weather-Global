@@ -40,7 +40,9 @@
     "go_to_today": "오늘로 이동",
     "success": "성공",
     "error": "오류",
-    "apply": "적용"
+    "apply": "적용",
+    "login_required": "로그인 필요",
+    "login_required_msg": "로그인이 필요한 기능입니다. 로그인 화면으로 이동하시겠습니까?"
   },
   "auth": {
     "loginTitle": "로그인",

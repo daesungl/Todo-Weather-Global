@@ -332,7 +332,7 @@ export const updateFlowDoc = async (flow) => {
   );
   try {
     if (__DEV__) console.log(`[FlowSync] Attempting update on: users/${ownerUid}/flows/${id}`, cleanData);
-    await firestore().collection('users').doc(ownerUid).collection('flows').doc(id).update(cleanData);
+    await firestore().collection('users').doc(ownerUid).collection('flows').doc(id).set(cleanData, { merge: true });
     if (__DEV__) console.log('[FlowSync] Firestore update success for flow:', id);
   } catch (e) {
     if (__DEV__) {

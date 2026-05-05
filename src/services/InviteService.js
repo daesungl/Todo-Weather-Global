@@ -68,13 +68,22 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
   });
   await batch.commit();
 
+  // member doc이 Firestore rules에 반영되도록 짧게 대기 후 flow title 읽기
   let flowTitle = '';
-  try {
+  const readFlowTitle = async () => {
     const flowDoc = await firestore()
       .collection('users').doc(invite.ownerUid).collection('flows').doc(invite.flowId)
       .get();
     if (flowDoc.exists) flowTitle = flowDoc.data().title || '';
-  } catch (_) {}
+  };
+  try {
+    await readFlowTitle();
+  } catch (_) {
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      await readFlowTitle();
+    } catch (_2) {}
+  }
 
   return { flowId: invite.flowId, ownerUid: invite.ownerUid, role: invite.role, flowTitle };
 };
