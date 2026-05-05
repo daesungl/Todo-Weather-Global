@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
 
 const FLOWS_STORAGE_KEY = '@todo_weather_flows';
+const SHARED_FLOWS_STORAGE_KEY = '@todo_weather_shared_flows';
 const MIGRATION_KEY_PREFIX = '@flows_migrated_';
 
 let _userId = null;
@@ -31,6 +32,9 @@ const _mergeAndNotify = () => {
     ..._sharedFlowsData,
   ];
   _cachedFlows = merged;
+  if (_userId) {
+    AsyncStorage.setItem(SHARED_FLOWS_STORAGE_KEY, JSON.stringify(_sharedFlowsData)).catch(e => console.warn('[FlowSync] Failed to save shared flows:', e));
+  }
   _snapshotListeners.forEach(cb => cb(merged));
 };
 
@@ -40,7 +44,7 @@ const _saveToFirestore = async (uid, ownFlows) => {
 
   ownFlows.forEach((flow, index) => {
     const { id, ...data } = flow;
-    batch.set(col.doc(id), { ...data, order: index, ownerId: uid });
+    batch.set(col.doc(id), { ...data, order: index, ownerUid: uid });
   });
 
   // Diff only against _ownFlows (never attempt to delete shared flow docs)
@@ -108,9 +112,11 @@ const _startSharedFlowsSubscription = (uid) => {
       if (!currentIds.has(flowId)) {
         unsub();
         _sharedFlowListeners.delete(flowId);
-        _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
       }
     });
+
+    // CRUCIAL: Remove stale flows from data cache (handles case where app restarts and no listener exists yet)
+    _sharedFlowsData = _sharedFlowsData.filter(f => currentIds.has(f.id));
 
     // If all shared flows removed, notify immediately
     if (currentIds.size === 0 && _sharedFlowsData.length === 0) {
@@ -178,6 +184,15 @@ export const initFlowSync = async (uid) => {
   _sharedFlowListeners.clear();
 
   if (uid) {
+    try {
+      const sharedJson = await AsyncStorage.getItem(SHARED_FLOWS_STORAGE_KEY);
+      if (sharedJson) {
+        _sharedFlowsData = JSON.parse(sharedJson) || [];
+      }
+    } catch (e) {
+      console.warn('[FlowSync] Failed to load cached shared flows:', e);
+    }
+    
     await _migrateIfNeeded(uid);
     _startOwnFlowsSubscription(uid);
     _startSharedFlowsSubscription(uid);
@@ -237,9 +252,27 @@ export const removeSharedFlowOptimistic = (flowId) => {
 
 export const updateFlowDoc = async (flow) => {
   const ownerUid = flow._ownerUid || _userId;
-  if (!ownerUid) return;
+  if (__DEV__) {
+    console.log('[FlowSync] updateFlowDoc called', { 
+      flowId: flow.id, 
+      ownerUid, 
+      hasUserId: !!_userId,
+      hasOrder: flow.order !== undefined,
+      order: flow.order
+    });
+  }
+  if (!ownerUid) {
+    if (__DEV__) console.warn('[FlowSync] No ownerUid found for updateFlowDoc');
+    return;
+  }
   const { id, _ownerUid, _role, ...data } = flow;
-  await firestore().collection('users').doc(ownerUid).collection('flows').doc(id).update(data);
+  try {
+    await firestore().collection('users').doc(ownerUid).collection('flows').doc(id).update(data);
+    if (__DEV__) console.log('[FlowSync] Firestore update success for flow:', id);
+  } catch (e) {
+    if (__DEV__) console.error('[FlowSync] Firestore update FAILED:', e);
+    throw e;
+  }
 };
 
 // ─── FlowService-compatible API ───────────────────────────────────────────────
@@ -251,7 +284,10 @@ export const getFlows = async () => {
       const snapshot = await _flowsCollection(_userId).orderBy('order', 'asc').get();
       const flows = _flowsFromSnapshot(snapshot);
       _ownFlows = flows;
-      _cachedFlows = flows.map(f => ({ ...f, _role: 'owner' }));
+      _cachedFlows = [
+        ...flows.map(f => ({ ...f, _role: 'owner' })),
+        ..._sharedFlowsData
+      ];
       return _cachedFlows;
     } catch (e) {
       console.warn('[FlowSync] getFlows Firestore error, falling back:', e);
@@ -272,18 +308,21 @@ export const saveFlows = async (flows) => {
   const arr = Array.isArray(flows) ? flows : [];
   const ownFlows = arr.filter(f => !f._ownerUid).map(_stripMeta);
 
+  _ownFlows = ownFlows;
+  _mergeAndNotify();
+
   if (_userId) {
     try {
+      if (__DEV__) console.log('[FlowSync] saveFlows - Syncing to Firestore...', { count: ownFlows.length });
       await _saveToFirestore(_userId, ownFlows);
-      // return; // 제거: 로컬(AsyncStorage)에도 항상 최신 상태를 반영해야 앱 초기화 시 좀비 데이터가 안 살아남음
     } catch (e) {
-      console.warn('[FlowSync] saveFlows Firestore error, falling back:', e);
+      if (__DEV__) console.warn('[FlowSync] saveFlows Firestore error:', e);
     }
   }
   try {
     await AsyncStorage.setItem(FLOWS_STORAGE_KEY, JSON.stringify(ownFlows));
   } catch (e) {
-    console.error('[FlowSync] saveFlows AsyncStorage error:', e);
+    if (__DEV__) console.error('[FlowSync] saveFlows AsyncStorage error:', e);
   }
 };
 
@@ -302,18 +341,21 @@ export const deleteFlow = async (id) => {
 
   if (_userId) {
     try {
+      if (__DEV__) console.log('[FlowSync] deleteFlow - Deleting from Firestore...', { id });
       await _flowsCollection(_userId).doc(id).delete();
-      // return; // 제거: 로컬(AsyncStorage)에도 항상 반영하여 좀비 데이터 방지
+      if (__DEV__) console.log('[FlowSync] deleteFlow - Firestore deletion success.');
     } catch (e) {
-      console.warn('[FlowSync] deleteFlow Firestore error:', e);
+      if (__DEV__) console.warn('[FlowSync] deleteFlow Firestore error:', e);
     }
   }
   try {
     const json = await AsyncStorage.getItem(FLOWS_STORAGE_KEY);
     const data = json ? JSON.parse(json) : [];
-    await AsyncStorage.setItem(FLOWS_STORAGE_KEY, JSON.stringify(data.filter(f => f.id !== id)));
+    const filtered = data.filter(f => f.id !== id);
+    await AsyncStorage.setItem(FLOWS_STORAGE_KEY, JSON.stringify(filtered));
+    if (__DEV__) console.log('[FlowSync] deleteFlow - AsyncStorage update success.');
   } catch (e) {
-    console.error('[FlowSync] deleteFlow AsyncStorage error:', e);
+    if (__DEV__) console.error('[FlowSync] deleteFlow AsyncStorage error:', e);
   }
 };
 

@@ -38,6 +38,27 @@ service cloud.firestore {
           allow delete: if request.auth != null
             && (request.auth.uid == userId || request.auth.uid == memberUid);
         }
+
+        match /comments/{commentId} {
+          // Anyone who can read the flow can read comments
+          allow read: if request.auth != null
+            && (request.auth.uid == userId
+                || exists(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)));
+          
+          // Any member can create a comment
+          allow create: if request.auth != null
+            && (request.auth.uid == userId
+                || exists(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)));
+          
+          // Owner, Editor, or Author can delete
+          allow delete: if request.auth != null
+            && (request.auth.uid == userId
+                || request.auth.uid == resource.data.uid
+                || (exists(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid))
+                    && get(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)).data.role == 'editor'));
+          
+          allow update: if false; // Comments are immutable for simplicity
+        }
       }
 
       match /regions/{regionId} {
