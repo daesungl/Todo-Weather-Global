@@ -22,6 +22,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [syncLoading, setSyncLoading] = useState(false);
   const unsubscribeSnapshot = useRef(null);
   const isLoggingOutRef = useRef(false);
   const activeAuthUidRef = useRef(null);
@@ -57,6 +58,7 @@ export const AuthProvider = ({ children }) => {
           initTaskSync(null);
           auth().signOut().catch(() => {});
           setLoading(false);
+          setSyncLoading(false);
           return;
         }
 
@@ -90,11 +92,28 @@ export const AuthProvider = ({ children }) => {
           }
           if (!isCurrentAuthUser()) return;
 
-          await Promise.all([
+          setUser({
+            uid: currentUser.uid,
+            email: currentUser.email,
+            emailVerified: currentUser.emailVerified,
+            providerData: currentUser.providerData,
+            photoURL: currentUser.photoURL,
+            ...(doc.exists ? doc.data() : { displayName, profileImage }),
+          });
+          setLoading(false);
+
+          setSyncLoading(true);
+          Promise.all([
             initFlowSync(currentUser.uid),
             initRegionSync(currentUser.uid),
             initTaskSync(currentUser.uid),
-          ]);
+          ]).catch(error => {
+            if (isCurrentAuthUser()) {
+              console.warn('[AuthContext] Background sync init error:', error);
+            }
+          }).finally(() => {
+            if (isCurrentAuthUser()) setSyncLoading(false);
+          });
 
           // 비동기 작업 대기 중 로그아웃이 완료됐으면 snapshot 등록 자체를 건너뜀
           if (!isCurrentAuthUser()) return;
@@ -153,6 +172,7 @@ export const AuthProvider = ({ children }) => {
         initRegionSync(null);
         initTaskSync(null);
         setUser(null);
+        setSyncLoading(false);
         setLoading(false);
       }
     });
@@ -244,6 +264,7 @@ export const AuthProvider = ({ children }) => {
     activeAuthUidRef.current = null;
     setIsGuest(true);
     setUser(null);
+    setSyncLoading(false);
     initFlowSync(null);
     initRegionSync(null);
     initTaskSync(null);
@@ -260,6 +281,7 @@ export const AuthProvider = ({ children }) => {
 
     setUser(null);
     setIsGuest(true);
+    setSyncLoading(false);
     initFlowSync(null);
     initRegionSync(null);
     initTaskSync(null);
@@ -324,6 +346,7 @@ export const AuthProvider = ({ children }) => {
       user, 
       isGuest, 
       loading, 
+      syncLoading,
       login, 
       signup, 
       resetPassword,

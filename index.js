@@ -1,5 +1,7 @@
 import { registerRootComponent } from 'expo';
 
+globalThis.RNFB_SILENCE_MODULAR_DEPRECATION_WARNINGS = true;
+
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

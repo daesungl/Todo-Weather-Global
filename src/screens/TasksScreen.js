@@ -58,6 +58,7 @@ import { BANNER_UNIT_ID } from '../constants/AdUnits';
 import AdBanner from '../components/AdBanner';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { BannerAdSize } from 'react-native-google-mobile-ads';
+import { useAuth } from '../contexts/AuthContext';
 
 // Moved width/height inside component for logic, but need global for styles
 const { width, height } = Dimensions.get('window');
@@ -489,6 +490,7 @@ const SelectedCountryItem = React.memo(({ code, country, onRemove }) => (
 
 const TasksScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
+  const { user, syncLoading } = useAuth();
   const isKorean = i18n.language.startsWith('ko');
 
   // State
@@ -508,6 +510,7 @@ const TasksScreen = ({ navigation }) => {
 
   const [taskWeather, setTaskWeather] = useState({});
   const [loading, setLoading] = useState(true);
+  const [isTaskSaving, setIsTaskSaving] = useState(false);
   const [topAdHidden, setTopAdHidden] = useState(false);
   const [footerAdHidden, setFooterAdHidden] = useState(false);
   const insets = useSafeAreaInsets();
@@ -560,6 +563,7 @@ const TasksScreen = ({ navigation }) => {
   const toastIdCounter = useRef(0);
   const TOAST_SPACING = 42;
   const isAlertActiveRef = useRef(false);
+  const isTaskSavingRef = useRef(false);
 
   const showToast = (message) => {
     const id = toastIdCounter.current++;
@@ -1035,6 +1039,8 @@ const TasksScreen = ({ navigation }) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
     } catch (e) { }
 
+    isTaskSavingRef.current = false;
+    setIsTaskSaving(false);
     setEditingTask(null);
     setNewTitle('');
     setTaskDate(new Date(selectedDate));
@@ -1072,6 +1078,8 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const handleEditTask = (task) => {
+    isTaskSavingRef.current = false;
+    setIsTaskSaving(false);
     setEditingTask(task);
     setNewTitle(task.title);
     setTaskDate(new Date(task.date));
@@ -1098,6 +1106,8 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const openEditInSheet = (task) => {
+    isTaskSavingRef.current = false;
+    setIsTaskSaving(false);
     setEditingTask(task);
     setNewTitle(task.title);
     setTaskDate(new Date(task.date));
@@ -1147,6 +1157,8 @@ const TasksScreen = ({ navigation }) => {
   const editSheetPanResponder = useRef(createModalPanResponder(editSheetY, closeEditInSheet)).current;
 
   const handleSaveTask = async () => {
+    if (isTaskSavingRef.current) return;
+
     if (!newTitle.trim()) {
       showToast(t('tasks.enter_title', '투두를 입력해주세요'));
       return;
@@ -1156,6 +1168,15 @@ const TasksScreen = ({ navigation }) => {
       return;
     }
 
+    isTaskSavingRef.current = true;
+    setIsTaskSaving(true);
+
+    const releaseSaveLock = () => {
+      isTaskSavingRef.current = false;
+      setIsTaskSaving(false);
+    };
+
+    try {
     let finalEndDate = endDate;
     let finalEndTime = endTime;
     const startCheck = new Date(taskDate);
@@ -1182,6 +1203,7 @@ const TasksScreen = ({ navigation }) => {
       const granted = await requestPermission();
       if (!granted) {
         showToast(t('tasks.notify_permission_denied', '알림 권한이 필요합니다'));
+        releaseSaveLock();
         return;
       }
       if (isNewRepeatSeries) {
@@ -1216,6 +1238,7 @@ const TasksScreen = ({ navigation }) => {
     const finishSave = (updated) => {
       setTasks(updated);
       fetchTasksWeather(updated);
+      releaseSaveLock();
       closeCallback();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast(editingTask ? t('tasks.edit_success') : t('tasks.save_success'));
@@ -1286,6 +1309,8 @@ const TasksScreen = ({ navigation }) => {
           } catch (err) {
             console.error('[repeatEdit] error:', err);
             showToast('편집 중 오류가 발생했습니다.');
+          } finally {
+            releaseSaveLock();
           }
         };
 
@@ -1296,7 +1321,7 @@ const TasksScreen = ({ navigation }) => {
             { text: t('tasks.edit_repeat_this', '이 일정만'), onPress: () => applyRepeatEdit('this') },
             { text: t('tasks.edit_repeat_future', '이후 일정 모두'), onPress: () => applyRepeatEdit('future') },
             { text: t('tasks.edit_repeat_all', '모든 반복 일정'), onPress: () => applyRepeatEdit('all') },
-            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('common.cancel'), style: 'cancel', onPress: releaseSaveLock },
           ]
         );
         return;
@@ -1320,6 +1345,11 @@ const TasksScreen = ({ navigation }) => {
         updated = await addTask(taskData);
       }
       finishSave(updated);
+    }
+    } catch (err) {
+      console.error('[TasksScreen] save task error:', err);
+      releaseSaveLock();
+      showToast(t('common.error', '오류가 발생했습니다.'));
     }
   };
 
@@ -1510,6 +1540,7 @@ const TasksScreen = ({ navigation }) => {
   }, [flows, calendarFilter]);
 
   const isAnyFiltered = calendarFilter.hiddenFlowIds.size > 0 || !calendarFilter.showUserTasks || !calendarFilter.showHolidays;
+  const isCalendarSyncing = !!user?.uid && syncLoading && tasks.length === 0 && flows.length === 0;
 
   return (
     <>
@@ -1577,6 +1608,13 @@ const TasksScreen = ({ navigation }) => {
             </View>
           ) : (
             <View style={{ height: 8 }} />
+          )}
+
+          {isCalendarSyncing && (
+            <View style={styles.syncBanner}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.syncBannerText}>{t('common.syncing', 'Syncing data...')}</Text>
+            </View>
           )}
 
           <View style={styles.calendarArea}>
@@ -1688,7 +1726,12 @@ const TasksScreen = ({ navigation }) => {
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={{ paddingBottom: 20 }}
                   >
-                    {(filteredTasks || []).length === 0 && !isPublicHoliday(dateStr(selectedDate), holidaysMap) ? (
+                    {isCalendarSyncing ? (
+                      <View style={styles.emptyState}>
+                        <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: Spacing.md }} />
+                        <Text style={styles.emptyText}>{t('common.syncing', 'Syncing data...')}</Text>
+                      </View>
+                    ) : (filteredTasks || []).length === 0 && !isPublicHoliday(dateStr(selectedDate), holidaysMap) ? (
                       <View style={styles.emptyState}>
                         <CalendarDays size={48} color={Colors.outlineVariant} strokeWidth={1} style={{ marginBottom: Spacing.md }} />
                         <Text style={styles.emptyText}>{t('tasks.empty', 'No tasks scheduled.')}</Text>
@@ -1993,8 +2036,17 @@ const TasksScreen = ({ navigation }) => {
                                 </View>
                               </TouchableOpacity>
                             ) : (
-                              <TouchableOpacity onPress={handleSaveTask} style={styles.headerSaveBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-                                <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
+                              <TouchableOpacity
+                                onPress={handleSaveTask}
+                                disabled={isTaskSaving}
+                                style={[styles.headerSaveBtn, isTaskSaving && { opacity: 0.55 }]}
+                                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                              >
+                                {isTaskSaving ? (
+                                  <ActivityIndicator size="small" color={Colors.primary} />
+                                ) : (
+                                  <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
+                                )}
                               </TouchableOpacity>
                             )}
                           </View>
@@ -2507,10 +2559,15 @@ const TasksScreen = ({ navigation }) => {
                         ) : (
                           <TouchableOpacity
                             onPress={handleSaveTask}
-                            style={styles.headerSaveBtn}
+                            disabled={isTaskSaving}
+                            style={[styles.headerSaveBtn, isTaskSaving && { opacity: 0.55 }]}
                             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                           >
-                            <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
+                            {isTaskSaving ? (
+                              <ActivityIndicator size="small" color={Colors.primary} />
+                            ) : (
+                              <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
+                            )}
                           </TouchableOpacity>
                         )}
                       </View>
@@ -3281,6 +3338,8 @@ const styles = StyleSheet.create({
   viewToggleBtn: { padding: 8, backgroundColor: '#F4F7FE', borderRadius: 12 },
   viewToggleText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
   calendarArea: { paddingHorizontal: 0 },
+  syncBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', backgroundColor: Colors.surfaceContainerLow, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 10 },
+  syncBannerText: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
   weekdayLabels: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 10, paddingHorizontal: 0 },
   weekdayText: { width: Math.floor((width - Spacing.sm * 2) / 7), textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.outlineVariant, textTransform: 'uppercase' },
   weekStrip: { flexDirection: 'row', justifyContent: 'space-between' },

@@ -68,7 +68,7 @@ import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
-import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, updateFlowDoc, removeSharedFlowOptimistic, refreshSharedFlowListener, isRemoteFlowUpdate } from '../services/FlowSyncService';
+import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, updateFlowDoc, deleteFlowStepDocs, removeSharedFlowOptimistic, refreshSharedFlowListener, isRemoteFlowUpdate } from '../services/FlowSyncService';
 import { 
   generateInviteCode, 
   invalidateInviteCode, 
@@ -140,7 +140,7 @@ const FLOW_GRADIENT_PRESETS = [
 const FlowScreen = ({ navigation, route }) => {
   const { t, i18n } = useTranslation();
   const { formatTemp } = useUnits();
-  const { user } = useAuth();
+  const { user, syncLoading } = useAuth();
   const insets = useSafeAreaInsets();
   const [menuVisible, setMenuVisible] = useState(false);
   const [flowMenuVisible, setFlowMenuVisible] = useState(false);
@@ -169,8 +169,12 @@ const FlowScreen = ({ navigation, route }) => {
   };
   
   const handleConfirm = () => {
+    const action = confirmOnPress;
     setConfirmModalVisible(false);
-    if (confirmOnPress) confirmOnPress();
+    setConfirmOnPress(null);
+    if (action) {
+      setTimeout(action, 120);
+    }
   };
   
   const [flows, setFlows] = useState([]);
@@ -222,6 +226,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
   const [heroWeather, setHeroWeather] = useState(null);
   const [topAdHidden, setTopAdHidden] = useState(false);
   const [detailAdHidden, setDetailAdHidden] = useState(false);
@@ -258,6 +263,10 @@ const FlowScreen = ({ navigation, route }) => {
   const [flowToastMsg, setFlowToastMsg] = useState('');
   const flowToastAnim = useRef(new Animated.Value(0)).current;
   const flowToastTimeout = useRef(null);
+  const refreshedFlowWeatherKeyRef = useRef(null);
+  const debugFlow = (...args) => {
+    if (__DEV__) console.log('[FlowScreen]', ...args);
+  };
   const flatListRef = useRef(null);
   const stepScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);  // 타임라인 전체 스크롤뷰 ref (댓글 입력 시 키보드 대응)
@@ -282,7 +291,7 @@ const FlowScreen = ({ navigation, route }) => {
   useFocusEffect(
     useCallback(() => {
       loadInitialData();
-    }, [])
+    }, [user?.uid])
   );
 
   useEffect(() => {
@@ -577,6 +586,8 @@ const FlowScreen = ({ navigation, route }) => {
   ).current;
 
   const openEditModal = (isNew = false) => {
+    isSavingRef.current = false;
+    setIsSaving(false);
     panY.setValue(height);
     setEditModalVisible(true);
     stepScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -592,6 +603,15 @@ const FlowScreen = ({ navigation, route }) => {
 
   const closeEditModal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    debugFlow('closeEditModal', {
+      pickerType,
+      searchModalVisible,
+      showRangePicker,
+      showStepRepeatEndPicker,
+      editingStepId: editingStep?.id,
+    });
+    panY.stopAnimation();
+    panY.setValue(0);
     setEditModalVisible(false);
     setEditingStep(null);
     setEditActivity('');
@@ -602,6 +622,7 @@ const FlowScreen = ({ navigation, route }) => {
     setEditEndTime('');
     setMatchStartDate(true);
     setPickerType(null);
+    setSearchModalVisible(false);
     setShowRangePicker(false);
     setSelectedRegion(null);
     setStepRepeatType(null);
@@ -891,7 +912,7 @@ const FlowScreen = ({ navigation, route }) => {
     setIsLoading(true);
     const savedFlows = await getFlows();
     let currentFlows = [];
-    if (savedFlows.length === 0) {
+    if (savedFlows.length === 0 && !user?.uid) {
       const today = new Date().toISOString().split('T')[0];
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
       
@@ -930,6 +951,14 @@ const FlowScreen = ({ navigation, route }) => {
       if (!weather) return;
       const weatherTemp = weather.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
       setFlows(prev => {
+        const current = prev.find(f => f.id === flow.id);
+        const hasChanged = current
+          && (current.weatherTemp !== weatherTemp
+            || current.weatherCondKey !== weather.condKey
+            || current.weatherIsDay !== (weather.isDay !== false));
+
+        if (!hasChanged) return prev;
+
         const updated = prev.map(f => f.id === flow.id
           ? { ...f, weatherTemp, weatherCondKey: weather.condKey, weatherIsDay: weather.isDay !== false }
           : f
@@ -1013,9 +1042,15 @@ const FlowScreen = ({ navigation, route }) => {
     selectedFlowRef.current = selectedFlow;
     if (selectedFlow) {
       fetchHeroWeather(selectedFlow);
-      refreshFlowWeather(selectedFlow);
+      const weatherKey = `${selectedFlow.id}:${selectedFlow.lat || ''}:${selectedFlow.lon || ''}`;
+      if (refreshedFlowWeatherKeyRef.current !== weatherKey) {
+        refreshedFlowWeatherKeyRef.current = weatherKey;
+        refreshFlowWeather(selectedFlow);
+      }
+    } else {
+      refreshedFlowWeatherKeyRef.current = null;
     }
-  }, [selectedFlow]);
+  }, [selectedFlow?.id, selectedFlow?.lat, selectedFlow?.lon]);
 
   // WeatherDetail에서 돌아올 때 선택된 플로우의 스텝 날씨를 갱신
   useEffect(() => {
@@ -1102,6 +1137,7 @@ const FlowScreen = ({ navigation, route }) => {
     const activeIds = new Set(sorted.slice(0, MAX_FLOWS).map(f => f.id));
     return flows.map(f => ({ ...f, inactive: !activeIds.has(f.id) }));
   }, [flows, isPremium, MAX_FLOWS]);
+  const isFlowDataLoading = isLoading || (!!user?.uid && syncLoading && flows.length === 0);
 
   const showFlowToast = (msg) => {
     if (Platform.OS === 'android') {
@@ -1119,7 +1155,7 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   const saveFlow = async () => {
-    if (isSaving) return;
+    if (isSavingRef.current) return;
     if (!flowTitle.trim()) {
       showFlowToast(t('flow.alert.title_required_toast'));
       return;
@@ -1131,7 +1167,7 @@ const FlowScreen = ({ navigation, route }) => {
       showConfirm(t('flow.alert.limit_title', 'Flow Limit'), msg, null, false);
       return;
     }
-    
+    isSavingRef.current = true;
     setIsSaving(true);
     try {
       let weatherTemp = null;
@@ -1189,11 +1225,14 @@ const FlowScreen = ({ navigation, route }) => {
       
       setFlowModalVisible(false);
     } catch (e) { console.error(e); }
-    finally { setIsSaving(false); }
+    finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
   };
 
   const saveStep = async () => {
-    if (isSaving) return;
+    if (isSavingRef.current) return;
     if (!editActivity.trim()) {
       showConfirm(t('flow.alert.activity_required'), t('flow.alert.activity_required_msg'), null, false);
       return;
@@ -1239,7 +1278,13 @@ const FlowScreen = ({ navigation, route }) => {
       return;
     }
 
+    isSavingRef.current = true;
     setIsSaving(true);
+    const releaseSaving = () => {
+      isSavingRef.current = false;
+      setIsSaving(false);
+    };
+
     try {
       setIsSearching(true);
       let weatherData = null;
@@ -1296,7 +1341,7 @@ const FlowScreen = ({ navigation, route }) => {
           if (__DEV__) console.error('[FlowScreen] applyToFlow error:', err);
           showConfirm(t('common.error', 'Error'), t('flow.update_failed', 'Failed to update flow on server. Please check your connection.'), null, false);
         } finally {
-          setIsSaving(false); // 여기서도 확실히 해제
+          releaseSaving(); // 여기서도 확실히 해제
         }
       };
 
@@ -1310,14 +1355,14 @@ const FlowScreen = ({ navigation, route }) => {
       let notificationId = editingStep?.notificationId || null;
       if (stepNotify && !editTime) {
         showConfirm('', t('flow.notify_time_required', '알림을 설정하려면 시작 시간이 필요합니다'), null, false);
-        setIsSaving(false);
+        releaseSaving();
         return;
       }
       if (stepNotify) {
         const granted = await requestPermission();
         if (!granted) {
           showConfirm('', t('tasks.notify_permission_denied', '알림 권한이 필요합니다'), null, false);
-          setIsSaving(false);
+          releaseSaving();
           return;
         }
         if (willCreateRepeatSeries) {
@@ -1611,71 +1656,123 @@ const FlowScreen = ({ navigation, route }) => {
     } catch (e) {
       if (__DEV__) console.error('[FlowScreen] saveStep error:', e);
     } finally {
-      setIsSaving(false);
+      releaseSaving();
+    }
+  };
+
+  const persistStepDeletion = async (flow, updatedFlows, deletedStepIds) => {
+    if (!flow) return;
+
+    try {
+      debugFlow('persistStepDeletion:start', {
+        flowId: flow.id,
+        deletedCount: deletedStepIds.length,
+        role: flow._role,
+        ownerUid: flow._ownerUid || flow.ownerUid,
+        signedIn: !!user?.uid,
+      });
+      if (user?.uid && deletedStepIds.length > 0) {
+        const deleted = await deleteFlowStepDocs(flow, deletedStepIds);
+        if (canEditFlow(flow)) {
+          await updateFlowDoc(flow);
+        } else if (!deleted) {
+          await saveFlows(updatedFlows);
+        }
+      } else if (flow._ownerUid) {
+        if (canEditFlow(flow)) {
+          await updateFlowDoc(flow);
+        }
+      } else {
+        await saveFlows(updatedFlows);
+      }
+      debugFlow('persistStepDeletion:done', { flowId: flow.id, deletedCount: deletedStepIds.length });
+    } catch (e) {
+      if (__DEV__) console.error('[FlowScreen] delete step sync error:', e);
+      showConfirm(
+        t('common.error', 'Error'),
+        t('flow.update_failed', 'Failed to update flow on server. Please check your connection.'),
+        null,
+        false
+      );
     }
   };
 
   const doDeleteStep = async (scope) => {
+    if (!selectedFlow?.id || !editingStep) return;
+
     const now = new Date().toISOString();
+    const targetStep = editingStep;
     const currentStepsForFlow = flows.find(f => f.id === selectedFlow.id)?.steps || [];
+    const shouldDeleteStep = (step) => {
+      if (scope === 'this') return step.id === targetStep.id;
+      if (scope === 'future') {
+        return step.repeatGroupId === targetStep.repeatGroupId && step.date >= targetStep.date;
+      }
+      return step.repeatGroupId === targetStep.repeatGroupId;
+    };
+    const deletedSteps = currentStepsForFlow.filter(shouldDeleteStep);
+    const deletedStepIds = deletedSteps.map(step => step.id).filter(Boolean);
+    debugFlow('doDeleteStep', {
+      scope,
+      flowId: selectedFlow.id,
+      targetStepId: targetStep.id,
+      beforeCount: currentStepsForFlow.length,
+      deletedCount: deletedStepIds.length,
+    });
 
     // 삭제 대상 스텝들의 알림 취소
-    let toCancel = [];
-    if (scope === 'this') {
-      if (editingStep?.notificationId) toCancel = [editingStep.notificationId];
-    } else if (scope === 'future') {
-      toCancel = currentStepsForFlow.filter(s => s.repeatGroupId === editingStep.repeatGroupId && s.date >= editingStep.date && s.notificationId).map(s => s.notificationId);
-    } else {
-      toCancel = currentStepsForFlow.filter(s => s.repeatGroupId === editingStep.repeatGroupId && s.notificationId).map(s => s.notificationId);
-    }
-    await Promise.all(toCancel.map(cancelNotification));
+    const toCancel = deletedSteps.map(step => step.notificationId).filter(Boolean);
 
     let updatedF;
     const updatedFlows = flows.map(f => {
       if (f.id !== selectedFlow.id) return f;
-      let updatedSteps;
-      if (scope === 'this') {
-        updatedSteps = f.steps.filter(s => s.id !== editingStep.id);
-      } else if (scope === 'future') {
-        updatedSteps = f.steps.filter(s => !(s.repeatGroupId === editingStep.repeatGroupId && s.date >= editingStep.date));
-      } else {
-        updatedSteps = f.steps.filter(s => s.repeatGroupId !== editingStep.repeatGroupId);
-      }
+      const updatedSteps = f.steps.filter(s => !shouldDeleteStep(s));
       updatedF = { ...f, steps: updatedSteps, updatedAt: now };
-      setSelectedFlow(updatedF);
       return updatedF;
     });
+
+    if (!updatedF) return;
+
+    setSelectedFlow(updatedF);
     setFlows(updatedFlows);
-    if (selectedFlow._ownerUid) {
-      if (canEditFlow(selectedFlow)) await updateFlowDoc(updatedF);
-    } else {
-      await saveFlows(updatedFlows);
-    }
     closeEditModal();
+    debugFlow('doDeleteStep:uiClosed', {
+      flowId: updatedF.id,
+      afterCount: updatedF.steps?.length || 0,
+    });
+
+    Promise.all(toCancel.map(cancelNotification))
+      .catch(e => { if (__DEV__) console.warn('[FlowScreen] cancel notification error:', e); });
+    await persistStepDeletion(updatedF, updatedFlows, deletedStepIds);
   };
 
   const deleteStep = () => {
     const title = editingStep?.repeatGroupId ? t('tasks.delete_repeat_title') : t('tasks.delete_confirm');
     const msg = editingStep?.repeatGroupId ? t('tasks.delete_repeat_msg') : t('tasks.delete_confirm_msg');
 
-    showConfirm(
+    Alert.alert(
       title,
       msg,
-      () => {
-        if (editingStep?.repeatGroupId) {
-          doDeleteStep('all');
-        } else {
-          doDeleteStep('this');
-        }
-      },
-      true
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete', 'Delete'),
+          style: 'destructive',
+          onPress: () => {
+            if (editingStep?.repeatGroupId) {
+              doDeleteStep('all');
+            } else {
+              doDeleteStep('this');
+            }
+          },
+        },
+      ]
     );
   };
 
   const deleteStepById = async (stepId) => {
     const now = new Date().toISOString();
     const step = flows.find(f => f.id === selectedFlow.id)?.steps?.find(s => s.id === stepId);
-    if (step?.notificationId) await cancelNotification(step.notificationId);
     let updatedF;
     const updatedFlows = flows.map(f => {
       if (f.id === selectedFlow.id) {
@@ -1687,11 +1784,11 @@ const FlowScreen = ({ navigation, route }) => {
       return f;
     });
     setFlows(updatedFlows);
-    if (selectedFlow._ownerUid) {
-      if (canEditFlow(selectedFlow)) await updateFlowDoc(updatedF);
-    } else {
-      await saveFlows(updatedFlows);
+    if (step?.notificationId) {
+      cancelNotification(step.notificationId)
+        .catch(e => { if (__DEV__) console.warn('[FlowScreen] cancel notification error:', e); });
     }
+    await persistStepDeletion(updatedF, updatedFlows, stepId ? [stepId] : []);
   };
 
   const handleShareFlowImage = async () => {
@@ -1775,6 +1872,8 @@ const FlowScreen = ({ navigation, route }) => {
   const closeSearch = () => { setSearchModalVisible(false); setSearchQuery(''); setSearchResults([]); };
 
   const openFlowModal = (flow = null) => {
+    isSavingRef.current = false;
+    setIsSaving(false);
     flowPanY.setValue(height);
     setEditingFlow(flow);
     setFlowTitle(flow ? flow.title : '');
@@ -2508,8 +2607,11 @@ const FlowScreen = ({ navigation, route }) => {
           <>
             <MainHeader onMenuPress={() => setMenuVisible(true)} />
             <View style={{ flex: 1 }}>
-              {isLoading ? (
-                <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />
+              {isFlowDataLoading ? (
+                <View style={styles.syncLoadingState}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={styles.syncLoadingText}>{t('common.syncing', 'Syncing data...')}</Text>
+                </View>
               ) : (
                 <DraggableFlatList
                   ref={flatListRef}
@@ -3872,6 +3974,8 @@ const styles = StyleSheet.create({
   addStepText: { ...Typography.body, fontWeight: '800', color: Colors.primary, letterSpacing: -0.5 },
   emptyFlow: { alignItems: 'center', padding: 60, gap: 16 },
   emptyFlowText: { ...Typography.bodySmall, color: Colors.outline },
+  syncLoadingState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingBottom: 80 },
+  syncLoadingText: { ...Typography.bodySmall, color: Colors.outline, fontWeight: '700' },
   rowInputs: { flexDirection: 'row', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.lg },
