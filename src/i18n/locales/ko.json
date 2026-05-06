@@ -431,7 +431,7 @@
     "remove_code": "코드 삭제",
     "no_active_code": "활성 초대 코드가 없습니다",
     "enter_invite_code": "친구에게 받은 6자리 초대 코드를 입력하세요",
-    "share_code_msg": "플로우 초대 코드: {{code}}\n앱에서 '공유 플로우 참여'를 탭하고 코드를 입력하세요.",
+    "share_code_msg": "플로우 초대 코드: {{code}}\n\n앱에서 '공유 플로우 참여'를 탭하고 코드를 입력하세요.\n\n📱 앱 다운로드:\nApp Store: https://apps.apple.com/kr/app/%ED%88%AC%EB%91%90-%EC%9B%A8%EB%8D%94/id6764039223\n\nGoogle Play: https://play.google.com/store/apps/details?id=com.appswayd.TodoWeatherGlobal",
     "permission_info_title": "권한 안내",
     "permission_edit_desc": "편집: 플로우의 스텝을 추가, 수정, 삭제할 수 있습니다.",
     "permission_comment_desc": "댓글 관리: 본인뿐만 아니라 모든 멤버의 댓글을 삭제할 수 있습니다.",

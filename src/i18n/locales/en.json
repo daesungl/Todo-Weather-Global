@@ -431,7 +431,7 @@
     "remove_code": "Delete Code",
     "no_active_code": "No active invite code",
     "enter_invite_code": "Enter the 6-digit invite code",
-    "share_code_msg": "Flow Invite Code: {{code}}\nTap 'Join Shared Flow' in the app and enter this code.",
+    "share_code_msg": "Flow Invite Code: {{code}}\nTap 'Join Shared Flow' in the app and enter this code.\n\n📱 Download the app:\nApp Store: https://apps.apple.com/kr/app/%ED%88%AC%EB%91%90-%EC%9B%A8%EB%8D%94/id6764039223\nGoogle Play: https://play.google.com/store/apps/details?id=com.appswayd.TodoWeatherGlobal",
     "permission_info_title": "Permission Information",
     "permission_edit_desc": "Edit: Add, modify, or delete flow steps.",
     "permission_comment_desc": "Manage Comments: Delete any member's comments, not just your own.",
