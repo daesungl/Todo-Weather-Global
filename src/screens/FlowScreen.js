@@ -340,7 +340,10 @@ const FlowScreen = ({ navigation, route }) => {
 
         prevSelectedFlowRoleRef.current = { flowId: latest.id, _role: latest._role, _permissions: latest._permissions };
 
-        if (JSON.stringify(latest.steps) !== JSON.stringify(selectedFlow.steps) || roleChanged || permChanged) {
+        // steps, updatedAt, 권한 중 하나라도 바뀌면 selectedFlow 갱신 (댓글/스텝 실시간 반영)
+        const stepsChanged = JSON.stringify(latest.steps) !== JSON.stringify(selectedFlow.steps);
+        const updatedAtChanged = latest.updatedAt !== selectedFlow.updatedAt;
+        if (stepsChanged || updatedAtChanged || roleChanged || permChanged) {
           if (__DEV__) console.log('[FlowScreen] Syncing selectedFlow with latest from subscription');
           setSelectedFlow(latest);
         }
@@ -376,7 +379,7 @@ const FlowScreen = ({ navigation, route }) => {
     });
 
     return unsub;
-  }, [selectedFlow, user?.uid]);
+  }, [selectedFlow?.id, selectedFlow?._ownerUid, user?.uid]);
 
   const handlePostComment = async (stepId) => {
     const text = commentInputs[stepId];
@@ -1278,7 +1281,11 @@ const FlowScreen = ({ navigation, route }) => {
               if (__DEV__) console.log('[FlowScreen] Shared flow (editor/owner). Updating via updateFlowDoc...');
               await updateFlowDoc(updatedF);
             } else {
-              if (__DEV__) console.log('[FlowScreen] Shared flow (viewer). Skipping Firestore update.');
+              if (__DEV__) console.warn('[FlowScreen] Shared flow (viewer). Permission denied for update.');
+              // 뷰어는 서버에 저장할 수 없으므로 로컬 UI 변경을 롤백하거나 경고를 띄워야 함
+              // 여기서는 버튼 자체를 숨기므로 이 코드는 방어용
+              showConfirm(t('common.info'), t('flow.alert.viewer_cannot_edit', 'You only have view permission.'), null, false);
+              return; // 서버 업데이트 실패했으므로 여기서 중단 (UI는 이미 바뀌었지만 Snapshot에 의해 곧 원복됨)
             }
           } else {
             if (__DEV__) console.log('[FlowScreen] Own flow detected. Saving via saveFlows...');

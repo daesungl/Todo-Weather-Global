@@ -78,11 +78,10 @@ const _saveAllFlowOrdersToFirestore = async (uid, flows) => {
   const ownFlows = flows.filter(f => f._role === 'owner' || !f._ownerUid);
   const sharedFlows = flows.filter(f => f._role && f._role !== 'owner');
 
-  // Update own flows orders
+  // Update own flows orders (merge:true preserves server-only fields like commentCounts)
   ownFlows.forEach((flow) => {
     const { id, ...data } = _stripMeta(flow);
-    // order is already on the flow object from saveFlows
-    batch.set(ownCol.doc(id), { ...data, order: flow.order, ownerUid: uid });
+    batch.set(ownCol.doc(id), { ...data, order: flow.order, ownerUid: uid }, { merge: true });
   });
 
   // Update shared flows pointer orders
@@ -211,15 +210,14 @@ const _startSharedFlowsSubscription = (uid) => {
       }
 
       const _startFlowListener = () => {
-        // 이미 리스너가 있으면 덮어쓰지 않음 (refreshSharedFlowListener 등이 먼저 등록한 경우 보호)
+        // 이미 리스너가 있으면 덮어쓰지 않음
         if (_sharedFlowListeners.has(flowId)) return;
-        if (__DEV__) console.log(`[FlowSync] Starting listener for flow ${flowId} (ownerUid: ${ownerUid}, role: ${role})`);
+        
         const unsub = firestore()
           .collection('users').doc(ownerUid).collection('flows').doc(flowId)
           .onSnapshot(
             flowDoc => {
               const rawData = flowDoc.data();
-              if (__DEV__) console.log(`[FlowSync] onSnapshot fired for flow ${flowId}`, { hasData: !!rawData, title: rawData?.title });
               if (rawData) {
                 const flowData = {
                   id: flowDoc.id,
@@ -239,19 +237,15 @@ const _startSharedFlowsSubscription = (uid) => {
               _mergeAndNotify(true);
             },
             err => {
-              console.warn(`[FlowSync] Shared flow snapshot error for ${flowId}:`, err.code, err.message);
-              // 권한 오류(permission-denied)일 경우 2초 후 재시도 (멤버 문서 전파 지연 대응)
+              // 권한 오류(permission-denied)일 경우에만 재시도
               if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED') {
-                console.warn(`[FlowSync] Permission denied for ${flowId} — will retry in 2s`);
+                if (__DEV__) console.log(`[FlowSync] Permission delayed for ${flowId}, retrying in 2s...`);
                 _sharedFlowListeners.delete(flowId);
                 setTimeout(() => {
-                  // 아직 이 flowId를 구독하지 않는 경우만 재시도
-                  if (!_sharedFlowListeners.has(flowId) && _userId) {
-                    if (__DEV__) console.log(`[FlowSync] Retrying listener for flow ${flowId}`);
-                    _startFlowListener();
-                  }
+                  if (!_sharedFlowListeners.has(flowId) && _userId) _startFlowListener();
                 }, 2000);
               } else {
+                console.warn(`[FlowSync] Shared flow ${flowId} error:`, err);
                 _sharedFlowListeners.delete(flowId);
               }
             }
@@ -259,13 +253,8 @@ const _startSharedFlowsSubscription = (uid) => {
         _sharedFlowListeners.set(flowId, unsub);
       };
 
-      // 새로 감지된 공유 플로우는 Firestore Rules 전파 지연(~1s)을 고려해
-      // 짧은 딜레이 후 구독 시작. 기존 플로우는 즉시 재구독.
-      if (isNewFlow) {
-        setTimeout(_startFlowListener, 1500);
-      } else {
-        _startFlowListener();
-      }
+      // 즉시 리스너 시작 (지연 로직 제거)
+      _startFlowListener();
     });
   }, error => console.warn('[FlowSync] Shared flows collection error:', error));
 };
@@ -347,8 +336,17 @@ export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
         _mergeAndNotify();
       },
       err => {
-        console.warn('[FlowSync] refreshSharedFlowListener error:', err);
+        console.warn('[FlowSync] refreshSharedFlowListener error:', err.code, err.message);
         _sharedFlowListeners.delete(flowId);
+        // permission-denied: Firestore 규칙 전파 지연 대응 — _startFlowListener와 동일하게 재시도
+        if ((err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED') && _userId) {
+          setTimeout(() => {
+            if (!_sharedFlowListeners.has(flowId) && _userId) {
+              if (__DEV__) console.log(`[FlowSync] refreshSharedFlowListener retrying for ${flowId}`);
+              refreshSharedFlowListener(ownerUid, flowId, role, order);
+            }
+          }, 2000);
+        }
       }
     );
   _sharedFlowListeners.set(flowId, unsub);

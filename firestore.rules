@@ -25,7 +25,11 @@ service cloud.firestore {
         allow update: if request.auth != null
           && (request.auth.uid == userId
               || (exists(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid))
-                  && get(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)).data.role == 'editor'));
+                  && (
+                    get(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)).data.role == 'editor'
+                    || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCounts']))
+                  )
+              ));
         allow delete: if request.auth != null && request.auth.uid == userId;
 
         // Members sub-collection:
