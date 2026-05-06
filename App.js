@@ -135,12 +135,9 @@ function NotificationRefillHandler() {
 }
 
 function AppContent({ navigationRef, routeNameRef, slideFromRight }) {
-  const { user, isGuest, loading } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) return null;
-
-  // 로그인 사용자 또는 게스트 모드이면 앱 진입 허용
-  const canAccessApp = user !== null || isGuest;
 
   return (
     <SubscriptionProvider>
@@ -175,22 +172,12 @@ function AppContent({ navigationRef, routeNameRef, slideFromRight }) {
                 ...slideFromRight,
               }}
             >
-              {canAccessApp ? (
-                // 인증된 사용자 / 게스트: 메인 앱 스택
-                // user 상태가 null로 바뀌면 React Navigation이 자동으로 Login 화면으로 전환
-                <>
-                  <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
-                  <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
-                  <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
-                  <Stack.Screen name="Paywall" component={PaywallScreen} />
-                  <Stack.Screen name="Profile" component={ProfileScreen} />
-                  <Stack.Screen name="Login" component={LoginScreen} />
-                </>
-              ) : (
-                // 미인증: Login 화면만 노출
-                // user 상태가 non-null로 바뀌면 자동으로 MainTabs로 전환
-                <Stack.Screen name="Login" component={LoginScreen} />
-              )}
+              <Stack.Screen name="MainTabs" component={TabNavigator} options={{ gestureEnabled: false }} />
+              <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} options={{ gestureEnabled: false }} />
+              <Stack.Screen name="RegionManagement" component={RegionManagementScreen} />
+              <Stack.Screen name="Paywall" component={PaywallScreen} />
+              <Stack.Screen name="Profile" component={ProfileScreen} />
+              <Stack.Screen name="Login" component={LoginScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </SafeAreaProvider>
@@ -293,4 +280,3 @@ const styles = StyleSheet.create({
     backgroundColor: '#f7f9ff',
   },
 });
-

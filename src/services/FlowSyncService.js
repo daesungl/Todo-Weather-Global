@@ -1,124 +1,241 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
 
-const getFlowsStorageKey = (uid) => `@todo_weather_flows_${uid}`;
+const getFlowsStorageKey = (uid) => `@todo_weather_flows_${uid || 'guest'}`;
 const getSharedFlowsStorageKey = (uid) => `@todo_weather_shared_flows_${uid}`;
-const MIGRATION_KEY_PREFIX = '@flows_migrated_';
+const MIGRATION_KEY_PREFIX = '@flows_global_schema_migrated_';
 
 let _userId = null;
 let _snapshotListeners = new Set();
-let _unsubscribeOwnFlows = null;
-let _unsubscribeSharedFlows = null;
-let _sharedFlowListeners = new Map(); // flowId → unsubscribe fn
-let _ownFlows = [];           // own flow documents (raw, no _role)
-let _sharedFlowsData = [];    // shared flow documents (with _ownerUid, _role)
-let _cachedFlows = null;      // merged: own (_role:'owner') + shared
-let _isRemoteUpdate = false;  // true when change originated from Firestore (not local)
+let _unsubscribeFlowRefs = null;
+let _flowListeners = new Map(); // flowId -> { flowUnsub, stepsUnsub }
+let _flowRefs = new Map();      // flowId -> ref data from users/{uid}/flowRefs
+let _flowDocs = new Map();      // flowId -> flow metadata from /flows/{flowId}
+let _flowSteps = new Map();     // flowId -> steps[] from /flows/{flowId}/steps
+let _cachedFlows = null;
+let _isRemoteUpdate = false;
 
-// Firestore 원격 업데이트 여부를 외부에서 확인할 수 있도록 export
 export const isRemoteFlowUpdate = () => _isRemoteUpdate;
 
-// ─── Internal Firestore helpers ───────────────────────────────────────────────
-
-const _flowsCollection = (uid) =>
-  firestore().collection('users').doc(uid).collection('flows');
-
-const _docToFlow = (doc, index) => {
-  const data = doc.data();
-  return { 
-    id: doc.id, 
-    ...data,
-    order: (data.order !== undefined && data.order !== null) ? data.order : (1000000 + index)
-  };
-};
-
-const _flowsFromSnapshot = (snapshot) =>
-  snapshot.docs.map((doc, i) => _docToFlow(doc, i)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+const _globalFlowsCollection = () => firestore().collection('flows');
+const _legacyFlowsCollection = (uid) => firestore().collection('users').doc(uid).collection('flows');
+const _flowRefsCollection = (uid) => firestore().collection('users').doc(uid).collection('flowRefs');
+const _legacySharedFlowsCollection = (uid) => firestore().collection('users').doc(uid).collection('sharedFlows');
+const _stepsCollection = (flowId) => _globalFlowsCollection().doc(flowId).collection('steps');
+const _membersCollection = (flowId) => _globalFlowsCollection().doc(flowId).collection('members');
 
 const _stripMeta = ({ _role, _ownerUid, _permissions, ...rest }) => rest;
 
-const _mergeAndNotify = (fromRemote = false) => {
-  const mergedMap = new Map();
-  // 1. 자신의 플로우 우선 추가 (Role: 'owner')
-  _ownFlows.forEach(f => {
-    mergedMap.set(f.id, { ...f, _role: 'owner' });
-  });
-  // 2. 공유받은 플로우 추가 (이미 있으면 무시 - 오너 권한 우선)
-  _sharedFlowsData.forEach(f => {
-    if (!mergedMap.has(f.id)) {
-      mergedMap.set(f.id, f);
-    }
+const _cleanObject = (obj) =>
+  Object.fromEntries(Object.entries(obj || {}).filter(([, v]) => v !== undefined));
+
+const _cleanFlowDocData = (flow, { includeOrder = false } = {}) => {
+  const { id, steps, order, ...rest } = _stripMeta(flow || {});
+  const data = _cleanObject(rest);
+  if (includeOrder && order !== undefined) data.order = order;
+  return data;
+};
+
+const _cleanStepData = (step, order) => {
+  const { id, ...rest } = step || {};
+  return _cleanObject({ ...rest, order });
+};
+
+const _sortSteps = (steps = []) =>
+  [...steps].sort((a, b) => {
+    const orderA = a.order;
+    const orderB = b.order;
+    if (orderA !== undefined && orderB !== undefined && orderA !== orderB) return orderA - orderB;
+    const dateCmp = (a.date || '').localeCompare(b.date || '');
+    if (dateCmp !== 0) return dateCmp;
+    return (a.time || '').localeCompare(b.time || '');
   });
 
-  const merged = Array.from(mergedMap.values()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+const _flowFromParts = (flowId) => {
+  const ref = _flowRefs.get(flowId);
+  const doc = _flowDocs.get(flowId);
+  if (!ref || !doc) return null;
+
+  const role = ref.role || (doc.ownerUid === _userId ? 'owner' : 'viewer');
+  const flow = {
+    id: flowId,
+    title: doc.title || '제목 없는 플로우',
+    ...doc,
+    steps: _sortSteps(_flowSteps.get(flowId) || []),
+    _role: role,
+    _permissions: ref.permissions,
+    order: ref.order ?? 1000000,
+  };
+
+  if (doc.ownerUid && doc.ownerUid !== _userId) {
+    flow._ownerUid = doc.ownerUid;
+  }
+
+  return flow;
+};
+
+const _mergeAndNotify = (fromRemote = false) => {
+  const merged = Array.from(_flowRefs.keys())
+    .map(_flowFromParts)
+    .filter(Boolean)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
   _cachedFlows = merged;
-  if (__DEV__) {
-    console.log('[FlowSync] _mergeAndNotify', {
-      own: _ownFlows.length,
-      shared: _sharedFlowsData.length,
-      merged: merged.length,
-      list: merged.map(f => `${f.id.slice(-4)}:${f.order ?? 'none'}:${f._role || 'no-role'}`)
-    });
-  }
   if (_userId) {
-    AsyncStorage.setItem(getSharedFlowsStorageKey(_userId), JSON.stringify(_sharedFlowsData)).catch(e => console.warn('[FlowSync] Failed to save shared flows:', e));
+    const sharedFlows = merged.filter(f => f._ownerUid);
+    AsyncStorage.setItem(getSharedFlowsStorageKey(_userId), JSON.stringify(sharedFlows))
+      .catch(e => console.warn('[FlowSync] Failed to save shared flows:', e));
   }
+
   _isRemoteUpdate = fromRemote;
   _snapshotListeners.forEach(cb => cb(merged));
-  // 콜백 실행 후 플래그 초기화 (동기 콜백 체인이 끝난 직후)
   Promise.resolve().then(() => { _isRemoteUpdate = false; });
 };
 
-const _saveAllFlowOrdersToFirestore = async (uid, flows) => {
-  if (!uid) return;
-  const batch = firestore().batch();
-  const ownCol = _flowsCollection(uid);
-  const sharedCol = firestore().collection('users').doc(uid).collection('sharedFlows');
+const _commitBatched = async (ops) => {
+  let batch = firestore().batch();
+  let count = 0;
 
-  const ownFlows = flows.filter(f => f._role === 'owner' || !f._ownerUid);
-  const sharedFlows = flows.filter(f => f._role && f._role !== 'owner');
+  const commit = async () => {
+    if (count === 0) return;
+    await batch.commit();
+    batch = firestore().batch();
+    count = 0;
+  };
 
-  // Update own flows orders (merge:true preserves server-only fields like commentCounts)
-  ownFlows.forEach((flow) => {
-    const { id, ...data } = _stripMeta(flow);
-    batch.set(ownCol.doc(id), { ...data, order: flow.order, ownerUid: uid }, { merge: true });
-  });
+  for (const op of ops) {
+    op(batch);
+    count += 1;
+    if (count >= 450) await commit();
+  }
 
-  // Update shared flows pointer orders
-  sharedFlows.forEach((flow) => {
-    // Use set with merge: true to be more robust than update
-    batch.set(sharedCol.doc(flow.id), { order: flow.order }, { merge: true });
-  });
-
-  // Handle deletions (only for own flows)
-  const newOwnIds = new Set(ownFlows.map(f => f.id));
-  (_ownFlows || [])
-    .filter(f => !newOwnIds.has(f.id))
-    .forEach(f => batch.delete(ownCol.doc(f.id)));
-
-  await batch.commit();
+  await commit();
 };
 
-// ─── One-time migration: AsyncStorage → Firestore ────────────────────────────
+const _saveFlowRef = async (uid, flow) => {
+  const ownerUid = flow._ownerUid || flow.ownerUid || uid;
+  const role = flow._role || (ownerUid === uid ? 'owner' : 'viewer');
+  const refData = _cleanObject({
+    flowId: flow.id,
+    ownerUid,
+    role,
+    permissions: flow._permissions,
+    order: flow.order ?? 0,
+    updatedAt: firestore.FieldValue.serverTimestamp(),
+  });
+
+  await _flowRefsCollection(uid).doc(flow.id).set(refData, { merge: true });
+};
+
+const _replaceFlowSteps = async (flowId, steps = []) => {
+  const nextSteps = Array.isArray(steps) ? steps : [];
+  const existing = await _stepsCollection(flowId).get();
+  const nextIds = new Set(nextSteps.map(s => s.id).filter(Boolean));
+  const ops = [];
+
+  existing.docs.forEach(doc => {
+    if (!nextIds.has(doc.id)) {
+      ops.push(batch => batch.delete(doc.ref));
+    }
+  });
+
+  nextSteps.forEach((step, index) => {
+    const stepId = step.id || `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${index}`;
+    ops.push(batch => batch.set(_stepsCollection(flowId).doc(stepId), _cleanStepData({ ...step, id: stepId }, index), { merge: true }));
+  });
+
+  await _commitBatched(ops);
+};
+
+const _saveFlowToGlobal = async (uid, flow) => {
+  if (!uid || !flow?.id) return;
+  const ownerUid = flow._ownerUid || flow.ownerUid || uid;
+  const isOwner = ownerUid === uid && (!flow._role || flow._role === 'owner');
+  const isEditor = flow._role === 'editor';
+
+  if (!isOwner && !isEditor) {
+    if (__DEV__) console.log('[FlowSync] save skipped: no edit permission', { flowId: flow.id, role: flow._role });
+    return;
+  }
+
+  const flowRef = _globalFlowsCollection().doc(flow.id);
+  const meta = _cleanFlowDocData({ ...flow, ownerUid }, { includeOrder: false });
+  meta.ownerUid = ownerUid;
+  meta.updatedAt = flow.updatedAt || firestore.FieldValue.serverTimestamp();
+
+  if (isOwner) {
+    await flowRef.set(meta, { merge: true });
+    const ownerBatch = firestore().batch();
+    ownerBatch.set(_membersCollection(flow.id).doc(uid), {
+      role: 'owner',
+      displayName: flow.displayName || 'Owner',
+      joinedAt: firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    ownerBatch.set(_flowRefsCollection(uid).doc(flow.id), {
+      flowId: flow.id,
+      ownerUid: uid,
+      role: 'owner',
+      order: flow.order ?? 0,
+      updatedAt: firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await ownerBatch.commit();
+  } else {
+    await flowRef.set(meta, { merge: true });
+  }
+
+  await _replaceFlowSteps(flow.id, flow.steps || []);
+};
+
+const _migrateLegacyFlow = async (uid, flow) => {
+  if (!uid || !flow?.id) return;
+  await _saveFlowToGlobal(uid, { ...flow, ownerUid: uid, _role: 'owner' });
+  await _saveFlowRef(uid, { ...flow, ownerUid: uid, _role: 'owner' });
+};
 
 const _migrateIfNeeded = async (uid) => {
   try {
     const migrationKey = `${MIGRATION_KEY_PREFIX}${uid}`;
     const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
-    if (alreadyMigrated) return;
+    if (alreadyMigrated) {
+      const refsSnapshot = await _flowRefsCollection(uid).limit(1).get();
+      if (!refsSnapshot.empty) return;
+    }
 
     const localJson = await AsyncStorage.getItem(getFlowsStorageKey(uid));
-    // Fallback to old global key for migration
     const legacyJson = await AsyncStorage.getItem('@todo_weather_flows');
     const localFlows = localJson ? JSON.parse(localJson) : (legacyJson ? JSON.parse(legacyJson) : []);
 
-    if (localFlows.length > 0) {
-      const snapshot = await _flowsCollection(uid).limit(1).get();
-      if (snapshot.empty) {
-        // Use the existing saveFlows logic for migration
-        await saveFlows(localFlows);
+    for (const flow of Array.isArray(localFlows) ? localFlows : []) {
+      try {
+        await _migrateLegacyFlow(uid, flow);
+      } catch (e) {
+        console.warn('[FlowSync] Legacy local flow migration skipped:', flow?.id, e);
       }
     }
+
+    const legacyOwnSnapshot = await _legacyFlowsCollection(uid).get();
+    for (const doc of legacyOwnSnapshot.docs) {
+      try {
+        await _migrateLegacyFlow(uid, { id: doc.id, ...doc.data() });
+      } catch (e) {
+        console.warn('[FlowSync] Legacy Firestore flow migration skipped:', doc.id, e);
+      }
+    }
+
+    const legacySharedSnapshot = await _legacySharedFlowsCollection(uid).get();
+    const batch = firestore().batch();
+    legacySharedSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      batch.set(_flowRefsCollection(uid).doc(doc.id), {
+        flowId: doc.id,
+        ownerUid: data.ownerUid,
+        role: data.role || 'viewer',
+        permissions: data.permissions,
+        order: data.order ?? 1000000,
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+    if (!legacySharedSnapshot.empty) await batch.commit();
 
     await AsyncStorage.setItem(migrationKey, '1');
   } catch (e) {
@@ -126,172 +243,117 @@ const _migrateIfNeeded = async (uid) => {
   }
 };
 
-// ─── Snapshot subscriptions ───────────────────────────────────────────────────
+const _stopFlowListener = (flowId) => {
+  const entry = _flowListeners.get(flowId);
+  if (!entry) return;
+  if (entry.flowUnsub) entry.flowUnsub();
+  if (entry.stepsUnsub) entry.stepsUnsub();
+  _flowListeners.delete(flowId);
+};
 
-const _startOwnFlowsSubscription = (uid) => {
-  if (_unsubscribeOwnFlows) { _unsubscribeOwnFlows(); _unsubscribeOwnFlows = null; }
+const _startFlowListener = (flowId) => {
+  if (_flowListeners.has(flowId)) return;
 
-  _unsubscribeOwnFlows = _flowsCollection(uid)
+  const flowUnsub = _globalFlowsCollection().doc(flowId).onSnapshot(
+    doc => {
+      if (doc.exists) _flowDocs.set(flowId, { id: doc.id, ...doc.data() });
+      else _flowDocs.delete(flowId);
+      _mergeAndNotify(true);
+    },
+    err => console.warn(`[FlowSync] Flow ${flowId} snapshot error:`, err)
+  );
+
+  const stepsUnsub = _stepsCollection(flowId).onSnapshot(
+    snapshot => {
+      const steps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      _flowSteps.set(flowId, _sortSteps(steps));
+      _mergeAndNotify(true);
+    },
+    err => console.warn(`[FlowSync] Flow ${flowId} steps error:`, err)
+  );
+
+  _flowListeners.set(flowId, { flowUnsub, stepsUnsub });
+};
+
+const _startFlowRefsSubscription = (uid) => {
+  if (_unsubscribeFlowRefs) { _unsubscribeFlowRefs(); _unsubscribeFlowRefs = null; }
+
+  _unsubscribeFlowRefs = _flowRefsCollection(uid)
     .orderBy('order', 'asc')
     .onSnapshot(
       snapshot => {
-        _ownFlows = _flowsFromSnapshot(snapshot);
-        _mergeAndNotify(true); // true = Firestore 원격 변경
+        const currentIds = new Set(snapshot.docs.map(doc => doc.id));
+
+        _flowListeners.forEach((_, flowId) => {
+          if (!currentIds.has(flowId)) {
+            _stopFlowListener(flowId);
+            _flowRefs.delete(flowId);
+            _flowDocs.delete(flowId);
+            _flowSteps.delete(flowId);
+          }
+        });
+
+        snapshot.docs.forEach((doc, index) => {
+          const data = doc.data();
+          _flowRefs.set(doc.id, {
+            flowId: doc.id,
+            ...data,
+            order: data.order !== undefined ? data.order : (1000000 + index),
+          });
+          _startFlowListener(doc.id);
+        });
+
+        _mergeAndNotify(true);
       },
-      error => console.warn('[FlowSync] Own flows snapshot error:', error)
+      error => console.warn('[FlowSync] flowRefs snapshot error:', error)
     );
 };
 
-const _startSharedFlowsSubscription = (uid) => {
-  if (_unsubscribeSharedFlows) { _unsubscribeSharedFlows(); _unsubscribeSharedFlows = null; }
-  _sharedFlowListeners.forEach(unsub => unsub());
-  _sharedFlowListeners.clear();
-  _sharedFlowsData = [];
+const _loadRemoteFlows = async (uid) => {
+  const refsSnapshot = await _flowRefsCollection(uid).orderBy('order', 'asc').get();
+  const flows = [];
 
-  const sharedFlowsCol = firestore().collection('users').doc(uid).collection('sharedFlows');
+  for (const refDoc of refsSnapshot.docs) {
+    const refData = refDoc.data();
+    const flowDoc = await _globalFlowsCollection().doc(refDoc.id).get();
+    if (!flowDoc.exists) continue;
 
-  _unsubscribeSharedFlows = sharedFlowsCol.onSnapshot(snapshot => {
-    const currentIds = new Set(snapshot.docs.map(d => d.id));
+    const stepsSnapshot = await _stepsCollection(refDoc.id).get();
+    _flowRefs.set(refDoc.id, { flowId: refDoc.id, ...refData });
+    _flowDocs.set(refDoc.id, { id: flowDoc.id, ...flowDoc.data() });
+    _flowSteps.set(refDoc.id, stepsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // Remove listeners for flows no longer shared with us
-    _sharedFlowListeners.forEach((unsub, flowId) => {
-      if (!currentIds.has(flowId)) {
-        unsub();
-        _sharedFlowListeners.delete(flowId);
-      }
-    });
+    const flow = _flowFromParts(refDoc.id);
+    if (flow) flows.push(flow);
+  }
 
-    // CRUCIAL: Remove stale flows from data cache
-    _sharedFlowsData = _sharedFlowsData.filter(f => currentIds.has(f.id));
-
-    // If all shared flows removed, notify immediately
-    if (currentIds.size === 0 && _sharedFlowsData.length === 0) {
-      _mergeAndNotify(true);
-      return;
-    }
-
-    // Add/Update listeners for shared flows
-    // 신규 flowId를 먼저 식별해서 딜레이 적용 대상 파악
-    const existingListenerIds = new Set(_sharedFlowListeners.keys());
-
-    snapshot.docs.forEach((pointerDoc, pointerIdx) => {
-      const pointerData = pointerDoc.data();
-      const { ownerUid, role } = pointerData;
-      // order 필드가 없는 기존 문서는 큰 값으로 fallback → 맨 뒤에 정렬
-      const order = pointerData.order !== undefined ? pointerData.order : (Date.now() + pointerIdx);
-      const flowId = pointerDoc.id;
-      const isNewFlow = !existingListenerIds.has(flowId);
-
-      if (_sharedFlowListeners.has(flowId)) {
-        const existing = _sharedFlowsData.find(f => f.id === flowId);
-        if (!existing) {
-          // Listener exists but data not yet populated (e.g. set up by refreshSharedFlowListener)
-          // — don't tear it down, it's already working
-          return;
-        }
-        const roleChanged = existing._role !== role;
-        const permChanged = JSON.stringify(existing._permissions) !== JSON.stringify(pointerData.permissions);
-        const orderChanged = existing.order !== order;
-
-        // Nothing relevant changed — skip
-        if (!roleChanged && !permChanged && !orderChanged) return;
-
-        // Only order changed — safe to patch in place; no need to restart the listener
-        if (!roleChanged && !permChanged) {
-          existing.order = order;
-          _mergeAndNotify();
-          return;
-        }
-
-        // Role or permissions changed → must restart the listener so its closure
-        // captures the new values.
-        _sharedFlowListeners.get(flowId)();
-        _sharedFlowListeners.delete(flowId);
-      }
-
-      const _startFlowListener = () => {
-        // 이미 리스너가 있으면 덮어쓰지 않음
-        if (_sharedFlowListeners.has(flowId)) return;
-        
-        const unsub = firestore()
-          .collection('users').doc(ownerUid).collection('flows').doc(flowId)
-          .onSnapshot(
-            flowDoc => {
-              const rawData = flowDoc.data();
-              if (rawData) {
-                const flowData = {
-                  id: flowDoc.id,
-                  title: rawData.title || '제목 없는 플로우',
-                  ...rawData,
-                  _ownerUid: ownerUid,
-                  _role: role,
-                  _permissions: pointerData.permissions,
-                  order: order,
-                };
-                const idx = _sharedFlowsData.findIndex(f => f.id === flowId);
-                if (idx >= 0) _sharedFlowsData[idx] = flowData;
-                else _sharedFlowsData.push(flowData);
-              } else {
-                _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
-              }
-              _mergeAndNotify(true);
-            },
-            err => {
-              // 권한 오류(permission-denied)일 경우에만 재시도
-              if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED') {
-                if (__DEV__) console.log(`[FlowSync] Permission delayed for ${flowId}, retrying in 2s...`);
-                _sharedFlowListeners.delete(flowId);
-                setTimeout(() => {
-                  if (!_sharedFlowListeners.has(flowId) && _userId) _startFlowListener();
-                }, 2000);
-              } else {
-                console.warn(`[FlowSync] Shared flow ${flowId} error:`, err);
-                _sharedFlowListeners.delete(flowId);
-              }
-            }
-          );
-        _sharedFlowListeners.set(flowId, unsub);
-      };
-
-      // 즉시 리스너 시작 (지연 로직 제거)
-      _startFlowListener();
-    });
-  }, error => console.warn('[FlowSync] Shared flows collection error:', error));
+  _cachedFlows = flows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return _cachedFlows;
 };
-
-// ─── Public lifecycle API ─────────────────────────────────────────────────────
 
 export const initFlowSync = async (uid) => {
   _userId = uid;
-  _ownFlows = [];
-  _sharedFlowsData = [];
+  _flowRefs = new Map();
+  _flowDocs = new Map();
+  _flowSteps = new Map();
   _cachedFlows = null;
 
-  // Cleanup all previous subscriptions
-  if (_unsubscribeOwnFlows) { _unsubscribeOwnFlows(); _unsubscribeOwnFlows = null; }
-  if (_unsubscribeSharedFlows) { _unsubscribeSharedFlows(); _unsubscribeSharedFlows = null; }
-  _sharedFlowListeners.forEach(unsub => unsub());
-  _sharedFlowListeners.clear();
+  if (_unsubscribeFlowRefs) { _unsubscribeFlowRefs(); _unsubscribeFlowRefs = null; }
+  _flowListeners.forEach((_, flowId) => _stopFlowListener(flowId));
+  _flowListeners.clear();
 
   if (uid) {
-    try {
-      const sharedJson = await AsyncStorage.getItem(getSharedFlowsStorageKey(uid));
-      // Fallback to old global key for migration
-      const legacySharedJson = await AsyncStorage.getItem('@todo_weather_shared_flows');
-      if (sharedJson) {
-        _sharedFlowsData = JSON.parse(sharedJson) || [];
-      } else if (legacySharedJson) {
-        _sharedFlowsData = JSON.parse(legacySharedJson) || [];
-      }
-    } catch (e) {
-      console.warn('[FlowSync] Failed to load cached shared flows:', e);
-    }
-    
     await _migrateIfNeeded(uid);
-    _startOwnFlowsSubscription(uid);
-    _startSharedFlowsSubscription(uid);
+    try {
+      const flows = await _loadRemoteFlows(uid);
+      _snapshotListeners.forEach(cb => cb(flows));
+    } catch (e) {
+      console.warn('[FlowSync] initial load error:', e);
+    }
+    _startFlowRefsSubscription(uid);
   } else {
-    _snapshotListeners.forEach(cb => cb(null));
+    const localFlows = await getFlows();
+    _snapshotListeners.forEach(cb => cb(localFlows));
   }
 };
 
@@ -301,131 +363,46 @@ export const subscribeToFlows = (callback) => {
   return () => _snapshotListeners.delete(callback);
 };
 
-// Force-refresh a specific shared flow listener (call after a successful join).
-// The sharedFlows collection snapshot will eventually trigger the retry logic, but
-// this provides an immediate kick in case the pointer doc already existed before.
 export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
-  // Tear down any existing (possibly dead) listener for this flowId
-  if (_sharedFlowListeners.has(flowId)) {
-    _sharedFlowListeners.get(flowId)();
-    _sharedFlowListeners.delete(flowId);
-  }
-  _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
+  if (!_userId || !flowId) return;
 
-  // Persist the order to the sharedFlows pointer doc so it survives restarts
-  if (order !== undefined && _userId) {
-    firestore()
-      .collection('users').doc(_userId).collection('sharedFlows').doc(flowId)
-      .set({ order }, { merge: true })
-      .catch(e => console.warn('[FlowSync] refreshSharedFlowListener order update failed:', e));
-  }
-
-  const unsub = firestore()
-    .collection('users').doc(ownerUid).collection('flows').doc(flowId)
-    .onSnapshot(
-      flowDoc => {
-        const rawData = flowDoc.data();
-        if (rawData) {
-          const flowData = { id: flowDoc.id, title: rawData.title || '제목 없는 플로우', ...rawData, _ownerUid: ownerUid, _role: role, ...(order !== undefined && { order }) };
-          const idx = _sharedFlowsData.findIndex(f => f.id === flowId);
-          if (idx >= 0) _sharedFlowsData[idx] = flowData;
-          else _sharedFlowsData.push(flowData);
-        } else {
-          _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
-        }
-        _mergeAndNotify();
-      },
-      err => {
-        console.warn('[FlowSync] refreshSharedFlowListener error:', err.code, err.message);
-        _sharedFlowListeners.delete(flowId);
-        // permission-denied: Firestore 규칙 전파 지연 대응 — _startFlowListener와 동일하게 재시도
-        if ((err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED') && _userId) {
-          setTimeout(() => {
-            if (!_sharedFlowListeners.has(flowId) && _userId) {
-              if (__DEV__) console.log(`[FlowSync] refreshSharedFlowListener retrying for ${flowId}`);
-              refreshSharedFlowListener(ownerUid, flowId, role, order);
-            }
-          }, 2000);
-        }
-      }
-    );
-  _sharedFlowListeners.set(flowId, unsub);
+  _flowRefsCollection(_userId).doc(flowId).set({
+    flowId,
+    ownerUid,
+    role,
+    order: order ?? 0,
+    updatedAt: firestore.FieldValue.serverTimestamp(),
+  }, { merge: true }).catch(e => console.warn('[FlowSync] refresh flowRef failed:', e));
 };
 
-// Optimistic removal of a shared flow (called before leaveFlow Firestore write)
 export const removeSharedFlowOptimistic = (flowId) => {
-  _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
-  const unsub = _sharedFlowListeners.get(flowId);
-  if (unsub) { unsub(); _sharedFlowListeners.delete(flowId); }
+  _flowRefs.delete(flowId);
+  _flowDocs.delete(flowId);
+  _flowSteps.delete(flowId);
+  _stopFlowListener(flowId);
   _mergeAndNotify();
 };
 
-// ─── Flow document update (own or shared) ────────────────────────────────────
-
 export const updateFlowDoc = async (flow) => {
-  if (!flow) return;
-  const ownerUid = flow._ownerUid || _userId;
-  const isOwner = !flow._ownerUid || ownerUid === _userId;
-  const isEditor = flow._role === 'editor';
-
-  if (!isOwner && !isEditor) {
-    if (__DEV__) console.log('[FlowSync] updateFlowDoc skipped: User has no edit permission (Role: ' + flow._role + ')');
-    return;
-  }
-  if (__DEV__) {
-    console.log('[FlowSync] updateFlowDoc called', { 
-      flowId: flow.id, 
-      ownerUid, 
-      hasUserId: !!_userId,
-      hasOrder: flow.order !== undefined,
-      order: flow.order
-    });
-  }
-  if (!ownerUid) {
-    if (__DEV__) console.warn('[FlowSync] No ownerUid found for updateFlowDoc');
-    return;
-  }
-  const { id, ...rest } = flow;
-  // Firestore는 undefined 값을 허용하지 않으므로 제거, _role/_ownerUid/_permissions 메타 필드 제외
-  const cleanData = Object.fromEntries(
-    Object.entries(_stripMeta(rest)).filter(([, v]) => v !== undefined)
-  );
-  try {
-    if (__DEV__) console.log(`[FlowSync] Attempting update on: users/${ownerUid}/flows/${id}`, cleanData);
-    await firestore().collection('users').doc(ownerUid).collection('flows').doc(id).set(cleanData, { merge: true });
-    if (__DEV__) console.log('[FlowSync] Firestore update success for flow:', id);
-  } catch (e) {
-    if (__DEV__) {
-      console.error('[FlowSync] Firestore update FAILED:', e);
-      console.error('[FlowSync] Target Path:', `users/${ownerUid}/flows/${id}`);
-      console.error('[FlowSync] Current User:', _userId);
-      console.error('[FlowSync] Flow Role:', flow._role);
-    }
-    throw e;
-  }
+  if (!flow || !_userId) return;
+  await _saveFlowToGlobal(_userId, flow);
 };
-
-// ─── FlowService-compatible API ───────────────────────────────────────────────
 
 export const getFlows = async () => {
   if (_userId) {
+    if (_cachedFlows !== null) return _cachedFlows;
+
     try {
-      if (_cachedFlows !== null) return _cachedFlows;
-      const snapshot = await _flowsCollection(_userId).orderBy('order', 'asc').get();
-      const flows = _flowsFromSnapshot(snapshot);
-      _ownFlows = flows;
-      _cachedFlows = [
-        ...flows.map(f => ({ ...f, _role: 'owner' })),
-        ..._sharedFlowsData
-      ];
-      return _cachedFlows;
+      return await _loadRemoteFlows(_userId);
     } catch (e) {
       console.warn('[FlowSync] getFlows Firestore error, falling back:', e);
     }
   }
+
   try {
     const json = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
-    const data = json ? JSON.parse(json) : [];
+    const legacyJson = !_userId ? await AsyncStorage.getItem('@todo_weather_flows') : null;
+    const data = json ? JSON.parse(json) : (legacyJson ? JSON.parse(legacyJson) : []);
     return Array.isArray(data) ? data : [];
   } catch (e) {
     console.error('[FlowSync] getFlows AsyncStorage error:', e);
@@ -433,93 +410,93 @@ export const getFlows = async () => {
   }
 };
 
-// saveFlows only persists own flows; shared flows must use updateFlowDoc directly
 export const saveFlows = async (flows) => {
   const arr = Array.isArray(flows) ? flows : [];
-  // 드래그 순서대로 강제 순번 할당
   const ordered = arr.map((f, i) => ({ ...f, order: i }));
-  
-  // ownFlows: _ownerUid가 없거나 _role이 'owner'인 경우
-  const ownFlows = ordered.filter(f => !f._ownerUid || f._role === 'owner').map(_stripMeta);
-  // sharedFlows: _ownerUid가 있거나 _role이 'owner'가 아닌 경우
+  const ownFlows = ordered.filter(f => !f._ownerUid || f._role === 'owner');
   const sharedFlows = ordered.filter(f => f._ownerUid || (f._role && f._role !== 'owner'));
 
-  if (__DEV__) {
-    console.log('[FlowSync] saveFlows sync', {
-      total: arr.length,
-      own: ownFlows.length,
-      shared: sharedFlows.length,
-      sharedIds: sharedFlows.map(f => f.id)
+  _flowRefs = new Map();
+  ordered.forEach(flow => {
+    _flowRefs.set(flow.id, {
+      flowId: flow.id,
+      ownerUid: flow._ownerUid || flow.ownerUid || _userId,
+      role: flow._role || 'owner',
+      permissions: flow._permissions,
+      order: flow.order,
     });
-  }
-
-  _ownFlows = ownFlows;
-  _sharedFlowsData = sharedFlows;
-
+    _flowDocs.set(flow.id, { id: flow.id, ..._cleanFlowDocData(flow), ownerUid: flow._ownerUid || flow.ownerUid || _userId });
+    _flowSteps.set(flow.id, flow.steps || []);
+  });
   _mergeAndNotify();
 
   if (_userId) {
     try {
-      if (__DEV__) console.log('[FlowSync] saveFlows - Syncing to Firestore...', { count: ordered.length });
-      await _saveAllFlowOrdersToFirestore(_userId, ordered);
+      for (const flow of ownFlows) {
+        await _saveFlowToGlobal(_userId, { ...flow, _role: 'owner' });
+      }
+      for (const flow of sharedFlows) {
+        await _saveFlowRef(_userId, flow);
+      }
+
+      const currentRefs = await _flowRefsCollection(_userId).get();
+      const nextIds = new Set(ordered.map(f => f.id));
+      const batch = firestore().batch();
+      currentRefs.docs
+        .filter(doc => !nextIds.has(doc.id) && doc.data().role === 'owner')
+        .forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
     } catch (e) {
       if (__DEV__) console.warn('[FlowSync] saveFlows Firestore error:', e);
     }
   }
+
   try {
     await AsyncStorage.setItem(getFlowsStorageKey(_userId), JSON.stringify(ownFlows));
+    if (!_userId) {
+      await AsyncStorage.setItem('@todo_weather_flows', JSON.stringify(ownFlows));
+    }
   } catch (e) {
     if (__DEV__) console.error('[FlowSync] saveFlows AsyncStorage error:', e);
   }
 };
 
 export const addFlow = async (flow) => {
-  const current = await getFlows(); // already sorted by user's custom order
+  const current = await getFlows();
   const ownFlows = current.filter(f => !f._ownerUid);
-  await saveFlows([flow, ...ownFlows]);
-  // Return new flow at top, then all existing flows (own+shared) in their original order
+  await saveFlows([{ ...flow, _role: 'owner' }, ...ownFlows]);
   return [{ ...flow, _role: 'owner' }, ...current];
 };
 
 export const deleteFlow = async (id) => {
-  // Optimistic update: remove from cache immediately so getFlows() is never stale
-  _ownFlows = (_ownFlows || []).filter(f => f.id !== id);
+  _flowRefs.delete(id);
+  _flowDocs.delete(id);
+  _flowSteps.delete(id);
+  _stopFlowListener(id);
   _mergeAndNotify();
 
   if (_userId) {
     try {
-      if (__DEV__) console.log('[FlowSync] deleteFlow - Deleting from Firestore...', { id });
-      const membersSnapshot = await _flowsCollection(_userId).doc(id).collection('members').get();
+      const membersSnapshot = await _membersCollection(id).get();
+      const stepsSnapshot = await _stepsCollection(id).get();
       const batch = firestore().batch();
 
-      // Delete the flow doc itself
-      batch.delete(_flowsCollection(_userId).doc(id));
-
-      // For each member, delete their sharedFlows pointer and the member doc
       membersSnapshot.docs.forEach(memberDoc => {
-        const memberUid = memberDoc.id;
-        batch.delete(
-          firestore().collection('users').doc(memberUid).collection('sharedFlows').doc(id)
-        );
-        batch.delete(
-          _flowsCollection(_userId).doc(id).collection('members').doc(memberUid)
-        );
+        batch.delete(_flowRefsCollection(memberDoc.id).doc(id));
+        batch.delete(memberDoc.ref);
       });
-
+      stepsSnapshot.docs.forEach(stepDoc => batch.delete(stepDoc.ref));
+      batch.delete(_globalFlowsCollection().doc(id));
       await batch.commit();
-      if (__DEV__) console.log('[FlowSync] deleteFlow - Firestore deletion success.', { memberCount: membersSnapshot.size });
     } catch (e) {
       if (__DEV__) console.warn('[FlowSync] deleteFlow Firestore error:', e);
     }
   }
+
   try {
-    if (_userId) {
-      const json = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
-      const data = json ? JSON.parse(json) : [];
-      const filtered = data.filter(f => f.id !== id);
-      await AsyncStorage.setItem(getFlowsStorageKey(_userId), JSON.stringify(filtered));
-      if (__DEV__) console.log('[FlowSync] deleteFlow - AsyncStorage update success.');
-    }
+    const json = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
+    const data = json ? JSON.parse(json) : [];
+    await AsyncStorage.setItem(getFlowsStorageKey(_userId), JSON.stringify(data.filter(f => f.id !== id)));
   } catch (e) {
     if (__DEV__) console.error('[FlowSync] deleteFlow AsyncStorage error:', e);
   }

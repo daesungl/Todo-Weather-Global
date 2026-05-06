@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { LucideLogOut, LucideUser, LucideArrowLeft, LucideX, LucideCheck, LucideChevronRight, LucideLock, LucideMail } from 'lucide-react-native';
+import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { Colors, Spacing, Typography } from '../theme';
 
@@ -30,6 +31,12 @@ const ProfileScreen = ({ navigation }) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isLoggingOutRef = React.useRef(false);
 
+  React.useEffect(() => {
+    if (!user) {
+      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+    }
+  }, [navigation, user]);
+
   if (!user) return null;
 
   const handleLogout = async () => {
@@ -38,7 +45,7 @@ const ProfileScreen = ({ navigation }) => {
     setIsLoggingOut(true);
     try {
       await logout();
-      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
     } catch (_) {
       isLoggingOutRef.current = false;
       setIsLoggingOut(false);
@@ -48,6 +55,12 @@ const ProfileScreen = ({ navigation }) => {
   const handleUpdateProfile = async () => {
     if (!newName.trim()) {
       Alert.alert(t('common.error'), t('auth.nameRequired', { defaultValue: 'Name is required' }));
+      return;
+    }
+
+    if (auth().currentUser?.uid !== user.uid) {
+      setEditModalVisible(false);
+      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
       return;
     }
 

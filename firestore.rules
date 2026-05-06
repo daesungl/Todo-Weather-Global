@@ -1,6 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function flowPath(flowId) {
+      return /databases/$(database)/documents/flows/$(flowId);
+    }
+
+    function memberPath(flowId, uid) {
+      return /databases/$(database)/documents/flows/$(flowId)/members/$(uid);
+    }
+
+    function isFlowOwner(flowId) {
+      return signedIn()
+        && exists(flowPath(flowId))
+        && get(flowPath(flowId)).data.ownerUid == request.auth.uid;
+    }
+
+    function isFlowMember(flowId) {
+      return signedIn() && exists(memberPath(flowId, request.auth.uid));
+    }
+
+    function flowRole(flowId) {
+      return get(memberPath(flowId, request.auth.uid)).data.role;
+    }
+
+    function canEditFlow(flowId) {
+      return isFlowOwner(flowId)
+        || (isFlowMember(flowId) && flowRole(flowId) in ['owner', 'editor']);
+    }
 
     // Invite codes — any authenticated user can read; only owner can create/modify/delete
     match /inviteCodes/{code} {
@@ -11,9 +41,61 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid;
     }
 
+    match /flows/{flowId} {
+      allow read: if isFlowMember(flowId);
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if canEditFlow(flowId)
+        || (isFlowMember(flowId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCounts']));
+      allow delete: if isFlowOwner(flowId);
+
+      match /members/{memberUid} {
+        allow read: if isFlowMember(flowId);
+        allow create: if signedIn()
+          && request.auth.uid == memberUid
+          && (
+            (request.resource.data.role == 'owner'
+              && get(flowPath(flowId)).data.ownerUid == request.auth.uid)
+            || request.resource.data.role in ['viewer', 'editor']
+          );
+        allow update: if isFlowOwner(flowId)
+          || (request.auth.uid == memberUid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']));
+        allow delete: if isFlowOwner(flowId) || request.auth.uid == memberUid;
+      }
+
+      match /steps/{stepId} {
+        allow read: if isFlowMember(flowId);
+        allow create, update, delete: if canEditFlow(flowId);
+      }
+
+      match /comments/{commentId} {
+        allow read: if isFlowMember(flowId);
+        allow create: if isFlowMember(flowId);
+        allow delete: if isFlowOwner(flowId)
+          || request.auth.uid == resource.data.uid
+          || (isFlowMember(flowId)
+              && (get(memberPath(flowId, request.auth.uid)).data.permissions.manageComments == true
+                  || flowRole(flowId) in ['owner', 'editor']));
+        allow update: if false;
+      }
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
+
+      match /flowRefs/{flowId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn()
+          && (request.auth.uid == userId
+              || request.resource.data.ownerUid == request.auth.uid);
+        allow update, delete: if signedIn()
+          && (request.auth.uid == userId
+              || resource.data.ownerUid == request.auth.uid
+              || request.resource.data.ownerUid == request.auth.uid);
+      }
 
       match /flows/{flowId} {
         // Owner: full access
@@ -36,7 +118,7 @@ service cloud.firestore {
         // - Owner can read ALL members (needed for subscribeToFlowMembers)
         // - Any authenticated member of the flow can read all members (needed for UI)
         // - Anyone authenticated can create their OWN membership (self-join via invite code)
-        // - Owner can update any member; member can update only themselves
+        // - Owner can update any member; member can only update their display name
         // - Owner can delete any member; member can delete themselves (leave)
         match /members/{memberUid} {
           allow read: if request.auth != null
@@ -46,7 +128,8 @@ service cloud.firestore {
           allow create: if request.auth != null && request.auth.uid == memberUid;
           allow update: if request.auth != null
             && (request.auth.uid == userId
-                || request.auth.uid == memberUid);
+                || (request.auth.uid == memberUid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])));
           allow delete: if request.auth != null
             && (request.auth.uid == userId || request.auth.uid == memberUid);
         }

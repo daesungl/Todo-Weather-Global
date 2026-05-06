@@ -7,8 +7,16 @@ const _generateCode = () => {
   return code;
 };
 
-const _membersCollection = (ownerUid, flowId) =>
-  firestore().collection('users').doc(ownerUid).collection('flows').doc(flowId).collection('members');
+const _membersCollection = (flowId) =>
+  firestore().collection('flows').doc(flowId).collection('members');
+
+const _flowRefsCollection = (uid) =>
+  firestore().collection('users').doc(uid).collection('flowRefs');
+
+const _cleanFlowData = (flowData = {}) => {
+  const { id, steps, _role, _ownerUid, _permissions, order, ...cleanFlowData } = flowData;
+  return Object.fromEntries(Object.entries(cleanFlowData).filter(([, v]) => v !== undefined));
+};
 
 export const generateInviteCode = async (uid, flowId, role = 'viewer', flowData = null) => {
   const code = _generateCode();
@@ -28,16 +36,25 @@ export const generateInviteCode = async (uid, flowId, role = 'viewer', flowData 
   // 플로우 실제 데이터가 있으면 함께 씀 (오너 구버전 대응: Firestore에 title/steps 동기화)
   const flowDocUpdate = { inviteCode: code, inviteRole: role, inviteCodeExpiresAt: expiresTs };
   if (flowData) {
-    // _role, _ownerUid 등 내부 메타 필드 제거 후 저장
-    const { _role, _ownerUid, _permissions, ...cleanFlowData } = flowData;
-    Object.assign(flowDocUpdate, cleanFlowData);
+    Object.assign(flowDocUpdate, _cleanFlowData(flowData));
   }
+  flowDocUpdate.ownerUid = uid;
 
   batch.set(
-    firestore().collection('users').doc(uid).collection('flows').doc(flowId),
+    firestore().collection('flows').doc(flowId),
     flowDocUpdate,
     { merge: true }
   );
+  batch.set(_membersCollection(flowId).doc(uid), {
+    role: 'owner',
+    joinedAt: firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  batch.set(_flowRefsCollection(uid).doc(flowId), {
+    ownerUid: uid,
+    flowId,
+    role: 'owner',
+    updatedAt: firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
   await batch.commit();
   return code;
 };
@@ -59,9 +76,8 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
   if (invite.expiresAt.toDate() < new Date()) throw new Error('EXPIRED_CODE');
   if (invite.ownerUid === uid) throw new Error('OWN_FLOW');
 
-  const memberRef = _membersCollection(invite.ownerUid, invite.flowId).doc(uid);
-  const sharedFlowRef = firestore()
-    .collection('users').doc(uid).collection('sharedFlows').doc(invite.flowId);
+  const memberRef = _membersCollection(invite.flowId).doc(uid);
+  const flowRef = _flowRefsCollection(uid).doc(invite.flowId);
 
   const existingMemberSnap = await memberRef.get();
   const existingMemberData = existingMemberSnap.data(); // undefined if doc does not exist
@@ -75,7 +91,7 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
       joinedAt: firestore.FieldValue.serverTimestamp(),
     });
   }
-  batch.set(sharedFlowRef, {
+  batch.set(flowRef, {
     ownerUid: invite.ownerUid,
     flowId: invite.flowId,
     role: effectiveRole,
@@ -87,7 +103,7 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
   let flowTitle = '';
   const readFlowTitle = async () => {
     const flowDoc = await firestore()
-      .collection('users').doc(invite.ownerUid).collection('flows').doc(invite.flowId)
+      .collection('flows').doc(invite.flowId)
       .get();
     const flowData = flowDoc.data();
     if (flowData) flowTitle = flowData.title || '';
@@ -106,24 +122,20 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
 
 export const leaveFlow = async (uid, ownerUid, flowId) => {
   const batch = firestore().batch();
-  batch.delete(_membersCollection(ownerUid, flowId).doc(uid));
-  batch.delete(
-    firestore().collection('users').doc(uid).collection('sharedFlows').doc(flowId)
-  );
+  batch.delete(_membersCollection(flowId).doc(uid));
+  batch.delete(_flowRefsCollection(uid).doc(flowId));
   await batch.commit();
 };
 
 export const removeMember = async (ownerUid, flowId, memberUid) => {
   const batch = firestore().batch();
-  batch.delete(_membersCollection(ownerUid, flowId).doc(memberUid));
-  batch.delete(
-    firestore().collection('users').doc(memberUid).collection('sharedFlows').doc(flowId)
-  );
+  batch.delete(_membersCollection(flowId).doc(memberUid));
+  batch.delete(_flowRefsCollection(memberUid).doc(flowId));
   await batch.commit();
 };
 
 export const getFlowMembers = async (ownerUid, flowId) => {
-  const snapshot = await _membersCollection(ownerUid, flowId).get();
+  const snapshot = await _membersCollection(flowId).get();
   return snapshot.docs.map(doc => {
     const data = doc.data();
     return {
@@ -140,7 +152,7 @@ export const getFlowMembers = async (ownerUid, flowId) => {
 
 export const subscribeToFlowMembers = (ownerUid, flowId, onUpdate) => {
   if (!ownerUid || !flowId) return () => {};
-  return _membersCollection(ownerUid, flowId).onSnapshot(snapshot => {
+  return _membersCollection(flowId).onSnapshot(snapshot => {
     const members = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -161,15 +173,14 @@ export const subscribeToFlowMembers = (ownerUid, flowId, onUpdate) => {
 
 export const updateMemberPermissions = async (ownerUid, flowId, memberUid, permissions) => {
   const batch = firestore().batch();
-  const memberRef = _membersCollection(ownerUid, flowId).doc(memberUid);
-  const sharedFlowRef = firestore()
-    .collection('users').doc(memberUid).collection('sharedFlows').doc(flowId);
+  const memberRef = _membersCollection(flowId).doc(memberUid);
+  const flowRef = _flowRefsCollection(memberUid).doc(flowId);
 
   const updateData = { permissions };
   if (permissions.edit) updateData.role = 'editor';
   else updateData.role = 'viewer';
 
   batch.set(memberRef, updateData, { merge: true });
-  batch.set(sharedFlowRef, updateData, { merge: true });
+  batch.set(flowRef, updateData, { merge: true });
   await batch.commit();
 };

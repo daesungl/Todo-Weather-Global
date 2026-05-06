@@ -24,6 +24,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const unsubscribeSnapshot = useRef(null);
   const isLoggingOutRef = useRef(false);
+  const activeAuthUidRef = useRef(null);
 
   useEffect(() => {
     const subscriber = auth().onAuthStateChanged(async (currentUser) => {
@@ -39,10 +40,24 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (currentUser) {
+        activeAuthUidRef.current = currentUser.uid;
+        const isCurrentAuthUser = () =>
+          !isLoggingOutRef.current
+          && activeAuthUidRef.current === currentUser.uid
+          && auth().currentUser?.uid === currentUser.uid;
+
         // 이메일 비밀번호 가입자 중 인증을 안 한 사용자는 데이터 로드 및 UI 진입을 완벽히 차단
         const isPasswordAuth = currentUser.providerData.some(p => p.providerId === 'password');
         if (isPasswordAuth && !currentUser.emailVerified) {
-          return; // 여기서 아무 작업도 하지 않고 리턴 (App.js에서 AuthStack 유지)
+          activeAuthUidRef.current = null;
+          setUser(null);
+          setIsGuest(false);
+          initFlowSync(null);
+          initRegionSync(null);
+          initTaskSync(null);
+          auth().signOut().catch(() => {});
+          setLoading(false);
+          return;
         }
 
         setIsGuest(false); // 실제 사용자가 생기면 게스트 모드 해제
@@ -50,6 +65,8 @@ export const AuthProvider = ({ children }) => {
           const userRef = firestore().collection('users').doc(currentUser.uid);
           
           const doc = await userRef.get();
+          if (!isCurrentAuthUser()) return;
+
           const displayName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
           const profileImage = currentUser.photoURL || '';
 
@@ -71,16 +88,19 @@ export const AuthProvider = ({ children }) => {
               await userRef.update({ displayName, profileImage, updatedAt: firestore.FieldValue.serverTimestamp() });
             }
           }
+          if (!isCurrentAuthUser()) return;
 
-          initFlowSync(currentUser.uid);
-          initRegionSync(currentUser.uid);
-          initTaskSync(currentUser.uid);
+          await Promise.all([
+            initFlowSync(currentUser.uid),
+            initRegionSync(currentUser.uid),
+            initTaskSync(currentUser.uid),
+          ]);
 
           // 비동기 작업 대기 중 로그아웃이 완료됐으면 snapshot 등록 자체를 건너뜀
-          if (isLoggingOutRef.current) return;
+          if (!isCurrentAuthUser()) return;
 
           unsubscribeSnapshot.current = userRef.onSnapshot((snapshot) => {
-            if (isLoggingOutRef.current) return;
+            if (!isCurrentAuthUser()) return;
             if (snapshot.exists) {
               const data = snapshot.data();
               // 클래스 인스턴스 대신 명시적으로 필드를 병합하여 데이터 유실 방지
@@ -101,7 +121,7 @@ export const AuthProvider = ({ children }) => {
               });
             }
           }, (error) => {
-            if (isLoggingOutRef.current) return;
+            if (!isCurrentAuthUser()) return;
             if (error.code === 'firestore/permission-denied') {
               // 권한 에러 시에도 기본 정보는 유지
               setUser({
@@ -115,6 +135,7 @@ export const AuthProvider = ({ children }) => {
             console.error('[AuthContext] Snapshot error:', error);
           });
         } catch (error) {
+          if (!isCurrentAuthUser()) return;
           console.error('[AuthContext] Error in onAuthStateChanged:', error);
           setUser({
             uid: currentUser.uid,
@@ -126,6 +147,7 @@ export const AuthProvider = ({ children }) => {
           setLoading(false);
         }
       } else {
+        activeAuthUidRef.current = null;
         isLoggingOutRef.current = false;
         initFlowSync(null);
         initRegionSync(null);
@@ -167,6 +189,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (email, password) => {
+    isLoggingOutRef.current = false;
     try {
       const userCredential = await auth().signInWithEmailAndPassword(email, password);
       // 이메일 인증 여부 확인 (소셜 로그인은 이미 인증된 것으로 간주됨)
@@ -218,12 +241,17 @@ export const AuthProvider = ({ children }) => {
   };
 
   const continueAsGuest = () => {
+    activeAuthUidRef.current = null;
     setIsGuest(true);
     setUser(null);
+    initFlowSync(null);
+    initRegionSync(null);
+    initTaskSync(null);
   };
 
   const logout = async () => {
     isLoggingOutRef.current = true;
+    activeAuthUidRef.current = null;
 
     if (unsubscribeSnapshot.current) {
       unsubscribeSnapshot.current();
@@ -231,7 +259,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     setUser(null);
-    setIsGuest(false);
+    setIsGuest(true);
     initFlowSync(null);
     initRegionSync(null);
     initTaskSync(null);
@@ -255,6 +283,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signInWithGoogle = async () => {
+    isLoggingOutRef.current = false;
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
@@ -275,6 +304,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signInWithApple = async () => {
+    isLoggingOutRef.current = false;
     try {
       const appleAuthResponse = await appleAuth.performRequest({
         requestedOperation: appleAuth.Operation.LOGIN,

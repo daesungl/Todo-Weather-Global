@@ -1,11 +1,11 @@
 import firestore from '@react-native-firebase/firestore';
 
 /**
- * users/{ownerUid}/flows/{flowId}/comments/{commentId}
+ * flows/{flowId}/comments/{commentId}
  */
 
 const _commentsCol = (ownerUid, flowId) => 
-  firestore().collection('users').doc(ownerUid).collection('flows').doc(flowId).collection('comments');
+  firestore().collection('flows').doc(flowId).collection('comments');
 
 export const subscribeToComments = (ownerUid, flowId, onUpdate) => {
   if (!ownerUid || !flowId) return () => {};
@@ -42,7 +42,7 @@ export const addComment = async (ownerUid, flowId, stepId, user, text) => {
   // Viewers can create comments but cannot update the flow doc, so this
   // must be fire-and-forget and never block or throw.
   firestore()
-    .collection('users').doc(ownerUid).collection('flows').doc(flowId)
+    .collection('flows').doc(flowId)
     .update({ [`commentCounts.${stepId}`]: firestore.FieldValue.increment(1) })
     .catch(() => {});
 };
@@ -52,7 +52,7 @@ export const deleteComment = async (ownerUid, flowId, stepId, commentId) => {
 
   const batch = firestore().batch();
   const commentRef = _commentsCol(ownerUid, flowId).doc(commentId);
-  const flowRef = firestore().collection('users').doc(ownerUid).collection('flows').doc(flowId);
+  const flowRef = firestore().collection('flows').doc(flowId);
 
   batch.delete(commentRef);
   if (stepId) {

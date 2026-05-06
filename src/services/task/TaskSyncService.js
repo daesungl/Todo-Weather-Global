@@ -60,7 +60,10 @@ const _migrateIfNeeded = async (uid) => {
   try {
     const migrationKey = `${MIGRATION_KEY_PREFIX}${uid}`;
     const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
-    if (alreadyMigrated) return;
+    if (alreadyMigrated) {
+      const remoteSnapshot = await _tasksCollection(uid).limit(1).get();
+      if (!remoteSnapshot.empty) return;
+    }
 
     const localJson = await AsyncStorage.getItem(TASKS_STORAGE_KEY);
     const localTasks = localJson ? JSON.parse(localJson) : [];

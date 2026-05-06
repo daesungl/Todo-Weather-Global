@@ -292,6 +292,7 @@ const LoginScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.guestButton}
               onPress={() => {
+                continueAsGuest();
                 if (navigation.canGoBack()) {
                   navigation.goBack();
                 } else {
