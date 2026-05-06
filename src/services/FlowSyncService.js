@@ -172,71 +172,100 @@ const _startSharedFlowsSubscription = (uid) => {
     }
 
     // Add/Update listeners for shared flows
+    // 신규 flowId를 먼저 식별해서 딜레이 적용 대상 파악
+    const existingListenerIds = new Set(_sharedFlowListeners.keys());
+
     snapshot.docs.forEach((pointerDoc, pointerIdx) => {
       const pointerData = pointerDoc.data();
       const { ownerUid, role } = pointerData;
       // order 필드가 없는 기존 문서는 큰 값으로 fallback → 맨 뒤에 정렬
       const order = pointerData.order !== undefined ? pointerData.order : (Date.now() + pointerIdx);
       const flowId = pointerDoc.id;
+      const isNewFlow = !existingListenerIds.has(flowId);
 
       if (_sharedFlowListeners.has(flowId)) {
         const existing = _sharedFlowsData.find(f => f.id === flowId);
-        if (existing) {
-          const roleChanged = existing._role !== role;
-          const permChanged = JSON.stringify(existing._permissions) !== JSON.stringify(pointerData.permissions);
-          const orderChanged = existing.order !== order;
-
-          // Nothing relevant changed — skip
-          if (!roleChanged && !permChanged && !orderChanged) return;
-
-          // Only order changed — safe to patch in place; no need to restart the listener
-          if (!roleChanged && !permChanged) {
-            existing.order = order;
-            _mergeAndNotify();
-            return;
-          }
-
-          // Role or permissions changed → must restart the listener so its closure
-          // captures the new values. In-place patch would be overwritten the next
-          // time the flow doc fires (it still uses old role from the old closure).
-          // Do NOT remove from _sharedFlowsData here — keep the stale entry visible
-          // until the new listener fires and overwrites it. Removing it would cause
-          // a momentary absence that FlowScreen misreads as a kick.
+        if (!existing) {
+          // Listener exists but data not yet populated (e.g. set up by refreshSharedFlowListener)
+          // — don't tear it down, it's already working
+          return;
         }
+        const roleChanged = existing._role !== role;
+        const permChanged = JSON.stringify(existing._permissions) !== JSON.stringify(pointerData.permissions);
+        const orderChanged = existing.order !== order;
+
+        // Nothing relevant changed — skip
+        if (!roleChanged && !permChanged && !orderChanged) return;
+
+        // Only order changed — safe to patch in place; no need to restart the listener
+        if (!roleChanged && !permChanged) {
+          existing.order = order;
+          _mergeAndNotify();
+          return;
+        }
+
+        // Role or permissions changed → must restart the listener so its closure
+        // captures the new values.
         _sharedFlowListeners.get(flowId)();
         _sharedFlowListeners.delete(flowId);
       }
 
-      const unsub = firestore()
-        .collection('users').doc(ownerUid).collection('flows').doc(flowId)
-        .onSnapshot(
-          flowDoc => {
-            const rawData = flowDoc.data();
-            if (rawData) {
-              const flowData = {
-                id: flowDoc.id,
-                title: rawData.title || '제목 없는 플로우',
-                ...rawData,
-                _ownerUid: ownerUid,
-                _role: role,
-                _permissions: pointerData.permissions,
-                order: order,
-              };
-              const idx = _sharedFlowsData.findIndex(f => f.id === flowId);
-              if (idx >= 0) _sharedFlowsData[idx] = flowData;
-              else _sharedFlowsData.push(flowData);
-            } else {
-              _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
+      const _startFlowListener = () => {
+        // 이미 리스너가 있으면 덮어쓰지 않음 (refreshSharedFlowListener 등이 먼저 등록한 경우 보호)
+        if (_sharedFlowListeners.has(flowId)) return;
+        if (__DEV__) console.log(`[FlowSync] Starting listener for flow ${flowId} (ownerUid: ${ownerUid}, role: ${role})`);
+        const unsub = firestore()
+          .collection('users').doc(ownerUid).collection('flows').doc(flowId)
+          .onSnapshot(
+            flowDoc => {
+              const rawData = flowDoc.data();
+              if (__DEV__) console.log(`[FlowSync] onSnapshot fired for flow ${flowId}`, { hasData: !!rawData, title: rawData?.title });
+              if (rawData) {
+                const flowData = {
+                  id: flowDoc.id,
+                  title: rawData.title || '제목 없는 플로우',
+                  ...rawData,
+                  _ownerUid: ownerUid,
+                  _role: role,
+                  _permissions: pointerData.permissions,
+                  order: order,
+                };
+                const idx = _sharedFlowsData.findIndex(f => f.id === flowId);
+                if (idx >= 0) _sharedFlowsData[idx] = flowData;
+                else _sharedFlowsData.push(flowData);
+              } else {
+                _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
+              }
+              _mergeAndNotify(true);
+            },
+            err => {
+              console.warn(`[FlowSync] Shared flow snapshot error for ${flowId}:`, err.code, err.message);
+              // 권한 오류(permission-denied)일 경우 2초 후 재시도 (멤버 문서 전파 지연 대응)
+              if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED') {
+                console.warn(`[FlowSync] Permission denied for ${flowId} — will retry in 2s`);
+                _sharedFlowListeners.delete(flowId);
+                setTimeout(() => {
+                  // 아직 이 flowId를 구독하지 않는 경우만 재시도
+                  if (!_sharedFlowListeners.has(flowId) && _userId) {
+                    if (__DEV__) console.log(`[FlowSync] Retrying listener for flow ${flowId}`);
+                    _startFlowListener();
+                  }
+                }, 2000);
+              } else {
+                _sharedFlowListeners.delete(flowId);
+              }
             }
-            _mergeAndNotify(true); // true = Firestore 원격 변경
-          },
-          err => {
-            console.warn('[FlowSync] Shared flow snapshot error:', err);
-            _sharedFlowListeners.delete(flowId);
-          }
-        );
+          );
+        _sharedFlowListeners.set(flowId, unsub);
+      };
 
-      _sharedFlowListeners.set(flowId, unsub);
+      // 새로 감지된 공유 플로우는 Firestore Rules 전파 지연(~1s)을 고려해
+      // 짧은 딜레이 후 구독 시작. 기존 플로우는 즉시 재구독.
+      if (isNewFlow) {
+        setTimeout(_startFlowListener, 1500);
+      } else {
+        _startFlowListener();
+      }
     });
   }, error => console.warn('[FlowSync] Shared flows collection error:', error));
 };
@@ -462,8 +491,25 @@ export const deleteFlow = async (id) => {
   if (_userId) {
     try {
       if (__DEV__) console.log('[FlowSync] deleteFlow - Deleting from Firestore...', { id });
-      await _flowsCollection(_userId).doc(id).delete();
-      if (__DEV__) console.log('[FlowSync] deleteFlow - Firestore deletion success.');
+      const membersSnapshot = await _flowsCollection(_userId).doc(id).collection('members').get();
+      const batch = firestore().batch();
+
+      // Delete the flow doc itself
+      batch.delete(_flowsCollection(_userId).doc(id));
+
+      // For each member, delete their sharedFlows pointer and the member doc
+      membersSnapshot.docs.forEach(memberDoc => {
+        const memberUid = memberDoc.id;
+        batch.delete(
+          firestore().collection('users').doc(memberUid).collection('sharedFlows').doc(id)
+        );
+        batch.delete(
+          _flowsCollection(_userId).doc(id).collection('members').doc(memberUid)
+        );
+      });
+
+      await batch.commit();
+      if (__DEV__) console.log('[FlowSync] deleteFlow - Firestore deletion success.', { memberCount: membersSnapshot.size });
     } catch (e) {
       if (__DEV__) console.warn('[FlowSync] deleteFlow Firestore error:', e);
     }

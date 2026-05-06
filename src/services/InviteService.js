@@ -10,7 +10,7 @@ const _generateCode = () => {
 const _membersCollection = (ownerUid, flowId) =>
   firestore().collection('users').doc(ownerUid).collection('flows').doc(flowId).collection('members');
 
-export const generateInviteCode = async (uid, flowId, role = 'viewer') => {
+export const generateInviteCode = async (uid, flowId, role = 'viewer', flowData = null) => {
   const code = _generateCode();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
@@ -24,10 +24,18 @@ export const generateInviteCode = async (uid, flowId, role = 'viewer') => {
     createdAt: firestore.FieldValue.serverTimestamp(),
     expiresAt: expiresTs,
   });
-  // set+merge so this never fails with NOT_FOUND even if the flow doc is momentarily absent
+
+  // 플로우 실제 데이터가 있으면 함께 씀 (오너 구버전 대응: Firestore에 title/steps 동기화)
+  const flowDocUpdate = { inviteCode: code, inviteRole: role, inviteCodeExpiresAt: expiresTs };
+  if (flowData) {
+    // _role, _ownerUid 등 내부 메타 필드 제거 후 저장
+    const { _role, _ownerUid, _permissions, ...cleanFlowData } = flowData;
+    Object.assign(flowDocUpdate, cleanFlowData);
+  }
+
   batch.set(
     firestore().collection('users').doc(uid).collection('flows').doc(flowId),
-    { inviteCode: code, inviteRole: role, inviteCodeExpiresAt: expiresTs },
+    flowDocUpdate,
     { merge: true }
   );
   await batch.commit();

@@ -329,8 +329,8 @@ const FlowScreen = ({ navigation, route }) => {
         const roleChanged = sameFlow && prev._role !== latest._role;
         const permChanged = sameFlow && JSON.stringify(prev._permissions) !== JSON.stringify(latest._permissions);
 
-        if (roleChanged || permChanged) {
-          // Permission change — notify without ejecting
+        if ((roleChanged || permChanged) && !isFlowOwner(latest) && isRemoteFlowUpdate()) {
+          // 권한 변경 알림 — 오너 자신에게는 표시 안 함, 원격 업데이트(Firestore)일 때만 표시
           const becameEditor = latest._role === 'editor';
           const msg = becameEditor
             ? t('flow.alert.perm_changed_editor')
@@ -730,7 +730,7 @@ const FlowScreen = ({ navigation, route }) => {
           console.warn('[Flow] invalidate code cleanup error:', e)
         );
       }
-      const code = await generateInviteCode(user?.uid, selectedFlow.id, targetRole);
+      const code = await generateInviteCode(user?.uid, selectedFlow.id, targetRole, selectedFlow);
       setInviteCode(code);
       const updatedFlow = { ...selectedFlow, inviteCode: code, inviteRole: targetRole };
       setSelectedFlow(updatedFlow);

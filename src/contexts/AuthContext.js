@@ -242,11 +242,15 @@ export const AuthProvider = ({ children }) => {
     } catch (_) { }
 
     try {
-      await auth().signOut();
+      if (auth().currentUser) {
+        await auth().signOut();
+      }
     } catch (e) {
-      console.warn('[AuthContext] signOut error:', e);
-      isLoggingOutRef.current = false;
-      throw e;
+      if (e.code !== 'auth/no-current-user') {
+        console.warn('[AuthContext] signOut error:', e);
+        isLoggingOutRef.current = false;
+        throw e;
+      }
     }
   };
 
@@ -254,12 +258,18 @@ export const AuthProvider = ({ children }) => {
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
-      if (response.type === 'success') {
-        const { idToken } = response.data;
-        const googleCredential = auth.GoogleAuthProvider.credential(idToken);
-        return auth().signInWithCredential(googleCredential);
+      if (response.type !== 'success') {
+        return null; // 취소됨
       }
+      const { idToken } = response.data;
+      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+      return auth().signInWithCredential(googleCredential);
     } catch (error) {
+      const isCancelled =
+        error.code === 'SIGN_IN_CANCELLED' ||
+        error.code === 'sign_in_cancelled' ||
+        error.statusCode === 12;
+      if (isCancelled) return null;
       throw new Error(getAuthErrorMessage(error));
     }
   };

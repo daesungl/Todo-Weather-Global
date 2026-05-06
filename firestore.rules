@@ -29,14 +29,20 @@ service cloud.firestore {
         allow delete: if request.auth != null && request.auth.uid == userId;
 
         // Members sub-collection:
-        // - Owner or the member themselves can read
+        // - Owner can read ALL members (needed for subscribeToFlowMembers)
+        // - Any authenticated member of the flow can read all members (needed for UI)
         // - Anyone authenticated can create their OWN membership (self-join via invite code)
+        // - Owner can update any member; member can update only themselves
         // - Owner can delete any member; member can delete themselves (leave)
         match /members/{memberUid} {
           allow read: if request.auth != null
-            && (request.auth.uid == userId || request.auth.uid == memberUid);
+            && (request.auth.uid == userId
+                || request.auth.uid == memberUid
+                || exists(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)));
           allow create: if request.auth != null && request.auth.uid == memberUid;
-          allow update: if request.auth != null && request.auth.uid == userId;
+          allow update: if request.auth != null
+            && (request.auth.uid == userId
+                || request.auth.uid == memberUid);
           allow delete: if request.auth != null
             && (request.auth.uid == userId || request.auth.uid == memberUid);
         }
@@ -47,7 +53,7 @@ service cloud.firestore {
             && (request.auth.uid == userId
                 || exists(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)));
           
-          // Any member can create a comment
+          // Owner or any member can create a comment
           allow create: if request.auth != null
             && (request.auth.uid == userId
                 || exists(/databases/$(database)/documents/users/$(userId)/flows/$(flowId)/members/$(request.auth.uid)));
@@ -74,7 +80,7 @@ service cloud.firestore {
 
     }
 
-    // Shared Flow Pointers (Accessible by member and flow owner)
+    // Shared Flow Pointers — only the member themselves can read/write their pointer
     match /users/{userId}/sharedFlows/{flowId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow create: if request.auth != null && request.auth.uid == userId;

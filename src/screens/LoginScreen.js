@@ -132,12 +132,13 @@ const LoginScreen = ({ navigation }) => {
   const handleGoogleSignIn = async () => {
     setSocialLoading('google');
     try {
-      await signInWithGoogle();
-      navigateAfterAuth();
-    } catch (error) {
-      if (error.message !== 'Google Sign-In cancelled') {
-        Alert.alert(t('common.error'), error.message);
+      const result = await signInWithGoogle();
+      if (result) {
+        navigateAfterAuth();
       }
+      // null = 취소됨, 아무것도 하지 않음
+    } catch (error) {
+      Alert.alert(t('common.error'), error.message);
     } finally {
       setSocialLoading(null);
     }
