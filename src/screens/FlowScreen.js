@@ -850,6 +850,10 @@ const FlowScreen = ({ navigation, route }) => {
       setJoinCode('');
       setJoinModalVisible(false);
 
+      // 현재 플로우 최솟값 -1을 order로 지정해 리스트 최상단에 배치
+      const minOrder = flows.length > 0 ? Math.min(...flows.map(f => f.order ?? 0)) : 0;
+      refreshSharedFlowListener(result.ownerUid, result.flowId, result.role, minOrder - 1);
+
       if (alreadyExists) {
         showConfirm(
           t('flow.alert.already_member'),
@@ -1817,8 +1821,9 @@ const FlowScreen = ({ navigation, route }) => {
         async () => {
           setIsLeaving(true);
           try {
-            await leaveFlow(user?.uid, flow._ownerUid, flow.id);
+            removeSharedFlowOptimistic(flow.id);
             setSelectedFlow(null);
+            await leaveFlow(user?.uid, flow._ownerUid, flow.id);
           } catch (e) {
             console.warn('[FlowScreen] leaveFlow error:', e);
             showConfirm(t('common.error'), e.message, null, false);
@@ -3481,12 +3486,14 @@ const FlowScreen = ({ navigation, route }) => {
                   <View style={{ marginTop: 32, paddingHorizontal: 20 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                       <Text style={{ fontWeight: '800', color: Colors.text, fontSize: 18 }}>{t('flow.current_members')}</Text>
-                      <TouchableOpacity 
-                        onPress={handleShowPermissionInfo} 
+                      <TouchableOpacity
+                        onPress={handleShowPermissionInfo}
                         activeOpacity={0.6}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Info size={20} color={Colors.outline} />
+                        <View pointerEvents="none">
+                          <Info size={20} color={Colors.outline} />
+                        </View>
                       </TouchableOpacity>
                     </View>
 
@@ -3527,13 +3534,15 @@ const FlowScreen = ({ navigation, route }) => {
                                 </Text>
                               </View>
                               {isFlowOwner(selectedFlow) && member.uid !== user?.uid && (
-                                <TouchableOpacity 
-                                  onPress={() => handleRemoveMember(member.uid)} 
+                                <TouchableOpacity
+                                  onPress={() => handleRemoveMember(member.uid)}
                                   activeOpacity={0.6}
                                   hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                                   style={{ padding: 4 }}
                                 >
-                                  <UserMinus size={20} color={Colors.error} />
+                                  <View pointerEvents="none">
+                                    <UserMinus size={20} color={Colors.error} />
+                                  </View>
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -3559,7 +3568,7 @@ const FlowScreen = ({ navigation, route }) => {
                                         backgroundColor: perms[perm.key] ? Colors.primary : 'transparent',
                                         alignItems: 'center', justifyContent: 'center'
                                       }}>
-                                        {perms[perm.key] && <Check size={18} color="white" strokeWidth={3} />}
+                                        {perms[perm.key] && <View pointerEvents="none"><Check size={18} color="white" strokeWidth={3} /></View>}
                                       </View>
                                       <Text style={{ fontSize: 15, fontWeight: '700', color: perms[perm.key] ? Colors.text : Colors.outline }}>{perm.label}</Text>
                                     </Pressable>
@@ -3685,7 +3694,7 @@ const FlowScreen = ({ navigation, route }) => {
                 style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#F4F7FE' }]}
                 onPress={() => { setFlowMenuVisible(false); handleShareFlowImage(); }}
               >
-                <Share2 size={18} color={Colors.primary} />
+                <View pointerEvents="none"><Share2 size={18} color={Colors.primary} /></View>
                 <Text style={styles.flowMenuItemText}>{t('flow.share_as_image', 'Share as Image')}</Text>
               </Pressable>
 
@@ -3697,7 +3706,7 @@ const FlowScreen = ({ navigation, route }) => {
                     style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#F4F7FE' }]}
                     onPress={handleOpenInvite}
                   >
-                    <Users size={18} color={Colors.primary} />
+                    <View pointerEvents="none"><Users size={18} color={Colors.primary} /></View>
                     <Text style={styles.flowMenuItemText}>{t('flow.manage_members')}</Text>
                   </Pressable>
                 </>
@@ -3711,7 +3720,7 @@ const FlowScreen = ({ navigation, route }) => {
                     style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#F4F7FE' }]}
                     onPress={() => { setFlowMenuVisible(false); openFlowModal(selectedFlow); }}
                   >
-                    <Edit3 size={18} color={Colors.onBackground} />
+                    <View pointerEvents="none"><Edit3 size={18} color={Colors.onBackground} /></View>
                     <Text style={styles.flowMenuItemText}>{t('common.edit', 'Edit')}</Text>
                   </Pressable>
                 </>
@@ -3725,7 +3734,9 @@ const FlowScreen = ({ navigation, route }) => {
                   style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#FFF0F0' }]}
                   onPress={() => { setFlowMenuVisible(false); handleDeleteFlow(selectedFlow?.id); }}
                 >
-                  <Trash2 size={18} color={Colors.error} />
+                  <View pointerEvents="none">
+                    <Trash2 size={18} color={Colors.error} />
+                  </View>
                   <Text style={[styles.flowMenuItemText, { color: Colors.error }]}>{t('common.delete', 'Delete')}</Text>
                 </Pressable>
               ) : (
@@ -3733,7 +3744,9 @@ const FlowScreen = ({ navigation, route }) => {
                   style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#FFF0F0' }]}
                   onPress={() => { setFlowMenuVisible(false); handleDeleteFlow(selectedFlow?.id); }}
                 >
-                  <LogOut size={18} color={Colors.error} />
+                  <View pointerEvents="none">
+                    <LogOut size={18} color={Colors.error} />
+                  </View>
                   <Text style={[styles.flowMenuItemText, { color: Colors.error }]}>{t('flow.alert.leave_flow', 'Leave Flow')}</Text>
                 </Pressable>
               )}

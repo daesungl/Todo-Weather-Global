@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
 
-const FLOWS_STORAGE_KEY = '@todo_weather_flows';
-const SHARED_FLOWS_STORAGE_KEY = '@todo_weather_shared_flows';
+const getFlowsStorageKey = (uid) => `@todo_weather_flows_${uid}`;
+const getSharedFlowsStorageKey = (uid) => `@todo_weather_shared_flows_${uid}`;
 const MIGRATION_KEY_PREFIX = '@flows_migrated_';
 
 let _userId = null;
@@ -38,10 +38,19 @@ const _flowsFromSnapshot = (snapshot) =>
 const _stripMeta = ({ _role, _ownerUid, _permissions, ...rest }) => rest;
 
 const _mergeAndNotify = (fromRemote = false) => {
-  const merged = [
-    ..._ownFlows.map(f => ({ ...f, _role: 'owner' })),
-    ..._sharedFlowsData,
-  ].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const mergedMap = new Map();
+  // 1. 자신의 플로우 우선 추가 (Role: 'owner')
+  _ownFlows.forEach(f => {
+    mergedMap.set(f.id, { ...f, _role: 'owner' });
+  });
+  // 2. 공유받은 플로우 추가 (이미 있으면 무시 - 오너 권한 우선)
+  _sharedFlowsData.forEach(f => {
+    if (!mergedMap.has(f.id)) {
+      mergedMap.set(f.id, f);
+    }
+  });
+
+  const merged = Array.from(mergedMap.values()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   _cachedFlows = merged;
   if (__DEV__) {
     console.log('[FlowSync] _mergeAndNotify', {
@@ -52,7 +61,7 @@ const _mergeAndNotify = (fromRemote = false) => {
     });
   }
   if (_userId) {
-    AsyncStorage.setItem(SHARED_FLOWS_STORAGE_KEY, JSON.stringify(_sharedFlowsData)).catch(e => console.warn('[FlowSync] Failed to save shared flows:', e));
+    AsyncStorage.setItem(getSharedFlowsStorageKey(_userId), JSON.stringify(_sharedFlowsData)).catch(e => console.warn('[FlowSync] Failed to save shared flows:', e));
   }
   _isRemoteUpdate = fromRemote;
   _snapshotListeners.forEach(cb => cb(merged));
@@ -99,8 +108,10 @@ const _migrateIfNeeded = async (uid) => {
     const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
     if (alreadyMigrated) return;
 
-    const localJson = await AsyncStorage.getItem(FLOWS_STORAGE_KEY);
-    const localFlows = localJson ? JSON.parse(localJson) : [];
+    const localJson = await AsyncStorage.getItem(getFlowsStorageKey(uid));
+    // Fallback to old global key for migration
+    const legacyJson = await AsyncStorage.getItem('@todo_weather_flows');
+    const localFlows = localJson ? JSON.parse(localJson) : (legacyJson ? JSON.parse(legacyJson) : []);
 
     if (localFlows.length > 0) {
       const snapshot = await _flowsCollection(uid).limit(1).get();
@@ -200,10 +211,12 @@ const _startSharedFlowsSubscription = (uid) => {
         .collection('users').doc(ownerUid).collection('flows').doc(flowId)
         .onSnapshot(
           flowDoc => {
-            if (flowDoc.exists) {
+            const rawData = flowDoc.data();
+            if (rawData) {
               const flowData = {
                 id: flowDoc.id,
-                ...flowDoc.data(),
+                title: rawData.title || '제목 없는 플로우',
+                ...rawData,
                 _ownerUid: ownerUid,
                 _role: role,
                 _permissions: pointerData.permissions,
@@ -244,9 +257,13 @@ export const initFlowSync = async (uid) => {
 
   if (uid) {
     try {
-      const sharedJson = await AsyncStorage.getItem(SHARED_FLOWS_STORAGE_KEY);
+      const sharedJson = await AsyncStorage.getItem(getSharedFlowsStorageKey(uid));
+      // Fallback to old global key for migration
+      const legacySharedJson = await AsyncStorage.getItem('@todo_weather_shared_flows');
       if (sharedJson) {
         _sharedFlowsData = JSON.parse(sharedJson) || [];
+      } else if (legacySharedJson) {
+        _sharedFlowsData = JSON.parse(legacySharedJson) || [];
       }
     } catch (e) {
       console.warn('[FlowSync] Failed to load cached shared flows:', e);
@@ -269,7 +286,7 @@ export const subscribeToFlows = (callback) => {
 // Force-refresh a specific shared flow listener (call after a successful join).
 // The sharedFlows collection snapshot will eventually trigger the retry logic, but
 // this provides an immediate kick in case the pointer doc already existed before.
-export const refreshSharedFlowListener = (ownerUid, flowId, role) => {
+export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
   // Tear down any existing (possibly dead) listener for this flowId
   if (_sharedFlowListeners.has(flowId)) {
     _sharedFlowListeners.get(flowId)();
@@ -277,12 +294,21 @@ export const refreshSharedFlowListener = (ownerUid, flowId, role) => {
   }
   _sharedFlowsData = _sharedFlowsData.filter(f => f.id !== flowId);
 
+  // Persist the order to the sharedFlows pointer doc so it survives restarts
+  if (order !== undefined && _userId) {
+    firestore()
+      .collection('users').doc(_userId).collection('sharedFlows').doc(flowId)
+      .set({ order }, { merge: true })
+      .catch(e => console.warn('[FlowSync] refreshSharedFlowListener order update failed:', e));
+  }
+
   const unsub = firestore()
     .collection('users').doc(ownerUid).collection('flows').doc(flowId)
     .onSnapshot(
       flowDoc => {
-        if (flowDoc.exists) {
-          const flowData = { id: flowDoc.id, ...flowDoc.data(), _ownerUid: ownerUid, _role: role };
+        const rawData = flowDoc.data();
+        if (rawData) {
+          const flowData = { id: flowDoc.id, title: rawData.title || '제목 없는 플로우', ...rawData, _ownerUid: ownerUid, _role: role, ...(order !== undefined && { order }) };
           const idx = _sharedFlowsData.findIndex(f => f.id === flowId);
           if (idx >= 0) _sharedFlowsData[idx] = flowData;
           else _sharedFlowsData.push(flowData);
@@ -371,7 +397,7 @@ export const getFlows = async () => {
     }
   }
   try {
-    const json = await AsyncStorage.getItem(FLOWS_STORAGE_KEY);
+    const json = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
     const data = json ? JSON.parse(json) : [];
     return Array.isArray(data) ? data : [];
   } catch (e) {
@@ -414,7 +440,7 @@ export const saveFlows = async (flows) => {
     }
   }
   try {
-    await AsyncStorage.setItem(FLOWS_STORAGE_KEY, JSON.stringify(ownFlows));
+    await AsyncStorage.setItem(getFlowsStorageKey(_userId), JSON.stringify(ownFlows));
   } catch (e) {
     if (__DEV__) console.error('[FlowSync] saveFlows AsyncStorage error:', e);
   }
@@ -443,11 +469,13 @@ export const deleteFlow = async (id) => {
     }
   }
   try {
-    const json = await AsyncStorage.getItem(FLOWS_STORAGE_KEY);
-    const data = json ? JSON.parse(json) : [];
-    const filtered = data.filter(f => f.id !== id);
-    await AsyncStorage.setItem(FLOWS_STORAGE_KEY, JSON.stringify(filtered));
-    if (__DEV__) console.log('[FlowSync] deleteFlow - AsyncStorage update success.');
+    if (_userId) {
+      const json = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
+      const data = json ? JSON.parse(json) : [];
+      const filtered = data.filter(f => f.id !== id);
+      await AsyncStorage.setItem(getFlowsStorageKey(_userId), JSON.stringify(filtered));
+      if (__DEV__) console.log('[FlowSync] deleteFlow - AsyncStorage update success.');
+    }
   } catch (e) {
     if (__DEV__) console.error('[FlowSync] deleteFlow AsyncStorage error:', e);
   }

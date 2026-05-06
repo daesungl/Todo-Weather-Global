@@ -76,17 +76,21 @@ export const AuthProvider = ({ children }) => {
           initRegionSync(currentUser.uid);
           initTaskSync(currentUser.uid);
 
+          // 비동기 작업 대기 중 로그아웃이 완료됐으면 snapshot 등록 자체를 건너뜀
+          if (isLoggingOutRef.current) return;
+
           unsubscribeSnapshot.current = userRef.onSnapshot((snapshot) => {
+            if (isLoggingOutRef.current) return;
             if (snapshot.exists) {
               const data = snapshot.data();
               // 클래스 인스턴스 대신 명시적으로 필드를 병합하여 데이터 유실 방지
-              setUser({ 
+              setUser({
                 uid: currentUser.uid,
                 email: currentUser.email,
                 emailVerified: currentUser.emailVerified,
                 providerData: currentUser.providerData,
                 photoURL: currentUser.photoURL,
-                ...data 
+                ...data
               });
             } else {
               setUser({
@@ -97,6 +101,7 @@ export const AuthProvider = ({ children }) => {
               });
             }
           }, (error) => {
+            if (isLoggingOutRef.current) return;
             if (error.code === 'firestore/permission-denied') {
               // 권한 에러 시에도 기본 정보는 유지
               setUser({
