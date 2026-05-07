@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "135255276638",
+    "project_id": "todo-weather-dev",
+    "storage_bucket": "todo-weather-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:135255276638:android:7b94e1c64e2c96cc8d88cf",
+        "android_client_info": {
+          "package_name": "com.appswayd.TodoWeatherGlobal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzhNcIlgwCycEWWA_ngBVa39vHjdBBZOo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

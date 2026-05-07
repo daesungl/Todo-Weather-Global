@@ -47,6 +47,9 @@ export const addComment = async (ownerUid, flowId, stepId, user, text) => {
       [`commentCounts.${stepId}`]: firestore.FieldValue.increment(1),
       commentLastCreatedAt: firestore.FieldValue.serverTimestamp(),
       commentLastUid: user.uid,
+      commentsUpdatedAt: firestore.FieldValue.serverTimestamp(),
+      commentsCount: firestore.FieldValue.increment(1),
+      commentsLastUid: user.uid,
     })
     .catch(() => {});
 };
@@ -61,7 +64,8 @@ export const deleteComment = async (ownerUid, flowId, stepId, commentId) => {
   batch.delete(commentRef);
   if (stepId) {
     batch.update(flowRef, {
-      [`commentCounts.${stepId}`]: firestore.FieldValue.increment(-1)
+      [`commentCounts.${stepId}`]: firestore.FieldValue.increment(-1),
+      commentsCount: firestore.FieldValue.increment(-1),
     });
   }
 

@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "todo-weather-dev",
+    "dev": "todo-weather-dev",
+    "prod": "todo-weather-global"
+  }
+}

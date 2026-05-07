@@ -3,6 +3,7 @@ import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from '../i18n';
+import { dateStr, expandFlowStepsForRange } from '../utils/flowRecurrence';
 
 const MAX_PER_SERIES = 10;
 const PERM_ASKED_KEY = '@notification_perm_asked';
@@ -185,11 +186,16 @@ export const refillStepNotifications = async (flows, updateStep) => {
 
   const scheduledIds = await getScheduledIds();
   const today = new Date(); today.setHours(0, 0, 0, 0);
+  const refillEnd = new Date(today);
+  refillEnd.setDate(refillEnd.getDate() + 90);
+  const todayStr = dateStr(today);
+  const refillEndStr = dateStr(refillEnd);
 
   for (const flow of flows) {
     if (!flow.steps?.length) continue;
 
-    const future = flow.steps.filter(s => {
+    const expandedSteps = expandFlowStepsForRange(flow.steps, todayStr, refillEndStr);
+    const future = expandedSteps.filter(s => {
       if (!s.notify || !s.time) return false;
       if (!s.date) return false;
       const [y, m, d] = s.date.split('-').map(Number);
@@ -216,7 +222,7 @@ export const refillStepNotifications = async (flows, updateStep) => {
       }
 
       const newId = await scheduleNotification(s.activity || flow.title, s.activity || flow.title, s.date, s.time);
-      if (newId) await updateStep(flow.id, s.id, { notificationId: newId });
+      if (newId) await updateStep(flow.id, s._sourceStepId || s.id, { notificationId: newId });
     }
   }
 };

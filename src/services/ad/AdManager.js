@@ -2,9 +2,10 @@ import mobileAds, { AppOpenAd, AdEventType } from 'react-native-google-mobile-ad
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { APP_OPENING_UNIT_ID } from '../../constants/AdUnits';
 
-const AD_COOLDOWN = 4 * 60 * 60 * 1000; // 4시간 (밀리초 단위)
+const AD_COOLDOWN = 24 * 60 * 60 * 1000; // 24시간 (밀리초 단위)
+const MIN_DAYS_BEFORE_ADS = 2; // 첫 오픈 후 2일이 지나야 광고 노출 (3일째부터)
 const LAST_AD_KEY = '@last_app_open_ad_time';
-const FIRST_RUN_KEY = '@first_run_completed';
+const FIRST_INSTALL_DATE_KEY = '@first_install_date';
 
 class AdManager {
   constructor() {
@@ -22,7 +23,7 @@ class AdManager {
       const adapterStatuses = await mobileAds().initialize();
       console.log('AdMob Initialized:', adapterStatuses);
       this.isInitialized = true;
-      
+
       // 초기화 후 앱 오프닝 광고 미리 로드
       this.loadAppOpenAd();
     } catch (error) {
@@ -65,19 +66,25 @@ class AdManager {
    */
   async showAppOpenAd() {
     try {
-      // 1. 첫 실행 여부 확인
-      const firstRunCompleted = await AsyncStorage.getItem(FIRST_RUN_KEY);
-      if (!firstRunCompleted) {
-        console.log('AdManager: First run detected. Skipping ad and marking as completed.');
-        await AsyncStorage.setItem(FIRST_RUN_KEY, 'true');
-        // 첫 실행 시에는 마지막 광고 시간을 현재로 설정해서 4시간 쿨타임 시작
-        await AsyncStorage.setItem(LAST_AD_KEY, Date.now().toString());
+      const now = Date.now();
+
+      // 1. 첫 오픈 날짜 기록
+      let firstInstallDate = await AsyncStorage.getItem(FIRST_INSTALL_DATE_KEY);
+      if (!firstInstallDate) {
+        await AsyncStorage.setItem(FIRST_INSTALL_DATE_KEY, now.toString());
+        console.log('AdManager: First install date recorded. Skipping ad.');
         return;
       }
 
-      // 2. 빈도 제한(쿨타임) 확인
+      // 2. 첫 오픈 후 3일째(48시간 경과) 이전이면 스킵
+      const daysSinceInstall = (now - parseInt(firstInstallDate)) / (24 * 60 * 60 * 1000);
+      if (daysSinceInstall < MIN_DAYS_BEFORE_ADS) {
+        console.log(`AdManager: Day ${Math.floor(daysSinceInstall) + 1} since install. Ads start on day 3.`);
+        return;
+      }
+
+      // 3. 빈도 제한(쿨타임) 확인
       const lastAdTime = await AsyncStorage.getItem(LAST_AD_KEY);
-      const now = Date.now();
 
       if (lastAdTime) {
         const timeDiff = now - parseInt(lastAdTime);
@@ -88,7 +95,7 @@ class AdManager {
         }
       }
 
-      // 3. 광고 노출 시도
+      // 4. 광고 노출 시도
       if (this.appOpenAd && this.appOpenAd.loaded) {
         this.appOpenAd.show();
         // 노출 시점 저장

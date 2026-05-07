@@ -9,6 +9,7 @@ let _userId = null;
 let _snapshotListeners = new Set();
 let _unsubscribeFlowRefs = null;
 let _flowListeners = new Map(); // flowId -> { flowUnsub, stepsUnsub }
+let _stepListeners = new Map(); // flowId -> { unsub, callbacks }
 let _flowRefs = new Map();      // flowId -> ref data from users/{uid}/flowRefs
 let _flowDocs = new Map();      // flowId -> flow metadata from /flows/{flowId}
 let _flowSteps = new Map();     // flowId -> steps[] from /flows/{flowId}/steps
@@ -68,6 +69,7 @@ const _dropInaccessibleFlow = (flowId, reason = 'inaccessible') => {
   _flowDocs.delete(flowId);
   _flowSteps.delete(flowId);
   _stopFlowListener(flowId);
+  _stopStepListener(flowId);
   if (_userId) {
     _flowRefsCollection(_userId).doc(flowId).delete()
       .catch(e => console.warn('[FlowSync] failed to delete inaccessible flowRef:', flowId, e));
@@ -86,6 +88,62 @@ const _cleanStepData = (step, order) => {
   const { id, ...rest } = step || {};
   return _cleanObject({ ...rest, order });
 };
+
+const _normalizeForCompare = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (Array.isArray(value)) return value.map(_normalizeForCompare);
+  if (_isPlainObject(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map(key => [key, _normalizeForCompare(value[key])])
+        .filter(([, child]) => child !== undefined)
+    );
+  }
+  return value;
+};
+
+const _stableStringify = (value) =>
+  JSON.stringify(_normalizeForCompare(_cleanForFirestore(value)));
+
+const _hasFirestoreDataChanged = (current, next) =>
+  _stableStringify(current || {}) !== _stableStringify(next || {});
+
+const _stepsSignature = (flowId, steps = []) =>
+  _stableStringify(
+    _filterDeletedSteps(flowId, steps).map((step, index) => ({
+      id: step.id,
+      data: _cleanStepData(step, index),
+    }))
+  );
+
+const _haveStepsChanged = (flowId, previousSteps, nextSteps) => {
+  if (!Array.isArray(previousSteps)) return true;
+  return _stepsSignature(flowId, previousSteps) !== _stepsSignature(flowId, nextSteps);
+};
+
+const _getNewStepMeta = (previousSteps, nextSteps, fallbackUid) => {
+  if (!Array.isArray(previousSteps)) return null;
+  const previousIds = new Set(previousSteps.map(step => step?.id).filter(Boolean));
+  const newSteps = (Array.isArray(nextSteps) ? nextSteps : [])
+    .filter(step => step?.id && !previousIds.has(step.id));
+  if (newSteps.length === 0) return null;
+
+  const latest = newSteps.reduce((best, step) => {
+    const bestMs = _normalizeForCompare(best?.createdAt) || 0;
+    const stepMs = _normalizeForCompare(step?.createdAt) || 0;
+    return stepMs >= bestMs ? step : best;
+  }, newSteps[0]);
+
+  return {
+    stepsUpdatedAt: latest?.createdAt || latest?.updatedAt || firestore.FieldValue.serverTimestamp(),
+    stepsLastUid: latest?.createdBy || fallbackUid,
+  };
+};
+
 
 const _sortSteps = (steps = []) =>
   [...steps].sort((a, b) => {
@@ -201,7 +259,15 @@ const _saveFlowRef = async (uid, flow) => {
 const _replaceFlowSteps = async (flowId, steps = []) => {
   const nextSteps = _filterDeletedSteps(flowId, steps);
   const existing = await _stepsCollection(flowId).get();
-  const nextIds = new Set(nextSteps.map(s => s.id).filter(Boolean));
+  const existingById = new Map(existing.docs.map(doc => [doc.id, doc]));
+  const nextStepDocs = nextSteps.map((step, index) => {
+    const stepId = step.id || `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${index}`;
+    return {
+      stepId,
+      data: _cleanStepData({ ...step, id: stepId }, index),
+    };
+  });
+  const nextIds = new Set(nextStepDocs.map(step => step.stepId));
   const ops = [];
 
   existing.docs.forEach(doc => {
@@ -210,16 +276,18 @@ const _replaceFlowSteps = async (flowId, steps = []) => {
     }
   });
 
-  nextSteps.forEach((step, index) => {
-    const stepId = step.id || `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${index}`;
+  nextStepDocs.forEach(({ stepId, data }) => {
     _forgetDeletedStepIds(flowId, stepId);
-    ops.push(batch => batch.set(_stepsCollection(flowId).doc(stepId), _cleanStepData({ ...step, id: stepId }, index), { merge: true }));
+    const currentDoc = existingById.get(stepId);
+    if (!currentDoc || _hasFirestoreDataChanged(currentDoc.data(), data)) {
+      ops.push(batch => batch.set(_stepsCollection(flowId).doc(stepId), data, { merge: true }));
+    }
   });
 
   await _commitBatched(ops);
 };
 
-const _saveFlowToGlobal = async (uid, flow) => {
+const _saveFlowToGlobal = async (uid, flow, { syncSteps = true, previousSteps } = {}) => {
   if (!uid || !flow?.id) return;
   const ownerUid = flow._ownerUid || flow.ownerUid || uid;
   const isOwner = ownerUid === uid && (!flow._role || flow._role === 'owner');
@@ -234,6 +302,12 @@ const _saveFlowToGlobal = async (uid, flow) => {
   const meta = _cleanFlowDocData({ ...flow, ownerUid }, { includeOrder: false });
   meta.ownerUid = ownerUid;
   meta.updatedAt = flow.updatedAt || firestore.FieldValue.serverTimestamp();
+  if (syncSteps) {
+    const nextSteps = _filterDeletedSteps(flow.id, flow.steps || []);
+    meta.stepsCount = nextSteps.length;
+    const newStepMeta = _getNewStepMeta(previousSteps ?? _flowSteps.get(flow.id), nextSteps, uid);
+    if (newStepMeta) Object.assign(meta, newStepMeta);
+  }
 
   if (isOwner) {
     await flowRef.set(meta, { merge: true });
@@ -255,7 +329,9 @@ const _saveFlowToGlobal = async (uid, flow) => {
     await flowRef.set(meta, { merge: true });
   }
 
-  await _replaceFlowSteps(flow.id, flow.steps || []);
+  if (syncSteps) {
+    await _replaceFlowSteps(flow.id, flow.steps || []);
+  }
 };
 
 const _migrateLegacyFlow = async (uid, flow) => {
@@ -323,6 +399,13 @@ const _stopFlowListener = (flowId) => {
   _flowListeners.delete(flowId);
 };
 
+const _stopStepListener = (flowId) => {
+  const entry = _stepListeners.get(flowId);
+  if (!entry) return;
+  if (entry.unsub) entry.unsub();
+  _stepListeners.delete(flowId);
+};
+
 const _startFlowListener = (flowId) => {
   if (_flowListeners.has(flowId)) return;
 
@@ -341,22 +424,7 @@ const _startFlowListener = (flowId) => {
     }
   );
 
-  const stepsUnsub = _stepsCollection(flowId).onSnapshot(
-    snapshot => {
-      const steps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      _flowSteps.set(flowId, _sortSteps(_filterDeletedSteps(flowId, steps)));
-      _mergeAndNotify(true);
-    },
-    err => {
-      if (_isPermissionDenied(err)) {
-        _dropInaccessibleFlow(flowId, 'steps snapshot permission-denied');
-        return;
-      }
-      console.warn(`[FlowSync] Flow ${flowId} steps error:`, err);
-    }
-  );
-
-  _flowListeners.set(flowId, { flowUnsub, stepsUnsub });
+  _flowListeners.set(flowId, { flowUnsub });
 };
 
 const _startFlowRefsSubscription = (uid) => {
@@ -374,6 +442,7 @@ const _startFlowRefsSubscription = (uid) => {
             _flowRefs.delete(flowId);
             _flowDocs.delete(flowId);
             _flowSteps.delete(flowId);
+            _stopStepListener(flowId);
           }
         });
 
@@ -437,6 +506,8 @@ const _initFlowSyncInternal = async (uid) => {
   if (_unsubscribeFlowRefs) { _unsubscribeFlowRefs(); _unsubscribeFlowRefs = null; }
   _flowListeners.forEach((_, flowId) => _stopFlowListener(flowId));
   _flowListeners.clear();
+  _stepListeners.forEach((_, flowId) => _stopStepListener(flowId));
+  _stepListeners.clear();
 
   if (uid) {
     await _migrateIfNeeded(uid);
@@ -469,6 +540,54 @@ export const subscribeToFlows = (callback) => {
   _snapshotListeners.add(callback);
   if (_cachedFlows !== null) callback(_cachedFlows);
   return () => _snapshotListeners.delete(callback);
+};
+
+export const subscribeToFlowSteps = (flowId, callback) => {
+  if (!flowId) return () => {};
+
+  const cachedSteps = _sortSteps(_flowSteps.get(flowId) || []);
+  if (callback) callback(cachedSteps);
+
+  let entry = _stepListeners.get(flowId);
+  if (!entry) {
+    const callbacks = new Set();
+    const unsub = _stepsCollection(flowId).onSnapshot(
+      snapshot => {
+        const steps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const sortedSteps = _sortSteps(_filterDeletedSteps(flowId, steps));
+        _flowSteps.set(flowId, sortedSteps);
+        _mergeAndNotify(true);
+        callbacks.forEach(cb => cb(sortedSteps));
+      },
+      err => {
+        if (_isPermissionDenied(err)) {
+          console.warn('[FlowSync] steps listener permission denied; keeping flow metadata', {
+            flowId,
+            uid: _userId,
+            message: err?.message,
+          });
+          const retryCallbacks = Array.from(callbacks);
+          _stopStepListener(flowId);
+          setTimeout(() => {
+            if (!_userId || retryCallbacks.length === 0) return;
+            retryCallbacks.forEach(cb => subscribeToFlowSteps(flowId, cb));
+          }, 1200);
+          return;
+        }
+        console.warn(`[FlowSync] Flow ${flowId} steps error:`, err);
+      }
+    );
+    entry = { unsub, callbacks };
+    _stepListeners.set(flowId, entry);
+  }
+
+  if (callback) entry.callbacks.add(callback);
+  return () => {
+    const current = _stepListeners.get(flowId);
+    if (!current) return;
+    if (callback) current.callbacks.delete(callback);
+    if (current.callbacks.size === 0) _stopStepListener(flowId);
+  };
 };
 
 export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
@@ -516,6 +635,7 @@ export const removeSharedFlowOptimistic = (flowId) => {
   _flowDocs.delete(flowId);
   _flowSteps.delete(flowId);
   _stopFlowListener(flowId);
+  _stopStepListener(flowId);
   _mergeAndNotify();
 };
 
@@ -544,6 +664,7 @@ export const deleteFlowStepDocs = async (flow, stepIds = []) => {
   const meta = _cleanFlowDocData({ ...flow, ownerUid }, { includeOrder: false });
   meta.ownerUid = ownerUid;
   meta.updatedAt = flow.updatedAt || firestore.FieldValue.serverTimestamp();
+  meta.stepsCount = _filterDeletedSteps(flow.id, flow.steps || []).length;
 
   const ops = [
     batch => batch.set(_globalFlowsCollection().doc(flow.id), meta, { merge: true }),
@@ -596,6 +717,7 @@ export const saveFlows = async (flows) => {
   const ordered = arr.map((f, i) => ({ ...f, order: i }));
   const ownFlows = ordered.filter(f => !f._ownerUid || f._role === 'owner');
   const sharedFlows = ordered.filter(f => f._ownerUid || (f._role && f._role !== 'owner'));
+  const previousFlowSteps = new Map(_flowSteps);
 
   _flowRefs = new Map();
   ordered.forEach(flow => {
@@ -614,7 +736,9 @@ export const saveFlows = async (flows) => {
   if (_userId) {
     try {
       for (const flow of ownFlows) {
-        await _saveFlowToGlobal(_userId, { ...flow, _role: 'owner' });
+        const previousSteps = previousFlowSteps.get(flow.id);
+        const syncSteps = _haveStepsChanged(flow.id, previousSteps, flow.steps || []);
+        await _saveFlowToGlobal(_userId, { ...flow, _role: 'owner' }, { syncSteps, previousSteps });
       }
       for (const flow of sharedFlows) {
         await _saveFlowRef(_userId, flow);
@@ -628,7 +752,15 @@ export const saveFlows = async (flows) => {
         .forEach(doc => batch.delete(doc.ref));
       await batch.commit();
     } catch (e) {
-      if (__DEV__) console.warn('[FlowSync] saveFlows Firestore error:', e);
+      console.warn('[FlowSync] saveFlows Firestore error:', {
+        code: e?.code,
+        message: e?.message,
+        uid: _userId,
+        ownFlowCount: ownFlows.length,
+        sharedFlowCount: sharedFlows.length,
+        flowIds: ordered.map(flow => flow.id),
+      });
+      throw e;
     }
   }
 
@@ -654,6 +786,7 @@ export const deleteFlow = async (id) => {
   _flowDocs.delete(id);
   _flowSteps.delete(id);
   _stopFlowListener(id);
+  _stopStepListener(id);
   _mergeAndNotify();
 
   if (_userId) {

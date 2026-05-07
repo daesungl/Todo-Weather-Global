@@ -3,7 +3,7 @@
     "name": "Todo Weather",
     "displayName": "Todo Weather",
     "slug": "global-todo-weather",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "47",
+      "buildNumber": "48",
       "newArchEnabled": true,
       "infoPlist": {
         "CFBundleLocalizations": [
@@ -42,7 +42,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",
-      "versionCode": 11,
+      "versionCode": 12,
       "googleServicesFile": "./google-services.json",
       "notification": {
         "color": "#00a4df"
@@ -144,7 +144,7 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#469dd3",
+          "color": "#00a4df",
           "sounds": []
         }
       ],

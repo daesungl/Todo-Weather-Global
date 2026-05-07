@@ -1,3 +1,57 @@
+## +빌드 명령어 수정. 파이어베이스 prod / dev 분기
+
+# npm run build:test:ios
+실기기 테스트는:
+
+# npm run build:test:ios -- --device
+Android 테스트는:
+
+# npm run build:test:android
+배포용 EAS 빌드는:
+
+# npm run build:prod:ios
+Android 배포용은:
+
+# npm run build:prod:android
+이 스크립트들이 자동으로 해주는 일은:
+
+dev/prod Firebase 설정 파일 복사
+project_id가 기대값과 맞는지 검증
+테스트면 npx expo run:ios/android
+배포면 npx eas build --platform ... --profile production
+
+--
+npm run firebase:use:dev
+npx expo run:ios
+# 또는
+npx expo run:android
+실기기 연결해서 직접 돌릴 때도 dev Firebase로 테스트하려면:
+
+npm run firebase:use:dev
+npx expo run:ios --device
+TestFlight / 스토어 배포용 빌드 만들 때
+
+npm run firebase:use:prod
+npx eas-cli build ...
+또는 eas 명령을 바로 쓰면:
+
+npm run firebase:use:prod
+npx eas build --platform ios
+한 가지 습관만 들이면 됩니다.
+
+rg '"project_id"' google-services.json android/app/google-services.json
+빌드 전에 이걸로 todo-weather-dev인지 todo-weather-global인지 확인하면 실수 줄일 수 있어요.
+
+iOS는 plist라서 확인하려면:
+
+plutil -p ios/TodoWeather/GoogleService-Info.plist | grep PROJECT_ID
+배포 전에는 todo-weather-global, 테스트 전에는 todo-weather-dev가 보이면 맞습니다.
+
+
+===
+## + Weather API
+
+
 1. WeatherAPI 공식 Explorer 활용 (가장 확실함)
 WeatherAPI 웹사이트에서 제공하는 API Explorer를 사용하면 편리합니다.
 

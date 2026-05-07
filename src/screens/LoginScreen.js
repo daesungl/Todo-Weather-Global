@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { LucideMail, LucideLock } from 'lucide-react-native';
 import appleAuth from '@invertase/react-native-apple-authentication';
 import auth from '@react-native-firebase/auth';
+import { IS_FIREBASE_DEV } from '../constants/FirebaseEnv';
 
 const GoogleIcon = () => (
   <Svg width={20} height={20} viewBox="0 0 48 48" pointerEvents="none">
@@ -159,6 +160,7 @@ const LoginScreen = ({ navigation }) => {
   };
 
   const isAppleSupported = Platform.OS === 'ios' && appleAuth.isSupported;
+  const showGoogleSignIn = !IS_FIREBASE_DEV;
 
   return (
     <KeyboardAvoidingView
@@ -248,19 +250,21 @@ const LoginScreen = ({ navigation }) => {
 
             <View style={styles.socialRow}>
               {/* Google 로그인 */}
-              <TouchableOpacity
-                style={[styles.socialIconButton, styles.googleIconButton]}
-                onPress={handleGoogleSignIn}
-                disabled={loading || socialLoading !== null}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                activeOpacity={0.7}
-              >
-                {socialLoading === 'google' ? (
-                  <ActivityIndicator color="#333" size="small" />
-                ) : (
-                  <GoogleIcon />
-                )}
-              </TouchableOpacity>
+              {showGoogleSignIn && (
+                <TouchableOpacity
+                  style={[styles.socialIconButton, styles.googleIconButton]}
+                  onPress={handleGoogleSignIn}
+                  disabled={loading || socialLoading !== null}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  activeOpacity={0.7}
+                >
+                  {socialLoading === 'google' ? (
+                    <ActivityIndicator color="#333" size="small" />
+                  ) : (
+                    <GoogleIcon />
+                  )}
+                </TouchableOpacity>
+              )}
 
               {/* Apple 로그인 */}
               {isAppleSupported && (

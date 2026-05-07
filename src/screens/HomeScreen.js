@@ -25,6 +25,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import SmartBriefing from '../components/SmartBriefing';
 import { getTasks, subscribeToTasks } from '../services/task/TaskSyncService';
 import { getFlows, subscribeToFlows } from '../services/FlowSyncService';
+import { expandFlowStepsForRange } from '../utils/flowRecurrence';
 
 const { width, height } = Dimensions.get('window');
 
@@ -52,7 +53,7 @@ const getTodayScheduleStats = (tasks = [], flows = []) => {
 
   (flows || []).forEach(flow => {
     if (flow?.inactive) return;
-    (flow.steps || []).forEach(step => {
+    expandFlowStepsForRange(flow.steps || [], today, today).forEach(step => {
       if (!step?.inactive && isOnDate(step, today)) {
         todaySteps.push(step);
       }

@@ -68,7 +68,7 @@ import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
-import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, updateFlowDoc, deleteFlowStepDocs, removeSharedFlowOptimistic, refreshSharedFlowListener, markFlowRead, isRemoteFlowUpdate } from '../services/FlowSyncService';
+import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, subscribeToFlowSteps, updateFlowDoc, deleteFlowStepDocs, removeSharedFlowOptimistic, refreshSharedFlowListener, markFlowRead, isRemoteFlowUpdate } from '../services/FlowSyncService';
 import { 
   generateInviteCode, 
   invalidateInviteCode, 
@@ -86,16 +86,6 @@ import { getFlowUnreadInfo as getSharedFlowUnreadInfo } from '../utils/flowUnrea
 
 const { width, height } = Dimensions.get('window');
 
-const _advanceByRepeat = (date, repeat) => {
-  const d = new Date(date);
-  switch (repeat) {
-    case 'daily':   d.setDate(d.getDate() + 1);          break;
-    case 'weekly':  d.setDate(d.getDate() + 7);          break;
-    case 'monthly': d.setMonth(d.getMonth() + 1);        break;
-    case 'yearly':  d.setFullYear(d.getFullYear() + 1);  break;
-  }
-  return d;
-};
 const _dateStrFlow = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -401,9 +391,17 @@ const FlowScreen = ({ navigation, route }) => {
     }
   }, [flows, selectedFlow]);
 
+  useEffect(() => {
+    if (!selectedFlow?.id || !user?.uid) return () => {};
+    return subscribeToFlowSteps(selectedFlow.id, (steps) => {
+      setFlows(prev => prev.map(flow => flow.id === selectedFlow.id ? { ...flow, steps } : flow));
+      setSelectedFlow(prev => prev?.id === selectedFlow.id ? { ...prev, steps } : prev);
+    });
+  }, [selectedFlow?.id, user?.uid]);
+
   // Comments Subscription
   useEffect(() => {
-    if (!selectedFlow) {
+    if (!selectedFlow || !user?.uid) {
       setComments([]);
       return;
     }
@@ -419,6 +417,15 @@ const FlowScreen = ({ navigation, route }) => {
   const handlePostComment = async (stepId) => {
     const text = commentInputs[stepId];
     if (!text || !text.trim() || isPostingComment) return;
+    if (!user?.uid) {
+      showConfirm(
+        t('common.login_required'),
+        t('common.login_required_msg'),
+        () => navigation.navigate('Login'),
+        true
+      );
+      return;
+    }
 
     setIsPostingComment(true);
     const ownerUid = selectedFlow._ownerUid || user?.uid;
@@ -1295,7 +1302,21 @@ const FlowScreen = ({ navigation, route }) => {
       }
       
       setFlowModalVisible(false);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error('[FlowScreen] saveFlow error:', {
+        code: e?.code,
+        message: e?.message,
+        signedIn: !!user?.uid,
+        uid: user?.uid,
+        editingFlowId: editingFlow?.id,
+      });
+      showConfirm(
+        t('common.error', 'Error'),
+        e?.message || t('flow.update_failed', 'Failed to update plan on server. Please check your connection.'),
+        null,
+        false
+      );
+    }
     finally {
       isSavingRef.current = false;
       setIsSaving(false);
@@ -1308,11 +1329,17 @@ const FlowScreen = ({ navigation, route }) => {
       showConfirm(t('flow.alert.activity_required'), t('flow.alert.activity_required_msg'), null, false);
       return;
     }
-    if (!editingStep && (selectedFlow?.steps?.length || 0) >= MAX_STEPS) {
+
+    const currentStepCount = selectedFlow?.steps?.length || 0;
+    const showStepLimitAlert = () => {
       const msg = isPremium
         ? t('flow.alert.step_limit_msg', `플랜당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`)
         : t('flow.alert.step_limit_free_msg', `무료 플랜은 플랜당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`);
       showConfirm(t('flow.alert.limit_title', 'Plan Limit'), msg, null, false);
+    };
+
+    if (!editingStep && currentStepCount >= MAX_STEPS) {
+      showStepLimitAlert();
       return;
     }
 
@@ -1484,10 +1511,14 @@ const FlowScreen = ({ navigation, route }) => {
             ? (s) => s.repeatGroupId === editingStep.repeatGroupId && s.date >= editingStep.date
             : (s) => s.repeatGroupId === editingStep.repeatGroupId;
 
-          updatedSteps = currentSteps.map(s => {
+          const baseSteps = scope === 'all'
+            ? currentSteps.filter(s => s.repeatGroupId !== editingStep.repeatGroupId || s.isRepeatMaster !== false)
+            : currentSteps;
+
+          updatedSteps = baseSteps.map(s => {
             if (!pred(s)) return s;
             if (s.id === editingStep.id) {
-              return { ...s, ...baseForEditing };
+              return { ...s, ...baseForEditing, isRepeatMaster: true };
             }
             const stepDateMs = new Date(s.date + 'T12:00:00').getTime();
             const newStepDateMs = stepDateMs + dateShiftMs;
@@ -1526,20 +1557,6 @@ const FlowScreen = ({ navigation, route }) => {
           if (repEndChanged && stepRepeatEndDate) {
             // Repeat end date changed → extend/shorten series globally, no 3-way choice
             const groupId = editingStep.repeatGroupId;
-            const repeat = editingStep.repeat || stepRepeatType;
-            const newRepeatEnd = new Date(stepRepeatEndDate + 'T12:00:00');
-
-            const groupSteps = currentSteps
-              .filter(s => s.repeatGroupId === groupId)
-              .sort((a, b) => a.date.localeCompare(b.date));
-            const lastStep = groupSteps[groupSteps.length - 1];
-            const lastDate = new Date(lastStep.date + 'T12:00:00');
-
-            const masterStep = groupSteps.find(s => s.isRepeatMaster) || groupSteps[0];
-            const masterStart = new Date(masterStep.date + 'T12:00:00');
-            const masterEndObj = masterStep.endDate ? new Date(masterStep.endDate + 'T12:00:00') : masterStart;
-            const durationMs = masterEndObj - masterStart;
-
             const { date: _d, endDate: _ed, ...sharedUpdatesRaw } = baseUpdates;
 
             // 모든 그룹 스텝의 기존 알림 취소 + upfront 알림 취소
@@ -1552,42 +1569,12 @@ const FlowScreen = ({ navigation, route }) => {
             // notificationId는 refill이 개별 처리
             const sharedUpdates = stepNotify ? { ...sharedUpdatesRaw, notificationId: null } : sharedUpdatesRaw;
 
-            // Remove instances after new end date (keep master), apply shared edits
-            let updatedSteps = currentSteps
-              .filter(s => {
-                if (s.repeatGroupId !== groupId) return true;
-                if (s.isRepeatMaster) return true;
-                return s.date <= stepRepeatEndDate;
-              })
+            const updatedSteps = currentSteps
+              .filter(s => s.repeatGroupId !== groupId || s.isRepeatMaster !== false)
               .map(s => s.repeatGroupId === groupId
-                ? { ...s, ...sharedUpdates, repeatEndDate: stepRepeatEndDate }
+                ? { ...s, ...sharedUpdates, repeat: stepRepeatType || s.repeat, repeatEndDate: stepRepeatEndDate, isRepeatMaster: true }
                 : s
               );
-
-            // Add new instances if end date was extended
-            if (newRepeatEnd > lastDate) {
-              let current = _advanceByRepeat(lastDate, repeat);
-              const MAX_OCC = 200;
-              const newSteps = [];
-              while (current <= newRepeatEnd && newSteps.length < MAX_OCC) {
-                newSteps.push({
-                  ...masterStep,
-                  ...sharedUpdates,
-                  id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_ext_${newSteps.length}`,
-                  date: _dateStrFlow(current),
-                  endDate: _dateStrFlow(new Date(current.getTime() + durationMs)),
-                  repeatEndDate: stepRepeatEndDate,
-                  isRepeatMaster: false,
-                  isCompleted: false,
-                  status: 'upcoming',
-                  createdAt: now,
-                  createdBy: user?.uid || null,
-                  updatedAt: now,
-                });
-                current = _advanceByRepeat(current, repeat);
-              }
-              updatedSteps = [...updatedSteps, ...newSteps];
-            }
 
             await applyToFlow(updatedSteps);
             if (stepNotify) {
@@ -1607,37 +1594,20 @@ const FlowScreen = ({ navigation, route }) => {
         } else if (stepRepeatType && stepRepeatEndDate) {
           // 단일 스텝 → 반복 시리즈로 변환
           const groupId = `rg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-          const startDate = new Date(editDate + 'T12:00:00');
-          const endDateObj = finalEndDate ? new Date(finalEndDate + 'T12:00:00') : startDate;
-          const durationMs = endDateObj - startDate;
-          const repeatEnd = new Date(stepRepeatEndDate + 'T12:00:00');
-          const MAX_OCCURRENCES = 200;
-          const newSteps = [];
-          let current = new Date(startDate);
-
-          while (current <= repeatEnd && newSteps.length < MAX_OCCURRENCES) {
-            const occStartStr = _dateStrFlow(current);
-            const occEndStr = _dateStrFlow(new Date(current.getTime() + durationMs));
-            newSteps.push({
-              ...baseUpdates,
-              id: newSteps.length === 0
-                ? editingStep.id
-                : `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${newSteps.length}`,
-              date: occStartStr,
-              endDate: occEndStr,
-              repeat: stepRepeatType,
-              repeatEndDate: stepRepeatEndDate,
-              repeatGroupId: groupId,
-              isRepeatMaster: newSteps.length === 0,
-              status: editingStep.status || 'upcoming',
-              createdAt: editingStep.createdAt || now,
-              updatedAt: now,
-            });
-            current = _advanceByRepeat(current, stepRepeatType);
-          }
-
           const stepsWithoutEditing = currentSteps.filter(s => s.id !== editingStep.id);
-          const editRepeatSteps = [...stepsWithoutEditing, ...newSteps];
+          const repeatMasterStep = {
+            ...editingStep,
+            ...baseUpdates,
+            id: editingStep.id,
+            repeat: stepRepeatType,
+            repeatEndDate: stepRepeatEndDate,
+            repeatGroupId: groupId,
+            isRepeatMaster: true,
+            status: editingStep.status || 'upcoming',
+            createdAt: editingStep.createdAt || now,
+            updatedAt: now,
+          };
+          const editRepeatSteps = [...stepsWithoutEditing, repeatMasterStep];
           await applyToFlow(editRepeatSteps);
           if (stepNotify) {
             const flowForRefill = flows.map(f => f.id !== selectedFlow.id ? f : { ...f, steps: sortSteps(editRepeatSteps) });
@@ -1659,43 +1629,30 @@ const FlowScreen = ({ navigation, route }) => {
       // New step
       if (stepRepeatType && stepRepeatEndDate) {
         const groupId = `rg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        const startDate = new Date(editDate + 'T12:00:00');
-        const endDateObj = finalEndDate ? new Date(finalEndDate + 'T12:00:00') : startDate;
-        const durationMs = endDateObj - startDate;
-        const repeatEnd = new Date(stepRepeatEndDate + 'T12:00:00');
-        const MAX_OCCURRENCES = 200;
-        const newSteps = [];
-        let current = new Date(startDate);
-
-        while (current <= repeatEnd && newSteps.length < MAX_OCCURRENCES) {
-          const occStartStr = _dateStrFlow(current);
-          const occEndStr = _dateStrFlow(new Date(current.getTime() + durationMs));
-          newSteps.push({
-            id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${newSteps.length}`,
-            date: occStartStr,
-            time: editTime,
-            endTime: finalEndTime,
-            endDate: occEndStr,
-            activity: editActivity,
-            memo: editMemo,
-            region: selectedRegion,
-            status: 'upcoming',
-            weather: weatherData,
-            warning: hasWarning,
-            lat: targetLat,
-            lon: targetLon,
-            repeat: stepRepeatType,
-            repeatEndDate: stepRepeatEndDate,
-            repeatGroupId: groupId,
-            isRepeatMaster: newSteps.length === 0,
-            notify: stepNotify,
-            notificationId: null, // refill handles this
-            createdAt: now,
-            createdBy: user?.uid || null,
-            updatedAt: now,
-          });
-          current = _advanceByRepeat(current, stepRepeatType);
-        }
+        const newSteps = [{
+          id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          date: editDate,
+          time: editTime,
+          endTime: finalEndTime,
+          endDate: finalEndDate,
+          activity: editActivity,
+          memo: editMemo,
+          region: selectedRegion,
+          status: 'upcoming',
+          weather: weatherData,
+          warning: hasWarning,
+          lat: targetLat,
+          lon: targetLon,
+          repeat: stepRepeatType,
+          repeatEndDate: stepRepeatEndDate,
+          repeatGroupId: groupId,
+          isRepeatMaster: true,
+          notify: stepNotify,
+          notificationId: null, // refill handles this
+          createdAt: now,
+          createdBy: user?.uid || null,
+          updatedAt: now,
+        }];
       const newRepeatSteps = [...currentSteps, ...newSteps];
       await applyToFlow(newRepeatSteps);
       if (stepNotify) {

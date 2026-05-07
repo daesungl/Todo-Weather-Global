@@ -51,7 +51,10 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'commentCounts',
               'commentLastCreatedAt',
-              'commentLastUid'
+              'commentLastUid',
+              'commentsUpdatedAt',
+              'commentsCount',
+              'commentsLastUid'
             ]));
       allow delete: if isFlowOwner(flowId);
 

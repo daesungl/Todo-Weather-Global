@@ -8,13 +8,13 @@ export const LIMITS = {
   FREE: {
     regions: 5,
     flows: 5,
-    stepsPerFlow: 300,
+    stepsPerFlow: 100,
     stepWeatherLimit: 3,
   },
   PREMIUM: {
     regions: 15,
     flows: 15,
-    stepsPerFlow: 1000,
+    stepsPerFlow: 300,
     stepWeatherLimit: 10,
   },
 };

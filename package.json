@@ -7,6 +7,14 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "firebase:use:dev": "node scripts/switch-firebase-env.js dev",
+    "firebase:use:prod": "node scripts/switch-firebase-env.js prod",
+    "firebase:rules:dev": "firebase deploy --only firestore:rules --project dev",
+    "firebase:rules:prod": "firebase deploy --only firestore:rules --project prod",
+    "build:test:ios": "node scripts/firebase-build.js dev run ios",
+    "build:test:android": "node scripts/firebase-build.js dev run android",
+    "build:prod:ios": "node scripts/firebase-build.js prod eas ios",
+    "build:prod:android": "node scripts/firebase-build.js prod eas android",
     "postinstall": "patch-package"
   },
   "dependencies": {

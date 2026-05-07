@@ -28,13 +28,17 @@ export const getFlowUnreadInfo = (flow, uid) => {
 
   const stepsAt = readBaselineMillis(flow._lastReadStepsAt, flow._joinedAt);
   const commentsAt = readBaselineMillis(flow._lastReadCommentsAt, flow._joinedAt);
-  const hasUnreadSteps = (flow.steps || []).some(step => {
-    if (!step || step.createdBy === uid) return false;
-    const createdAt = toMillis(step.createdAt);
-    return createdAt > 0 && createdAt > stepsAt;
-  });
-  const lastCommentMs = toMillis(flow.commentLastCreatedAt);
-  const hasUnreadComments = flow.commentLastUid !== uid
+  const stepsUpdatedMs = toMillis(flow.stepsUpdatedAt);
+  const hasUnreadSteps = stepsUpdatedMs > 0
+    ? flow.stepsLastUid !== uid && stepsUpdatedMs > stepsAt
+    : (flow.steps || []).some(step => {
+      if (!step || step.createdBy === uid) return false;
+      const createdAt = toMillis(step.createdAt);
+      return createdAt > 0 && createdAt > stepsAt;
+    });
+  const lastCommentMs = toMillis(flow.commentsUpdatedAt) || toMillis(flow.commentLastCreatedAt);
+  const lastCommentUid = flow.commentsLastUid || flow.commentLastUid;
+  const hasUnreadComments = lastCommentUid !== uid
     && lastCommentMs > 0
     && lastCommentMs > commentsAt;
 

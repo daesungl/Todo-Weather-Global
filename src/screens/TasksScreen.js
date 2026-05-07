@@ -41,6 +41,7 @@ import { getWeather } from '../services/weather/WeatherService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations } from '../services/weather/GlobalService';
 import { getFlows, subscribeToFlows } from '../services/FlowSyncService';
+import { expandFlowStepsForRange } from '../utils/flowRecurrence';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -172,7 +173,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
     const fTasks = [];
     (flows || []).forEach(flow => {
       if (f.hiddenFlowIds && f.hiddenFlowIds.has(flow.id)) return;
-      (flow.steps || []).forEach(step => {
+      expandFlowStepsForRange(flow.steps || [], monthStart, monthEnd).forEach(step => {
         if (step.date && step.date <= monthEnd && (step.endDate || step.date) >= monthStart) {
           fTasks.push({
             id: `flow_${flow.id}_${step.id}`,
@@ -948,7 +949,7 @@ const TasksScreen = ({ navigation }) => {
     // 2. Flow tasks
     const ft = [];
     (flows || []).forEach(flow => {
-      (flow.steps || []).forEach(step => {
+      expandFlowStepsForRange(flow.steps || [], ds, ds).forEach(step => {
         const sEnd = step.endDate || step.date;
         if (step.date && ds >= step.date && ds <= sEnd) {
           ft.push({
