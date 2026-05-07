@@ -377,7 +377,7 @@
   "flow": {
     "my_flows": "나의 플랜",
     "schedule_plan": "일정 계획",
-    "curated_journeys": "추천 플랜",
+    "curated_journeys": "모든 순간을 위한 스마트한 일정 계획",
     "multi_day_planning": "일정 계획",
     "day_n": "{{n}}일차",
     "unscheduled": "미정된 일정",
