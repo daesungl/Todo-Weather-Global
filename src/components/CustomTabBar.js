@@ -26,6 +26,8 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
           const isActive = state.index === index;
           const { Icon } = tab;
           const route = state.routes[index];
+          const badge = descriptors[route.key]?.options?.tabBarBadge;
+          const showBadge = badge !== undefined && badge !== null && badge !== false;
           return (
             <TouchableOpacity
               key={tab.name}
@@ -47,6 +49,9 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
                 color={isActive ? Colors.primary : Colors.outline}
                 strokeWidth={isActive ? 2.5 : 2}
               />
+              {showBadge && (
+                <View style={styles.unreadDot} />
+              )}
             </TouchableOpacity>
           );
         })}
@@ -88,5 +93,16 @@ const styles = StyleSheet.create({
   },
   activeNavItem: {
     backgroundColor: 'rgba(99, 102, 241, 0.08)',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.error,
+    borderWidth: 1.5,
+    borderColor: 'white',
   },
 });

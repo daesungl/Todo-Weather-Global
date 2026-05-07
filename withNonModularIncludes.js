@@ -10,14 +10,14 @@ module.exports = (config) => {
       if (fs.existsSync(podfilePath)) {
         let podfileContent = fs.readFileSync(podfilePath, 'utf8');
 
-        // Podfile에 use_modular_headers! 가 없으면 target 선언 직전에 삽입합니다.
-        if (!podfileContent.includes('use_modular_headers!')) {
+        if (!podfileContent.includes('CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES')) {
           podfileContent = podfileContent.replace(
-            /(target\s+['"][^'"]+['"]\s+do)/,
-            `use_modular_headers!\n\n$1`
+            /(react_native_post_install\([\s\S]*?\n\s*\))/,
+            `$1\n\n    installer.pods_project.targets.each do |target|\n      target.build_configurations.each do |config|\n        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'\n      end\n    end`
           );
-          fs.writeFileSync(podfilePath, podfileContent);
         }
+
+        fs.writeFileSync(podfilePath, podfileContent);
       }
       return config;
     },

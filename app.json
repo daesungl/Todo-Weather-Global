@@ -3,14 +3,14 @@
     "name": "Todo Weather",
     "displayName": "Todo Weather",
     "slug": "global-todo-weather",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash-icon-v3.png",
       "resizeMode": "contain",
-      "backgroundColor": "#b2ebf2"
+      "backgroundColor": "#00a4df"
     },
     "locales": {
       "ko": "./src/i18n/locales/ko.json",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "45",
+      "buildNumber": "47",
       "newArchEnabled": true,
       "infoPlist": {
         "CFBundleLocalizations": [
@@ -35,17 +35,17 @@
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
-      "backgroundColor": "#b2ebf2",
+      "backgroundColor": "#00a4df",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#00a4df"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",
-      "versionCode": 10,
+      "versionCode": 11,
       "googleServicesFile": "./google-services.json",
       "notification": {
-        "color": "#b2ebf2"
+        "color": "#00a4df"
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",

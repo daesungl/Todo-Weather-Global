@@ -81,6 +81,7 @@ import {
 } from '../services/InviteService';
 import { requestPermission, scheduleNotification, cancelNotification, refillStepNotifications } from '../services/NotificationService';
 import * as CommentService from '../services/CommentService';
+import { getFlowUnreadInfo as getSharedFlowUnreadInfo } from '../utils/flowUnread';
 
 
 const { width, height } = Dimensions.get('window');
@@ -724,12 +725,8 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   const getFlowUnreadInfo = (flow) => {
-    const hasUnreadSteps = (flow?.steps || []).some(step => isUnreadStep(flow, step));
-    const lastCommentMs = _toMillis(flow?.commentLastCreatedAt);
-    const hasUnreadComments = flow?.commentLastUid !== user?.uid
-      && lastCommentMs > 0
-      && lastCommentMs > getFlowReadBaselines(flow).commentsAt;
-    return { hasUnreadSteps, hasUnreadComments, hasUnread: hasUnreadSteps || hasUnreadComments };
+    if (!flow || !user?.uid) return { hasUnreadSteps: false, hasUnreadComments: false, hasUnread: false };
+    return getSharedFlowUnreadInfo(flow, user.uid);
   };
 
   const openFlowDetail = (flow) => {
@@ -2749,9 +2746,17 @@ const FlowScreen = ({ navigation, route }) => {
                         >
                           <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
                             {getFlowUnreadInfo(flow).hasUnread && (
-                              <View style={styles.planUnreadBadge}>
-                                {getFlowUnreadInfo(flow).hasUnreadSteps && <View style={styles.planUnreadDot} />}
-                                {getFlowUnreadInfo(flow).hasUnreadComments && <MessageCircle size={13} color="white" strokeWidth={2.5} />}
+                              <View style={styles.planUnreadGroup}>
+                                {getFlowUnreadInfo(flow).hasUnreadSteps && (
+                                  <View style={styles.planUnreadChip}>
+                                    <Plus size={15} color="white" strokeWidth={3} />
+                                  </View>
+                                )}
+                                {getFlowUnreadInfo(flow).hasUnreadComments && (
+                                  <View style={styles.planUnreadChip}>
+                                    <MessageCircle size={16} color="white" strokeWidth={2.8} />
+                                  </View>
+                                )}
                               </View>
                             )}
                             <TouchableOpacity
@@ -3994,27 +3999,23 @@ const styles = StyleSheet.create({
   },
   flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
   flowCard: { padding: Spacing.xl, borderRadius: 32, height: 220, justifyContent: 'space-between' },
-  planUnreadBadge: {
+  planUnreadGroup: {
     position: 'absolute',
     top: Spacing.lg + 6,
     right: Spacing.lg + 44,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.36)',
-    alignItems: 'center',
-    justifyContent: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 6,
     zIndex: 10,
   },
-  planUnreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'white',
+  planUnreadChip: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.24)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   deleteBtnAbsolute: { position: 'absolute', top: Spacing.lg, right: Spacing.lg, padding: 8, zIndex: 10 },

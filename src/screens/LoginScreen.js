@@ -68,7 +68,7 @@ const LoginScreen = ({ navigation }) => {
           navigateAfterAuth();
         } catch (error) {
           // 이메일 미인증 에러인 경우 재발송 옵션 제공
-          if (error.message.includes('이메일 인증이 필요합니다')) {
+          if (error.code === 'auth/email-not-verified') {
             Alert.alert(
               t('auth.verificationRequired'),
               t('auth.resendVerificationMsg'),

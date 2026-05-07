@@ -18,6 +18,9 @@ GoogleSignin.configure({
 
 const AuthContext = createContext();
 
+const docExists = (doc) =>
+  typeof doc.exists === 'function' ? doc.exists() : !!doc.exists;
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -26,6 +29,7 @@ export const AuthProvider = ({ children }) => {
   const unsubscribeSnapshot = useRef(null);
   const isLoggingOutRef = useRef(false);
   const activeAuthUidRef = useRef(null);
+  const isVerificationAuthFlowRef = useRef(false);
 
   useEffect(() => {
     const subscriber = auth().onAuthStateChanged(async (currentUser) => {
@@ -56,7 +60,16 @@ export const AuthProvider = ({ children }) => {
           initFlowSync(null);
           initRegionSync(null);
           initTaskSync(null);
-          auth().signOut().catch(() => {});
+          if (isVerificationAuthFlowRef.current) {
+            setLoading(false);
+            setSyncLoading(false);
+            return;
+          }
+          auth().signOut().catch((error) => {
+            if (error.code !== 'auth/no-current-user') {
+              console.warn('[AuthContext] signOut unverified user error:', error);
+            }
+          });
           setLoading(false);
           setSyncLoading(false);
           return;
@@ -80,12 +93,13 @@ export const AuthProvider = ({ children }) => {
             updatedAt: firestore.FieldValue.serverTimestamp(),
           };
 
-          if (!doc.exists) {
+          const userDocExists = docExists(doc);
+          if (!userDocExists) {
             userData.createdAt = firestore.FieldValue.serverTimestamp();
             await userRef.set(userData);
           } else {
             // 정보가 바뀌었을 때만 업데이트
-            const existing = doc.data();
+            const existing = doc.data() || {};
             if (existing.displayName !== displayName || existing.profileImage !== profileImage) {
               await userRef.update({ displayName, profileImage, updatedAt: firestore.FieldValue.serverTimestamp() });
             }
@@ -98,7 +112,7 @@ export const AuthProvider = ({ children }) => {
             emailVerified: currentUser.emailVerified,
             providerData: currentUser.providerData,
             photoURL: currentUser.photoURL,
-            ...(doc.exists ? doc.data() : { displayName, profileImage }),
+            ...(userDocExists ? (doc.data() || {}) : { displayName, profileImage }),
           });
           setLoading(false);
 
@@ -120,8 +134,8 @@ export const AuthProvider = ({ children }) => {
 
           unsubscribeSnapshot.current = userRef.onSnapshot((snapshot) => {
             if (!isCurrentAuthUser()) return;
-            if (snapshot.exists) {
-              const data = snapshot.data();
+            if (docExists(snapshot)) {
+              const data = snapshot.data() || {};
               // 클래스 인스턴스 대신 명시적으로 필드를 병합하여 데이터 유실 방지
               setUser({
                 uid: currentUser.uid,
@@ -183,6 +197,16 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  const safeSignOut = async () => {
+    try {
+      if (auth().currentUser) {
+        await auth().signOut();
+      }
+    } catch (error) {
+      if (error.code !== 'auth/no-current-user') throw error;
+    }
+  };
+
   const getAuthErrorMessage = (error) => {
     switch (error.code) {
       case 'auth/email-already-in-use':
@@ -203,39 +227,53 @@ export const AuthProvider = ({ children }) => {
         return i18n.t('auth.errors.tooManyRequests');
       case 'auth/email-not-verified':
         return i18n.t('auth.errors.verificationRequired');
+      case 'auth/no-current-user':
+        return i18n.t('auth.errors.default');
       default:
         return error.message || i18n.t('auth.errors.default');
     }
   };
 
+  const throwAuthError = (error) => {
+    const wrapped = new Error(getAuthErrorMessage(error));
+    wrapped.code = error.code;
+    throw wrapped;
+  };
+
   const login = async (email, password) => {
     isLoggingOutRef.current = false;
+    isVerificationAuthFlowRef.current = true;
     try {
       const userCredential = await auth().signInWithEmailAndPassword(email, password);
       // 이메일 인증 여부 확인 (소셜 로그인은 이미 인증된 것으로 간주됨)
       if (userCredential.user && !userCredential.user.emailVerified && userCredential.user.providerData.some(p => p.providerId === 'password')) {
         // 인증되지 않은 이메일 계정인 경우, 세션을 종료하고 에러 발생
-        await auth().signOut();
+        await safeSignOut();
         throw { code: 'auth/email-not-verified' };
       }
       return userCredential;
     } catch (error) {
-      throw new Error(getAuthErrorMessage(error));
+      throwAuthError(error);
+    } finally {
+      isVerificationAuthFlowRef.current = false;
     }
   };
 
   const signup = async (email, password) => {
+    isVerificationAuthFlowRef.current = true;
     try {
       const userCredential = await auth().createUserWithEmailAndPassword(email, password);
       // 가입 성공 후 인증 메일 발송
       if (userCredential.user) {
         await userCredential.user.sendEmailVerification();
         // 가입 직후 자동 로그인이 되므로, 인증 전 접근을 막기 위해 즉시 로그아웃 처리
-        await auth().signOut();
+        await safeSignOut();
       }
       return userCredential;
     } catch (error) {
-      throw new Error(getAuthErrorMessage(error));
+      throwAuthError(error);
+    } finally {
+      isVerificationAuthFlowRef.current = false;
     }
   };
 
@@ -248,15 +286,18 @@ export const AuthProvider = ({ children }) => {
   };
 
   const resendVerificationEmail = async (email, password) => {
+    isVerificationAuthFlowRef.current = true;
     try {
       // 재발송을 위해 임시로 로그인
       const userCredential = await auth().signInWithEmailAndPassword(email, password);
       if (userCredential.user) {
         await userCredential.user.sendEmailVerification();
-        await auth().signOut(); // 즉시 로그아웃
+        await safeSignOut(); // 즉시 로그아웃
       }
     } catch (error) {
-      throw new Error(getAuthErrorMessage(error));
+      throwAuthError(error);
+    } finally {
+      isVerificationAuthFlowRef.current = false;
     }
   };
 

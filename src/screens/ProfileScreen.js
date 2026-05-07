@@ -21,6 +21,7 @@ import { LucideLogOut, LucideUser, LucideArrowLeft, LucideX, LucideCheck, Lucide
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { Colors, Spacing, Typography } from '../theme';
+import { deleteCurrentUserAccount, isRecentLoginRequired } from '../services/AccountDeletionService';
 
 const ProfileScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -29,6 +30,7 @@ const ProfileScreen = ({ navigation }) => {
   const [newName, setNewName] = useState(user?.displayName || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const isLoggingOutRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -105,6 +107,65 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
+  const handleDeleteAccount = async () => {
+    if (isDeletingAccount) return;
+
+    Alert.alert(
+      t('auth.deleteAccount'),
+      t('auth.deleteAccountConfirmDetailed', {
+        defaultValue: t('auth.deleteAccountConfirm'),
+      }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('auth.deleteAccount'),
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeletingAccount(true);
+            try {
+              await deleteCurrentUserAccount();
+              Alert.alert(t('common.success'), t('auth.deleteAccountSuccess'));
+              navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+            } catch (error) {
+              if (isRecentLoginRequired(error)) {
+                console.warn('[ProfileScreen] Delete account requires recent login');
+                Alert.alert(
+                  t('auth.deleteAccount'),
+                  t('auth.deleteAccountRecentLoginRequired', {
+                    defaultValue: 'For security, please log in again and then delete your account.',
+                  }),
+                  [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                      text: t('auth.loginButton', { defaultValue: 'Login' }),
+                      onPress: async () => {
+                        try {
+                          await logout();
+                        } finally {
+                          navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+                        }
+                      },
+                    },
+                  ]
+                );
+              } else {
+                console.error('[ProfileScreen] Delete account error:', error);
+                Alert.alert(
+                  t('common.error'),
+                  t('auth.deleteAccountFailed', {
+                    defaultValue: 'Failed to delete account. Please try again.',
+                  })
+                );
+              }
+            } finally {
+              setIsDeletingAccount(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Custom Header */}
@@ -157,11 +218,12 @@ const ProfileScreen = ({ navigation }) => {
       {/* Fixed Bottom Footer for Actions */}
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={styles.editButton} 
+          style={[styles.editButton, isDeletingAccount && { opacity: 0.5 }]}
           onPress={() => {
             setNewName(user.displayName || '');
             setEditModalVisible(true);
           }}
+          disabled={isDeletingAccount}
         >
           <LucideUser size={20} color="white" />
           <Text style={styles.editButtonText}>{t('auth.editProfile', { defaultValue: 'Edit Profile' })}</Text>
@@ -170,13 +232,25 @@ const ProfileScreen = ({ navigation }) => {
         <TouchableOpacity
           style={[styles.logoutButton, isLoggingOut && { opacity: 0.5 }]}
           onPress={handleLogout}
-          disabled={isLoggingOut}
+          disabled={isLoggingOut || isDeletingAccount}
         >
           {isLoggingOut
             ? <ActivityIndicator size="small" color={Colors.error} />
             : <LucideLogOut size={20} color={Colors.error} />
           }
           <Text style={styles.logoutText}>{t('auth.logout', { defaultValue: 'Logout' })}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.deleteAccountBtn, isDeletingAccount && { opacity: 0.6 }]}
+          onPress={handleDeleteAccount}
+          disabled={isDeletingAccount}
+        >
+          {isDeletingAccount ? (
+            <ActivityIndicator size="small" color={Colors.error} />
+          ) : (
+            <Text style={styles.deleteAccountBtnText}>{t('auth.deleteAccount')}</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -402,6 +476,16 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.error,
     fontWeight: '600',
+  },
+  deleteAccountBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  deleteAccountBtnText: {
+    fontSize: 13,
+    color: Colors.outline,
+    textDecorationLine: 'underline',
   },
   modalOverlay: {
     flex: 1,
