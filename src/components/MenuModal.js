@@ -73,7 +73,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
             } 
           },
           { 
-            text: t('menu.reset_flow') || 'Flow Reset', 
+            text: t('menu.reset_flow') || 'Plan Reset',
             onPress: async () => {
               await AsyncStorage.removeItem('@todo_weather_flows');
               Alert.alert(t('common.info'), t('menu.reset_success_msg'));

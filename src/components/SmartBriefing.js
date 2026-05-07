@@ -1,10 +1,18 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Umbrella, Sun, Cloud, Thermometer, CheckCircle2, ListTodo, CloudSnow, Wind } from 'lucide-react-native';
+import { Sparkles, Umbrella, Sun, Thermometer, CheckCircle2, ListTodo, CloudSnow } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 
-const SmartBriefing = ({ weather, tasksCount, completedCount }) => {
+const SmartBriefing = ({
+  weather,
+  tasksCount = 0,
+  completedCount = 0,
+  directTasksCount = 0,
+  completedDirectTasksCount = 0,
+  flowStepsCount = 0,
+  completedFlowStepsCount = 0,
+}) => {
   const { t } = useTranslation();
 
   const briefingData = useMemo(() => {
@@ -51,19 +59,33 @@ const SmartBriefing = ({ weather, tasksCount, completedCount }) => {
       iconColor = '#FFD600';
     }
 
-    const remainingTasks = tasksCount - completedCount;
+    const remainingTasks = Math.max(tasksCount - completedCount, 0);
+    const remainingDirectTasks = Math.max(directTasksCount - completedDirectTasksCount, 0);
+    const remainingFlowSteps = Math.max(flowStepsCount - completedFlowStepsCount, 0);
+    let footerText = t('briefing.task_summary', { count: remainingTasks });
+    if (remainingDirectTasks > 0 && remainingFlowSteps > 0) {
+      footerText = t('briefing.task_summary_detail', {
+        tasks: remainingDirectTasks,
+        flows: remainingFlowSteps,
+      });
+    } else if (remainingDirectTasks > 0) {
+      footerText = t('briefing.task_summary_tasks_only', { count: remainingDirectTasks });
+    } else if (remainingFlowSteps > 0) {
+      footerText = t('briefing.task_summary_flows_only', { count: remainingFlowSteps });
+    }
+
     const weatherSummary = t('briefing.weather_tasks', { 
         location: weather.addressName || weather.locationName || 'Current Location', 
         weather: t(`weather.${cond}`),
         count: remainingTasks
     });
 
-    return { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks };
-  }, [weather, tasksCount, completedCount, t]);
+    return { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks, footerText };
+  }, [weather, tasksCount, completedCount, directTasksCount, completedDirectTasksCount, flowStepsCount, completedFlowStepsCount, t]);
 
   if (!briefingData) return null;
 
-  const { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks } = briefingData;
+  const { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks, footerText } = briefingData;
 
   return (
     <View style={styles.container}>
@@ -89,7 +111,7 @@ const SmartBriefing = ({ weather, tasksCount, completedCount }) => {
       {remainingTasks > 0 && (
           <View style={styles.footer}>
               <ListTodo size={14} color={Colors.textSecondary} />
-              <Text style={styles.footerText}>{t('briefing.task_summary', { count: remainingTasks })}</Text>
+              <Text style={styles.footerText}>{footerText}</Text>
           </View>
       )}
     </View>

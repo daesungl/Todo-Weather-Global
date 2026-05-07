@@ -13,6 +13,13 @@ const _membersCollection = (flowId) =>
 const _flowRefsCollection = (uid) =>
   firestore().collection('users').doc(uid).collection('flowRefs');
 
+const _docExists = (doc) =>
+  typeof doc.exists === 'function' ? doc.exists() : !!doc.exists;
+
+const _isPermissionDenied = (error) =>
+  error?.code === 'firestore/permission-denied'
+  || String(error?.message || '').includes('permission-denied');
+
 const _cleanFlowData = (flowData = {}) => {
   const { id, steps, _role, _ownerUid, _permissions, order, ...cleanFlowData } = flowData;
   return Object.fromEntries(Object.entries(cleanFlowData).filter(([, v]) => v !== undefined));
@@ -79,8 +86,14 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
   const memberRef = _membersCollection(invite.flowId).doc(uid);
   const flowRef = _flowRefsCollection(uid).doc(invite.flowId);
 
-  const existingMemberSnap = await memberRef.get();
-  const existingMemberData = existingMemberSnap.data(); // undefined if doc does not exist
+  let existingMemberData = null;
+  try {
+    const existingMemberSnap = await memberRef.get();
+    existingMemberData = _docExists(existingMemberSnap) ? existingMemberSnap.data() : null;
+  } catch (e) {
+    if (!_isPermissionDenied(e)) throw e;
+    // 아직 멤버가 아닌 사용자는 rules상 members read가 거부된다. join은 create로 진행한다.
+  }
   const effectiveRole = existingMemberData ? existingMemberData.role : invite.role;
 
   const batch = firestore().batch();
@@ -89,6 +102,8 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
       role: invite.role,
       displayName: displayName || `User ${uid.slice(0, 5)}`,
       joinedAt: firestore.FieldValue.serverTimestamp(),
+      lastReadStepsAt: firestore.FieldValue.serverTimestamp(),
+      lastReadCommentsAt: firestore.FieldValue.serverTimestamp(),
     });
   }
   batch.set(flowRef, {
@@ -96,6 +111,8 @@ export const joinFlowByCode = async (uid, code, displayName = '') => {
     flowId: invite.flowId,
     role: effectiveRole,
     joinedAt: firestore.FieldValue.serverTimestamp(),
+    lastReadStepsAt: firestore.FieldValue.serverTimestamp(),
+    lastReadCommentsAt: firestore.FieldValue.serverTimestamp(),
   });
   await batch.commit();
 

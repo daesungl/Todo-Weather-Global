@@ -13,8 +13,8 @@ import { Linking } from 'react-native';
 const BENEFITS = [
   { label: '광고 완전 제거' },
   { label: '날씨 관심 지역 최대 15개' },
-  { label: '플로우 최대 30개' },
-  { label: '플로우 스텝 최대 30개' },
+  { label: '플랜 최대 30개' },
+  { label: '플랜 일정 최대 30개' },
 ];
 
 const PaywallScreen = ({ navigation }) => {
@@ -82,8 +82,8 @@ const PaywallScreen = ({ navigation }) => {
             {[
               t('menu.benefit_ads', 'No Ads'),
               t('menu.benefit_regions', 'Up to 15 regions'),
-              t('menu.benefit_flows', 'Up to 30 journeys'),
-              t('menu.benefit_steps', 'Up to 30 steps per journey'),
+              t('menu.benefit_flows', 'Up to 30 plans'),
+              t('menu.benefit_steps', 'Up to 30 schedules per plan'),
             ].map((label, i) => (
               <View key={i} style={styles.benefitRow}>
                 <View style={[styles.checkCircle, { backgroundColor: '#E1F5FE' }]}>

@@ -23,9 +23,54 @@ import { BANNER_UNIT_ID } from '../constants/AdUnits';
 import AdBanner from '../components/AdBanner';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import SmartBriefing from '../components/SmartBriefing';
-import { getTasks } from '../services/task/TaskService';
+import { getTasks, subscribeToTasks } from '../services/task/TaskSyncService';
+import { getFlows, subscribeToFlows } from '../services/FlowSyncService';
 
 const { width, height } = Dimensions.get('window');
+
+const dateStr = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const isOnDate = (item, targetDate) => {
+  if (!item?.date) return false;
+  const start = item.date;
+  const end = item.endDate || item.date;
+  return start <= targetDate && targetDate <= end;
+};
+
+const isFlowStepCompleted = (step) =>
+  step?.isCompleted === true || step?.status === 'completed';
+
+const getTodayScheduleStats = (tasks = [], flows = []) => {
+  const today = dateStr(new Date());
+  const todayTasks = (tasks || []).filter(task => isOnDate(task, today));
+  const todaySteps = [];
+
+  (flows || []).forEach(flow => {
+    if (flow?.inactive) return;
+    (flow.steps || []).forEach(step => {
+      if (!step?.inactive && isOnDate(step, today)) {
+        todaySteps.push(step);
+      }
+    });
+  });
+
+  const directCompleted = todayTasks.filter(task => task.isCompleted).length;
+  const flowCompleted = todaySteps.filter(isFlowStepCompleted).length;
+
+  return {
+    total: todayTasks.length + todaySteps.length,
+    completed: directCompleted + flowCompleted,
+    directTotal: todayTasks.length,
+    directCompleted,
+    flowTotal: todaySteps.length,
+    flowCompleted,
+  };
+};
 
 const HomeScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
@@ -95,6 +140,8 @@ const HomeScreen = ({ navigation }) => {
   const [currentWeather, setCurrentWeather] = useState(null);
   const [loading, setLoading] = useState(true);
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
+  const latestTasksRef = useRef([]);
+  const latestFlowsRef = useRef([]);
 
   // Pulse animation for skeleton loading
   useEffect(() => {
@@ -195,15 +242,38 @@ const HomeScreen = ({ navigation }) => {
 
   const fetchTaskStats = async () => {
     try {
-      const allTasks = await getTasks();
-      const todayStr = new Date().toISOString().split('T')[0];
-      const todayTasks = allTasks.filter(t => t.date === todayStr);
-      const completed = todayTasks.filter(t => t.isCompleted).length;
-      setTaskStats({ total: todayTasks.length, completed });
+      const [allTasks, allFlows] = await Promise.all([getTasks(), getFlows()]);
+      latestTasksRef.current = allTasks;
+      latestFlowsRef.current = allFlows;
+      setTaskStats(getTodayScheduleStats(allTasks, allFlows));
     } catch (e) {
       console.error('Failed to fetch task stats', e);
     }
   };
+
+  useEffect(() => {
+    const updateStats = () => {
+      setTaskStats(getTodayScheduleStats(latestTasksRef.current, latestFlowsRef.current));
+    };
+
+    const unsubTasks = subscribeToTasks((tasks) => {
+      if (tasks !== null) {
+        latestTasksRef.current = tasks;
+        updateStats();
+      }
+    });
+    const unsubFlows = subscribeToFlows((flows) => {
+      if (flows !== null) {
+        latestFlowsRef.current = flows;
+        updateStats();
+      }
+    });
+
+    return () => {
+      unsubTasks();
+      unsubFlows();
+    };
+  }, []);
 
   // Search Debounce logic
   useEffect(() => {
@@ -521,6 +591,10 @@ const HomeScreen = ({ navigation }) => {
           weather={currentWeather} 
           tasksCount={taskStats.total} 
           completedCount={taskStats.completed} 
+          directTasksCount={taskStats.directTotal}
+          completedDirectTasksCount={taskStats.directCompleted}
+          flowStepsCount={taskStats.flowTotal}
+          completedFlowStepsCount={taskStats.flowCompleted}
         />
 
         {!isPremium && !adHidden ? (

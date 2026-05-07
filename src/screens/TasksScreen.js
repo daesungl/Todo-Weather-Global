@@ -176,7 +176,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
         if (step.date && step.date <= monthEnd && (step.endDate || step.date) >= monthStart) {
           fTasks.push({
             id: `flow_${flow.id}_${step.id}`,
-            title: `[${flow.title || '플로우'}] ${step.activity}`,
+            title: `[${flow.title || '플랜'}] ${step.activity}`,
             date: step.date,
             endDate: step.endDate || step.date,
             color: flow.color || (flow.gradient && flow.gradient[0]) || Colors.primary,
@@ -953,7 +953,7 @@ const TasksScreen = ({ navigation }) => {
         if (step.date && ds >= step.date && ds <= sEnd) {
           ft.push({
             id: `flow_${flow.id}_${step.id}`,
-            title: `[${flow.title || '플로우'}] ${step.activity}`,
+            title: `[${flow.title || '플랜'}] ${step.activity}`,
             date: step.date,
             endDate: sEnd,
             color: flow.color || (flow.gradient && flow.gradient[0]) || Colors.primary,
@@ -1845,7 +1845,7 @@ const TasksScreen = ({ navigation }) => {
                             <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
                             {selectedTaskDetail.isFlowTask && (
                               <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' }}>
-                                {t('tasks.flowReadOnlyNotice', '* This task is read-only information managed in Flow.')}
+                                {t('tasks.flowReadOnlyNotice', '* This task is read-only information managed in Plan.')}
                               </Text>
                             )}
                           </View>
@@ -1919,13 +1919,13 @@ const TasksScreen = ({ navigation }) => {
                             onPress={() => {
                               setIsDetailMenuVisible(false);
                               setIsTaskListVisible(false);
-                              // FlowScreen으로 이동하며 해당 flowId 전달
+                              // Plan 화면으로 이동하며 해당 flowId 전달
                               navigation.navigate('Flow', { flowId: selectedTaskDetail.flowId });
                             }}
                           >
                             <ArrowRight size={18} color={Colors.primary} />
                             <Text style={[styles.menuText, { color: Colors.primary, fontWeight: '800' }]}>
-                              {t('tasks.go_to_flow', '이동하기')}
+                              {t('tasks.go_to_flow', 'Move to Plan')}
                             </Text>
                           </TouchableOpacity>
                         ) : (
@@ -3194,7 +3194,7 @@ const TasksScreen = ({ navigation }) => {
                 <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 }} />
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}>
-                  <Text style={styles.sectionSmallTitle}>{t('tasks.filter_flows', 'Flows')}</Text>
+                  <Text style={styles.sectionSmallTitle}>{t('tasks.filter_flows', 'Plans')}</Text>
                   {flows.length > 0 && (
                     <TouchableOpacity 
                       onPress={() => {
@@ -3218,7 +3218,7 @@ const TasksScreen = ({ navigation }) => {
                 {flows.length === 0 ? (
                   <View style={{ alignItems: 'center', marginTop: 40, paddingHorizontal: 40 }}>
                     <Text style={{ fontSize: 14, color: Colors.outline, textAlign: 'center', lineHeight: 20 }}>
-                      {t('tasks.no_flows', 'No active flows')}
+                      {t('tasks.no_flows', 'No active plans')}
                     </Text>
                   </View>
                 ) : (

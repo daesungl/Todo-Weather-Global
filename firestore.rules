@@ -47,7 +47,11 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid;
       allow update: if canEditFlow(flowId)
         || (isFlowMember(flowId)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCounts']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'commentCounts',
+              'commentLastCreatedAt',
+              'commentLastUid'
+            ]));
       allow delete: if isFlowOwner(flowId);
 
       match /members/{memberUid} {
@@ -61,7 +65,11 @@ service cloud.firestore {
           );
         allow update: if isFlowOwner(flowId)
           || (request.auth.uid == memberUid
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']));
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'displayName',
+                'lastReadStepsAt',
+                'lastReadCommentsAt'
+              ]));
         allow delete: if isFlowOwner(flowId) || request.auth.uid == memberUid;
       }
 

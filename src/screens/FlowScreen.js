@@ -68,7 +68,7 @@ import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
-import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, updateFlowDoc, deleteFlowStepDocs, removeSharedFlowOptimistic, refreshSharedFlowListener, isRemoteFlowUpdate } from '../services/FlowSyncService';
+import { getFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, updateFlowDoc, deleteFlowStepDocs, removeSharedFlowOptimistic, refreshSharedFlowListener, markFlowRead, isRemoteFlowUpdate } from '../services/FlowSyncService';
 import { 
   generateInviteCode, 
   invalidateInviteCode, 
@@ -100,6 +100,29 @@ const _dateStrFlow = (date) => {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+};
+
+const _toMillis = (value) => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const ms = new Date(value).getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+  if (value instanceof Date) return value.getTime();
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  if (typeof value.seconds === 'number') {
+    return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+  }
+  return 0;
+};
+
+const _readBaselineMillis = (primary, fallback) => {
+  const primaryMs = _toMillis(primary);
+  if (primaryMs > 0) return primaryMs;
+  const fallbackMs = _toMillis(fallback);
+  return fallbackMs > 0 ? fallbackMs : Number.POSITIVE_INFINITY;
 };
 
 const FLOW_GRADIENT_PRESETS = [
@@ -146,6 +169,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [flowMenuVisible, setFlowMenuVisible] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState(null);
   const selectedFlowRef = useRef(null);
+  const [detailReadBaseline, setDetailReadBaseline] = useState(null);
   const [stepSortOrder, setStepSortOrder] = useState('asc');
   const [isSharingImage, setIsSharingImage] = useState(false);
   const viewShotRef = useRef();
@@ -312,6 +336,7 @@ const FlowScreen = ({ navigation, route }) => {
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress', () => {
       selectedFlowRef.current = null;
+      setDetailReadBaseline(null);
       setSelectedFlow(null);
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
@@ -323,7 +348,7 @@ const FlowScreen = ({ navigation, route }) => {
     if (!flowId || !flows.length) return;
     const targetFlow = flows.find(f => f.id === flowId);
     if (targetFlow) {
-      setSelectedFlow(targetFlow);
+      openFlowDetail(targetFlow);
       navigation.setParams({ flowId: undefined });
     }
   }, [route.params?.flowId, flows]);
@@ -446,7 +471,7 @@ const FlowScreen = ({ navigation, route }) => {
       setKeyboardHeight(kbHeight);
       
       // Calculate offset based on modal height and keyboard height
-      const currentModalHeight = flowModalVisible ? flowModalHeight : (editModalVisible ? editModalHeight : (joinModalVisible ? joinModalHeight : 0));
+      const currentModalHeight = flowModalVisible ? flowModalHeight : (editModalVisible ? editModalHeight : (Platform.OS === 'ios' && joinModalVisible ? joinModalHeight : 0));
       if (currentModalHeight > 0) {
         const maxShift = height - currentModalHeight - (Platform.OS === 'ios' ? 60 : 40);
         const shift = Math.min(kbHeight, Math.max(0, maxShift));
@@ -463,7 +488,7 @@ const FlowScreen = ({ navigation, route }) => {
             duration: e.duration || 250,
             useNativeDriver: true,
           }).start();
-        } else if (joinModalVisible) {
+        } else if (Platform.OS === 'ios' && joinModalVisible) {
           Animated.timing(joinKeyboardOffset, {
             toValue: shift,
             duration: e.duration || 250,
@@ -475,7 +500,7 @@ const FlowScreen = ({ navigation, route }) => {
     const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', (e) => {
       setIsKeyboardVisible(false);
       setKeyboardHeight(0);
-      const targetAnim = flowModalVisible ? flowKeyboardOffset : (joinModalVisible ? joinKeyboardOffset : panY);
+      const targetAnim = flowModalVisible ? flowKeyboardOffset : (Platform.OS === 'ios' && joinModalVisible ? joinKeyboardOffset : panY);
       Animated.timing(targetAnim, {
         toValue: 0,
         duration: e.duration || 200,
@@ -674,6 +699,52 @@ const FlowScreen = ({ navigation, route }) => {
 
   const canEditSteps = (flow) => canEdit(flow);
 
+  const getFlowReadBaselines = (flow, preferDetailBaseline = false) => {
+    const detail = preferDetailBaseline && detailReadBaseline?.flowId === flow?.id
+      ? detailReadBaseline
+      : null;
+    return {
+      stepsAt: _readBaselineMillis(detail?.stepsAt || flow?._lastReadStepsAt, flow?._joinedAt),
+      commentsAt: _readBaselineMillis(detail?.commentsAt || flow?._lastReadCommentsAt, flow?._joinedAt),
+    };
+  };
+
+  const isUnreadStep = (flow, step, preferDetailBaseline = false) => {
+    if (!flow || !step || step.createdBy === user?.uid) return false;
+    const createdAt = _toMillis(step.createdAt);
+    if (createdAt <= 0) return false;
+    return createdAt > getFlowReadBaselines(flow, preferDetailBaseline).stepsAt;
+  };
+
+  const isUnreadComment = (flow, comment, preferDetailBaseline = false) => {
+    if (!flow || !comment || comment.uid === user?.uid) return false;
+    const createdAt = _toMillis(comment.createdAt);
+    if (createdAt <= 0) return false;
+    return createdAt > getFlowReadBaselines(flow, preferDetailBaseline).commentsAt;
+  };
+
+  const getFlowUnreadInfo = (flow) => {
+    const hasUnreadSteps = (flow?.steps || []).some(step => isUnreadStep(flow, step));
+    const lastCommentMs = _toMillis(flow?.commentLastCreatedAt);
+    const hasUnreadComments = flow?.commentLastUid !== user?.uid
+      && lastCommentMs > 0
+      && lastCommentMs > getFlowReadBaselines(flow).commentsAt;
+    return { hasUnreadSteps, hasUnreadComments, hasUnread: hasUnreadSteps || hasUnreadComments };
+  };
+
+  const openFlowDetail = (flow) => {
+    if (!flow) return;
+    setDetailReadBaseline({
+      flowId: flow.id,
+      stepsAt: flow._lastReadStepsAt,
+      commentsAt: flow._lastReadCommentsAt,
+    });
+    setSelectedFlow(flow);
+    if (user?.uid) {
+      setTimeout(() => markFlowRead(flow.id, { steps: true, comments: true }), 1200);
+    }
+  };
+
   const handleOpenInvite = async () => {
     setFlowMenuVisible(false);
     
@@ -711,11 +782,14 @@ const FlowScreen = ({ navigation, route }) => {
   const openJoinModal = () => {
     setJoinCode('');
     joinPanY.setValue(height);
+    joinKeyboardOffset.setValue(0);
     setJoinModalVisible(true);
     Animated.spring(joinPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
 
   const closeJoinModal = () => {
+    Keyboard.dismiss();
+    joinKeyboardOffset.setValue(0);
     Animated.timing(joinPanY, {
       toValue: height,
       duration: 250,
@@ -857,7 +931,7 @@ const FlowScreen = ({ navigation, route }) => {
   const handleShowPermissionInfo = () => {
     showConfirm(
       t('flow.permission_info_title', '권한 안내'),
-      '• ' + t('flow.permission_edit_desc', '편집: 플로우의 스텝을 추가, 수정, 삭제할 수 있습니다.') + '\n' +
+      '• ' + t('flow.permission_edit_desc', '편집: 플랜의 일정을 추가, 수정, 삭제할 수 있습니다.') + '\n' +
       '• ' + t('flow.permission_comment_desc', '댓글 관리: 본인뿐만 아니라 모든 멤버의 댓글을 삭제할 수 있습니다.'),
       null, false
     );
@@ -874,7 +948,7 @@ const FlowScreen = ({ navigation, route }) => {
       setJoinCode('');
       setJoinModalVisible(false);
 
-      // 현재 플로우 최솟값 -1을 order로 지정해 리스트 최상단에 배치
+      // 현재 플랜 최솟값 -1을 order로 지정해 리스트 최상단에 배치
       const minOrder = flows.length > 0 ? Math.min(...flows.map(f => f.order ?? 0)) : 0;
       refreshSharedFlowListener(result.ownerUid, result.flowId, result.role, minOrder - 1);
 
@@ -918,7 +992,7 @@ const FlowScreen = ({ navigation, route }) => {
       
       const sample = {
         id: 'sample-1',
-        title: 'Welcome to Flow',
+        title: 'Welcome Plan',
         period: 'Multi-day Planning',
         location: 'Dream Destination',
         progress: 0.3,
@@ -1131,7 +1205,7 @@ const FlowScreen = ({ navigation, route }) => {
 
   // inactive 플래그를 렌더 시점에 계산 — AsyncStorage 타이밍 이슈 없이 isPremium 즉시 반영
   const displayFlows = React.useMemo(() => {
-    // 임시: 모든 플로우 활성화
+    // 임시: 모든 플랜 활성화
     if (true) return flows.map(f => ({ ...f, inactive: false }));
     const sorted = [...flows].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
     const activeIds = new Set(sorted.slice(0, MAX_FLOWS).map(f => f.id));
@@ -1162,9 +1236,9 @@ const FlowScreen = ({ navigation, route }) => {
     }
     if (!editingFlow && displayFlows.filter(f => !f.inactive).length >= MAX_FLOWS) {
       const msg = isPremium
-        ? t('flow.alert.limit_msg', `최대 ${MAX_FLOWS}개 플로우까지 만들 수 있습니다.`)
-        : t('flow.alert.premium_limit_msg', `무료 플랜은 최대 ${MAX_FLOWS}개 플로우까지 만들 수 있습니다. 더 만들려면 프리미엄을 이용해 주세요.`);
-      showConfirm(t('flow.alert.limit_title', 'Flow Limit'), msg, null, false);
+        ? t('flow.alert.limit_msg', `최대 ${MAX_FLOWS}개 플랜까지 만들 수 있습니다.`)
+        : t('flow.alert.premium_limit_msg', `무료 플랜은 최대 ${MAX_FLOWS}개 플랜까지 만들 수 있습니다. 더 만들려면 프리미엄을 이용해 주세요.`);
+      showConfirm(t('flow.alert.limit_title', 'Plan Limit'), msg, null, false);
       return;
     }
     isSavingRef.current = true;
@@ -1239,9 +1313,9 @@ const FlowScreen = ({ navigation, route }) => {
     }
     if (!editingStep && (selectedFlow?.steps?.length || 0) >= MAX_STEPS) {
       const msg = isPremium
-        ? t('flow.alert.step_limit_msg', `플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`)
-        : t('flow.alert.step_limit_free_msg', `무료 플랜은 플로우당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`);
-      showConfirm(t('flow.alert.limit_title', 'Flow Limit'), msg, null, false);
+        ? t('flow.alert.step_limit_msg', `플랜당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`)
+        : t('flow.alert.step_limit_free_msg', `무료 플랜은 플랜당 최대 ${MAX_STEPS}개 일정까지 추가할 수 있습니다.`);
+      showConfirm(t('flow.alert.limit_title', 'Plan Limit'), msg, null, false);
       return;
     }
 
@@ -1339,7 +1413,7 @@ const FlowScreen = ({ navigation, route }) => {
           if (__DEV__) console.log('[FlowScreen] applyToFlow success.');
         } catch (err) {
           if (__DEV__) console.error('[FlowScreen] applyToFlow error:', err);
-          showConfirm(t('common.error', 'Error'), t('flow.update_failed', 'Failed to update flow on server. Please check your connection.'), null, false);
+          showConfirm(t('common.error', 'Error'), t('flow.update_failed', 'Failed to update plan on server. Please check your connection.'), null, false);
         } finally {
           releaseSaving(); // 여기서도 확실히 해제
         }
@@ -1510,6 +1584,7 @@ const FlowScreen = ({ navigation, route }) => {
                   isCompleted: false,
                   status: 'upcoming',
                   createdAt: now,
+                  createdBy: user?.uid || null,
                   updatedAt: now,
                 });
                 current = _advanceByRepeat(current, repeat);
@@ -1619,6 +1694,7 @@ const FlowScreen = ({ navigation, route }) => {
             notify: stepNotify,
             notificationId: null, // refill handles this
             createdAt: now,
+            createdBy: user?.uid || null,
             updatedAt: now,
           });
           current = _advanceByRepeat(current, stepRepeatType);
@@ -1641,6 +1717,7 @@ const FlowScreen = ({ navigation, route }) => {
         ...baseUpdates,
         status: 'upcoming',
         createdAt: now,
+        createdBy: user?.uid || null,
       };
         await applyToFlow([...currentSteps, newStep]);
         if (stepNotify) {
@@ -1690,7 +1767,7 @@ const FlowScreen = ({ navigation, route }) => {
       if (__DEV__) console.error('[FlowScreen] delete step sync error:', e);
       showConfirm(
         t('common.error', 'Error'),
-        t('flow.update_failed', 'Failed to update flow on server. Please check your connection.'),
+        t('flow.update_failed', 'Failed to update plan on server. Please check your connection.'),
         null,
         false
       );
@@ -2238,6 +2315,7 @@ const FlowScreen = ({ navigation, route }) => {
             <BorderlessButton 
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setDetailReadBaseline(null);
                 setSelectedFlow(null);
               }} 
               style={styles.iconBtn}
@@ -2407,6 +2485,11 @@ const FlowScreen = ({ navigation, route }) => {
                                     <Text style={styles.stepActivity} numberOfLines={2}>
                                       {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
                                     </Text>
+                                    {isUnreadStep(selectedFlow, step, true) && (
+                                      <View style={styles.newStepBadge}>
+                                        <Text style={styles.newStepBadgeText}>{t('flow.new_badge', 'NEW')}</Text>
+                                      </View>
+                                    )}
                                     {step.repeatGroupId && (
                                       <View style={styles.repeatStepBadge}>
                                         <Repeat size={10} color={Colors.primary} />
@@ -2437,6 +2520,7 @@ const FlowScreen = ({ navigation, route }) => {
                                 const count = stepComments.length;
                                 const isExpanded = !!expandedCommentSteps[step.id];
                                 const canComment = !!(selectedFlow._role && selectedFlow._role !== '');
+                                const hasUnreadComments = stepComments.some(comment => isUnreadComment(selectedFlow, comment, true));
                                 return (
                                   <View>
                                     {/* 말풍선 버튼 */}
@@ -2446,7 +2530,10 @@ const FlowScreen = ({ navigation, route }) => {
                                       hitSlop={{ top: 15, bottom: 15, left: 20, right: 100 }}
                                     >
                                       <View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                        <MessageCircle size={24} color={count > 0 ? Colors.primary : Colors.outline} strokeWidth={2.4} />
+                                        <View>
+                                          <MessageCircle size={24} color={count > 0 ? Colors.primary : Colors.outline} strokeWidth={2.4} />
+                                          {hasUnreadComments && <View style={styles.commentUnreadDot} />}
+                                        </View>
                                         {count > 0 && (
                                           <Text style={[styles.commentCountText, { color: Colors.primary }]}>{count}</Text>
                                         )}
@@ -2655,12 +2742,18 @@ const FlowScreen = ({ navigation, route }) => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             drag();
                           }}
-                          onPress={() => setSelectedFlow(flow)}
+                          onPress={() => openFlowDetail(flow)}
                           style={isActive ? { opacity: 0.8 } : undefined}
                           activeOpacity={0.9}
                           delayLongPress={250}
                         >
                           <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
+                            {getFlowUnreadInfo(flow).hasUnread && (
+                              <View style={styles.planUnreadBadge}>
+                                {getFlowUnreadInfo(flow).hasUnreadSteps && <View style={styles.planUnreadDot} />}
+                                {getFlowUnreadInfo(flow).hasUnreadComments && <MessageCircle size={13} color="white" strokeWidth={2.5} />}
+                              </View>
+                            )}
                             <TouchableOpacity
                               onPress={() => {
                                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -2731,8 +2824,8 @@ const FlowScreen = ({ navigation, route }) => {
                       <View style={styles.listHeader}>
                         <View style={[styles.headerTopRow, { alignItems: 'flex-start', justifyContent: 'space-between' }]}>
                           <View>
-                            <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Flows')}</Text>
-                            <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Curated journeys')}</Text>
+                            <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Plans')}</Text>
+                            <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Recommended plans')}</Text>
                           </View>
                           <Pressable 
                             style={({ pressed }) => [
@@ -2829,7 +2922,7 @@ const FlowScreen = ({ navigation, route }) => {
                       <View style={{ width: 80, alignItems: 'flex-start' }} />
                       
                       <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
-                        {editingFlow ? t('flow.edit_flow', 'Edit Flow') : t('flow.new_flow', 'New Flow')}
+                        {editingFlow ? t('flow.edit_flow', 'Edit Plan') : t('flow.new_flow', 'New Plan')}
                       </Text>
 
                       <View style={{ width: 80, alignItems: 'flex-end' }}>
@@ -2856,7 +2949,7 @@ const FlowScreen = ({ navigation, route }) => {
                     <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
                       <View style={styles.modalContentPadding}>
                         <View style={styles.labelRow}>
-                          <Text style={styles.inputLabel}>{t('flow.flow_title', 'Flow Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
+                          <Text style={styles.inputLabel}>{t('flow.flow_title', 'Plan Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
                         </View>
                         <View style={[styles.compactInputRow, !flowTitle && styles.compactInputRowRequired]}>
                           <Flag size={18} color={flowTitle ? Colors.primary : Colors.error} />
@@ -2903,7 +2996,7 @@ const FlowScreen = ({ navigation, route }) => {
                         <View style={styles.labelRow}>
                           <Text style={styles.inputLabel}>{t('flow.description', 'Description')}</Text>
                         </View>
-                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput ref={flowDescRef} style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder={t('flow.description_placeholder', 'What is this flow about?')} placeholderTextColor={Colors.outline} autoCapitalize="none" onFocus={() => { focusedFlowInputRef.current = flowDescRef.current; }} onBlur={() => { focusedFlowInputRef.current = null; }} /></View>
+                        <View style={styles.compactInputRow}><Edit3 size={18} color={Colors.primary} /><TextInput ref={flowDescRef} style={styles.compactInput} value={flowDescription} onChangeText={setFlowDescription} placeholder={t('flow.description_placeholder', 'What is this plan about?')} placeholderTextColor={Colors.outline} autoCapitalize="none" onFocus={() => { focusedFlowInputRef.current = flowDescRef.current; }} onBlur={() => { focusedFlowInputRef.current = null; }} /></View>
                       </View>
 
                       <View style={styles.inputGroup}>
@@ -2915,7 +3008,7 @@ const FlowScreen = ({ navigation, route }) => {
                               {FLOW_GRADIENT_PRESETS.find(p => p.colors[0] === flowGradient[0] && p.colors[1] === flowGradient[1])?.name ?? t('flow.custom_color', '커스텀')}
                             </Text>
                             <LinearGradient colors={flowGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradientPreviewBadge}>
-                              <Text style={styles.gradientPreviewBadgeText}>{flowTitle || t('flow.flow_title_placeholder', 'Flow')}</Text>
+                              <Text style={styles.gradientPreviewBadgeText}>{flowTitle || t('flow.flow_title_placeholder', 'Plan')}</Text>
                             </LinearGradient>
                           </View>
                         </View>
@@ -3425,6 +3518,7 @@ const FlowScreen = ({ navigation, route }) => {
                   { 
                     height: 'auto',
                     maxHeight: height * 0.9,
+                    paddingHorizontal: 16,
                     transform: [{ translateY: invitePanY }] 
                   }
                 ]}
@@ -3434,11 +3528,11 @@ const FlowScreen = ({ navigation, route }) => {
                   <View style={styles.modalHandle} />
                 </View>
                 <View style={styles.editHeader}>
-                  <View style={{ width: 80, alignItems: 'flex-start' }} />
+                  <View style={{ width: 64, alignItems: 'flex-start' }} />
                   <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
                     {t('flow.manage_members')}
                   </Text>
-                  <View style={{ width: 80, alignItems: 'flex-end' }}>
+                  <View style={{ width: 64, alignItems: 'flex-end' }}>
                     <GHButton 
                       onPress={handleSaveAllPermissions} 
                       style={styles.headerActionBtn}
@@ -3461,9 +3555,9 @@ const FlowScreen = ({ navigation, route }) => {
                   contentContainerStyle={{ paddingBottom: 40 }}
                 >
                   {/* 역할 선택 */}
-                  <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+                  <View style={{ paddingHorizontal: 8, paddingTop: 16 }}>
                     <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.outline, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('flow.invite_role_label', 'Role for new members')}</Text>
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                       {['viewer', 'editor'].map(role => (
                         <Pressable
                           key={role}
@@ -3471,6 +3565,7 @@ const FlowScreen = ({ navigation, route }) => {
                             { 
                               flex: 1, 
                               paddingVertical: 14, 
+                              paddingHorizontal: 10,
                               borderRadius: 14, 
                               borderWidth: 2, 
                               alignItems: 'center',
@@ -3495,7 +3590,12 @@ const FlowScreen = ({ navigation, route }) => {
                             }}>
                               {inviteRole === role && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary }} />}
                             </View>
-                            <Text style={{ color: inviteRole === role ? Colors.primary : Colors.onBackground, fontWeight: '700', fontSize: 15 }}>
+                            <Text
+                              style={{ flex: 1, color: inviteRole === role ? Colors.primary : Colors.onBackground, fontWeight: '700', fontSize: 15 }}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.82}
+                            >
                               {role === 'viewer' ? t('flow.viewer') : t('flow.editor')}
                             </Text>
                           </View>
@@ -3505,11 +3605,19 @@ const FlowScreen = ({ navigation, route }) => {
                   </View>
 
                   {/* 초대 코드 표시 */}
-                  <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20 }}>
+                  <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 8 }}>
                     {inviteCode ? (
                       <View style={{ width: '100%', alignItems: 'center' }}>
-                        <View style={{ backgroundColor: Colors.surfaceContainer, paddingVertical: 16, paddingHorizontal: 30, borderRadius: 20, marginBottom: 12 }}>
-                          <Text style={{ fontSize: 42, fontWeight: '800', letterSpacing: 8, color: Colors.text, fontVariant: ['tabular-nums'] }}>{inviteCode}</Text>
+                        <View style={styles.inviteCodeBox}>
+                          <Text
+                            style={styles.inviteCodeText}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.75}
+                            allowFontScaling={false}
+                          >
+                            {inviteCode}
+                          </Text>
                         </View>
                         <Text style={{ color: Colors.outline, fontSize: 13, textAlign: 'center', lineHeight: 18 }}>
                           {t('flow.valid_7_days')} · <Text style={{ fontWeight: '600', color: Colors.textSecondary }}>{inviteRole === 'viewer' ? t('flow.viewer_only') : t('flow.editable')}</Text>
@@ -3566,8 +3674,8 @@ const FlowScreen = ({ navigation, route }) => {
 
                   {/* 코드 생성 버튼 */}
                   <TouchableOpacity
-                    style={{ 
-                      marginHorizontal: 20, 
+                    style={{
+                      marginHorizontal: 8,
                       backgroundColor: inviteCode ? Colors.surfaceContainerHigh : Colors.primary, 
                       borderRadius: 16, 
                       paddingVertical: 16, 
@@ -3592,7 +3700,7 @@ const FlowScreen = ({ navigation, route }) => {
                   </TouchableOpacity>
 
                   {/* 현재 멤버 목록 영역 */}
-                  <View style={{ marginTop: 32, paddingHorizontal: 20 }}>
+                  <View style={{ marginTop: 32, paddingHorizontal: 8 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                       <Text style={{ fontWeight: '800', color: Colors.text, fontSize: 18 }}>{t('flow.current_members')}</Text>
                       <TouchableOpacity
@@ -3699,7 +3807,7 @@ const FlowScreen = ({ navigation, route }) => {
           </GestureHandlerRootView>
         </Modal>
 
-        {/* 공유 플로우 참여 모달 - 바텀 시트 스타일 */}
+        {/* 공유 플랜 참여 모달 - 바텀 시트 스타일 */}
         <Modal
           transparent
           visible={joinModalVisible}
@@ -3708,7 +3816,8 @@ const FlowScreen = ({ navigation, route }) => {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeJoinModal} />
             <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              enabled={Platform.OS === 'ios'}
+              behavior="padding"
               style={{ flex: 1, justifyContent: 'flex-end' }}
               pointerEvents="box-none"
             >
@@ -3772,7 +3881,7 @@ const FlowScreen = ({ navigation, route }) => {
                         backgroundColor: Colors.surfaceContainerLowest,
                       }}
                       value={joinCode}
-                      onChangeText={text => setJoinCode(text.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                      onChangeText={text => setJoinCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
                       placeholder="XXXXXX"
                       placeholderTextColor={Colors.outlineVariant}
                       maxLength={6}
@@ -3786,7 +3895,7 @@ const FlowScreen = ({ navigation, route }) => {
           </GestureHandlerRootView>
         </Modal>
 
-        {/* Flow 옵션 팝업 메뉴 */}
+        {/* Plan 옵션 팝업 메뉴 */}
         <Modal
           transparent
           visible={flowMenuVisible}
@@ -3856,7 +3965,7 @@ const FlowScreen = ({ navigation, route }) => {
                   <View pointerEvents="none">
                     <LogOut size={18} color={Colors.error} />
                   </View>
-                  <Text style={[styles.flowMenuItemText, { color: Colors.error }]}>{t('flow.alert.leave_flow', 'Leave Flow')}</Text>
+                  <Text style={[styles.flowMenuItemText, { color: Colors.error }]}>{t('flow.alert.leave_flow', 'Leave Plan')}</Text>
                 </Pressable>
               )}
             </View>
@@ -3885,6 +3994,28 @@ const styles = StyleSheet.create({
   },
   flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
   flowCard: { padding: Spacing.xl, borderRadius: 32, height: 220, justifyContent: 'space-between' },
+  planUnreadBadge: {
+    position: 'absolute',
+    top: Spacing.lg + 6,
+    right: Spacing.lg + 44,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.36)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    zIndex: 10,
+  },
+  planUnreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'white',
+  },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   deleteBtnAbsolute: { position: 'absolute', top: Spacing.lg, right: Spacing.lg, padding: 8, zIndex: 10 },
   cardMainArea: { marginTop: Spacing.xs },
@@ -3991,6 +4122,26 @@ const styles = StyleSheet.create({
   resultAddress: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, marginTop: 2 },
   modalBg: { backgroundColor: 'rgba(0,0,0,0.5)' },
   editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 0, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20, maxHeight: height * 0.9 },
+  inviteCodeBox: {
+    width: '100%',
+    backgroundColor: Colors.surfaceContainer,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  inviteCodeText: {
+    fontSize: 42,
+    fontWeight: '800',
+    letterSpacing: 6,
+    color: Colors.text,
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+    textAlign: 'center',
+  },
   editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
   editTitle: { ...Typography.h2, fontSize: 24, letterSpacing: -0.5, color: Colors.onBackground },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 16, opacity: 0.5 },
@@ -4114,7 +4265,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 0, 0, 0.05)',
   },
 
-  // Flow 옵션 팝업 메뉴 스타일
+  // Plan 옵션 팝업 메뉴 스타일
   flowMenuOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -4186,6 +4337,30 @@ const styles = StyleSheet.create({
   commentDeleteBtn: { padding: 4, opacity: 0.6 },
   commentToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start', paddingVertical: 10, paddingHorizontal: 4, width: '100%' },
   commentCountText: { fontSize: 14, fontWeight: '700' },
+  commentUnreadDot: {
+    position: 'absolute',
+    top: -2,
+    right: -3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.error,
+    borderWidth: 1.5,
+    borderColor: Colors.background,
+  },
+  newStepBadge: {
+    backgroundColor: Colors.error + '15',
+    borderColor: Colors.error + '35',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newStepBadgeText: {
+    fontSize: 10,
+    color: Colors.error,
+    fontWeight: '900',
+  },
   joinFlowChip: {
     flexDirection: 'row',
     alignItems: 'center',

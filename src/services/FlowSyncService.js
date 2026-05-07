@@ -132,6 +132,9 @@ const _flowFromParts = (flowId) => {
     steps: _sortSteps(_flowSteps.get(flowId) || []),
     _role: role,
     _permissions: ref.permissions,
+    _joinedAt: ref.joinedAt,
+    _lastReadStepsAt: ref.lastReadStepsAt,
+    _lastReadCommentsAt: ref.lastReadCommentsAt,
     order: ref.order ?? 1000000,
   };
 
@@ -478,6 +481,34 @@ export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
     order: order ?? 0,
     updatedAt: firestore.FieldValue.serverTimestamp(),
   }, { merge: true }).catch(e => console.warn('[FlowSync] refresh flowRef failed:', e));
+};
+
+export const markFlowRead = async (flowId, options = {}) => {
+  if (!_userId || !flowId) return;
+  const now = new Date();
+  const updates = { updatedAt: firestore.FieldValue.serverTimestamp() };
+  const localUpdates = { updatedAt: now.toISOString() };
+
+  if (options.steps !== false) {
+    updates.lastReadStepsAt = firestore.FieldValue.serverTimestamp();
+    localUpdates.lastReadStepsAt = now.toISOString();
+  }
+  if (options.comments !== false) {
+    updates.lastReadCommentsAt = firestore.FieldValue.serverTimestamp();
+    localUpdates.lastReadCommentsAt = now.toISOString();
+  }
+
+  _flowRefs.set(flowId, {
+    ...(_flowRefs.get(flowId) || { flowId }),
+    ...localUpdates,
+  });
+  _mergeAndNotify();
+
+  try {
+    await _flowRefsCollection(_userId).doc(flowId).set(updates, { merge: true });
+  } catch (e) {
+    console.warn('[FlowSync] markFlowRead failed:', e);
+  }
 };
 
 export const removeSharedFlowOptimistic = (flowId) => {

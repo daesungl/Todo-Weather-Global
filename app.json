@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "42",
+      "buildNumber": "45",
       "newArchEnabled": true,
       "infoPlist": {
         "CFBundleLocalizations": [
@@ -38,7 +38,7 @@
       "backgroundColor": "#b2ebf2",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#469dd3"
+        "backgroundColor": "#00a4df"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",

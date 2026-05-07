@@ -43,7 +43,11 @@ export const addComment = async (ownerUid, flowId, stepId, user, text) => {
   // must be fire-and-forget and never block or throw.
   firestore()
     .collection('flows').doc(flowId)
-    .update({ [`commentCounts.${stepId}`]: firestore.FieldValue.increment(1) })
+    .update({
+      [`commentCounts.${stepId}`]: firestore.FieldValue.increment(1),
+      commentLastCreatedAt: firestore.FieldValue.serverTimestamp(),
+      commentLastUid: user.uid,
+    })
     .catch(() => {});
 };
 
