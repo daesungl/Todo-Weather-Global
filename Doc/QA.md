@@ -247,3 +247,11 @@ AdMob은 Analytics 연동이 완료된 후에 Firebase 프로젝트와 연동하
 국문: 가장 아름답고 직관적인 날씨 투두 앱. 복잡한 기상 데이터와 할 일을 하나로 통합했습니다. 지금 바로 '투두 웨더'의 프리미엄 디자인과 글로벌 날씨 서비스를 경험해 보세요.
 
 영문: Experience the most beautiful and intuitive weather-integrated task manager. Seamlessly blend global weather insights with your daily productivity. Elevate your routine with Todo Weather.
+
+--
+
+"77RMUN"
+3KXTPK 
+7V73KU
+QCFJKE
+5JFW8N

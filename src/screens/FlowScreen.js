@@ -231,6 +231,8 @@ const FlowScreen = ({ navigation, route }) => {
 
   // Flow Create/Edit State
   const [flowModalVisible, setFlowModalVisible] = useState(false);
+  const [flowCreateMenuVisible, setFlowCreateMenuVisible] = useState(false);
+  const [detailActionMenuVisible, setDetailActionMenuVisible] = useState(false);
   const [editingFlow, setEditingFlow] = useState(null);
   const [flowTitle, setFlowTitle] = useState('');
   const [flowDescription, setFlowDescription] = useState('');
@@ -749,6 +751,23 @@ const FlowScreen = ({ navigation, route }) => {
     if (user?.uid) {
       setTimeout(() => markFlowRead(flow.id, { steps: true, comments: true }), 1200);
     }
+  };
+
+  const openNewStepModal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditingStep(null);
+    setEditActivity('');
+    setEditMemo('');
+    const todayStr = new Date().toISOString().split('T')[0];
+    setEditDate(todayStr);
+    setEditEndDate(todayStr);
+    setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    setSelectedRegion(null);
+    setStepRepeatType(null);
+    setStepRepeatEndDate('');
+    setShowStepRepeatPicker(false);
+    setStepNotify(false);
+    openEditModal(true);
   };
 
   const handleOpenInvite = async () => {
@@ -1844,7 +1863,7 @@ const FlowScreen = ({ navigation, route }) => {
 
   const deleteStep = () => {
     const title = editingStep?.repeatGroupId ? t('tasks.delete_repeat_title') : t('tasks.delete_confirm');
-    const msg = editingStep?.repeatGroupId ? t('tasks.delete_repeat_msg') : t('tasks.delete_confirm_msg');
+    const msg = editingStep?.repeatGroupId ? t('tasks.delete_repeat_msg') : '';
 
     Alert.alert(
       title,
@@ -1890,7 +1909,7 @@ const FlowScreen = ({ navigation, route }) => {
   const confirmDeleteStepById = (step) => {
     Alert.alert(
       step.repeatGroupId ? t('tasks.delete_repeat_title') : t('tasks.delete_confirm'),
-      step.repeatGroupId ? t('tasks.delete_repeat_msg') : t('tasks.delete_confirm_msg'),
+      step.repeatGroupId ? t('tasks.delete_repeat_msg') : '',
       [
         { text: t('common.cancel'), style: 'cancel' },
         { text: t('common.delete', 'Delete'), style: 'destructive', onPress: () => deleteStepById(step.id) },
@@ -2345,6 +2364,7 @@ const FlowScreen = ({ navigation, route }) => {
             <BorderlessButton 
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setDetailActionMenuVisible(false);
                 setDetailReadBaseline(null);
                 setSelectedFlow(null);
               }} 
@@ -2377,28 +2397,18 @@ const FlowScreen = ({ navigation, route }) => {
           </View>
 
           <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-            <BorderlessButton
-              style={styles.iconBtn}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setStepSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-              }}
-              hitSlop={{ top: 20, bottom: 20, left: 20, right: 8 }}
-            >
-              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                <ArrowUpDown size={18} color={stepSortOrder === 'desc' ? Colors.primary : Colors.onBackground} />
-              </View>
-            </BorderlessButton>
-            <BorderlessButton
-              style={styles.iconBtn}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setFlowMenuVisible(true);
-              }}
-              hitSlop={{ top: 20, bottom: 20, left: 8, right: 20 }}
-            >
-              <MoreVertical size={20} color={Colors.onBackground} />
-            </BorderlessButton>
+            {!canEditSteps(selectedFlow) && (
+              <BorderlessButton
+                style={styles.iconBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setFlowMenuVisible(true);
+                }}
+                hitSlop={{ top: 20, bottom: 20, left: 8, right: 20 }}
+              >
+                <MoreVertical size={20} color={Colors.onBackground} />
+              </BorderlessButton>
+            )}
           </View>
         </View>
 
@@ -2730,6 +2740,92 @@ const FlowScreen = ({ navigation, route }) => {
         {/* Floating Add Step Button — hidden for viewers */}
         {canEditSteps(selectedFlow) && (
           <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
+            {detailActionMenuVisible && (
+              <>
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={() => setDetailActionMenuVisible(false)}
+                />
+                <View style={[styles.detailActionMenu, { bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16 + 76 }]}>
+                  <Pressable
+                    style={({ pressed }) => [styles.detailActionMenuItem, pressed && styles.detailActionMenuItemPressed]}
+                    onPress={() => {
+                      setDetailActionMenuVisible(false);
+                      openNewStepModal();
+                    }}
+                  >
+                    <View style={styles.detailActionMenuIcon}><Plus size={18} color={Colors.primary} strokeWidth={2.8} /></View>
+                    <Text style={styles.detailActionMenuText}>{t('flow.new_schedule', 'New Schedule')}</Text>
+                  </Pressable>
+                  <View style={styles.detailActionMenuDivider} />
+                  <Pressable
+                    style={({ pressed }) => [styles.detailActionMenuItem, pressed && styles.detailActionMenuItemPressed]}
+                    onPress={() => {
+                      setDetailActionMenuVisible(false);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setStepSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                    }}
+                  >
+                    <View style={styles.detailActionMenuIcon}><ArrowUpDown size={18} color={Colors.primary} /></View>
+                    <Text style={styles.detailActionMenuText}>
+                      {stepSortOrder === 'asc' ? t('flow.sort_newest_first', 'Newest First') : t('flow.sort_oldest_first', 'Oldest First')}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.detailActionMenuDivider} />
+                  <Pressable
+                    style={({ pressed }) => [styles.detailActionMenuItem, pressed && styles.detailActionMenuItemPressed]}
+                    onPress={() => {
+                      setDetailActionMenuVisible(false);
+                      handleShareFlowImage();
+                    }}
+                  >
+                    <View style={styles.detailActionMenuIcon}><Share2 size={18} color={Colors.primary} /></View>
+                    <Text style={styles.detailActionMenuText}>{t('flow.share_as_image', 'Share as Image')}</Text>
+                  </Pressable>
+                  {isFlowOwner(selectedFlow) && (
+                    <>
+                      <View style={styles.detailActionMenuDivider} />
+                      <Pressable
+                        style={({ pressed }) => [styles.detailActionMenuItem, pressed && styles.detailActionMenuItemPressed]}
+                        onPress={() => {
+                          setDetailActionMenuVisible(false);
+                          handleOpenInvite();
+                        }}
+                      >
+                        <View style={styles.detailActionMenuIcon}><Users size={18} color={Colors.primary} /></View>
+                        <Text style={styles.detailActionMenuText}>{t('flow.manage_members')}</Text>
+                      </Pressable>
+                      <View style={styles.detailActionMenuDivider} />
+                      <Pressable
+                        style={({ pressed }) => [styles.detailActionMenuItem, pressed && styles.detailActionMenuItemPressed]}
+                        onPress={() => {
+                          setDetailActionMenuVisible(false);
+                          openFlowModal(selectedFlow);
+                        }}
+                      >
+                        <View style={styles.detailActionMenuIcon}><Edit3 size={18} color={Colors.primary} /></View>
+                        <Text style={styles.detailActionMenuText}>{t('common.edit', 'Edit')}</Text>
+                      </Pressable>
+                    </>
+                  )}
+                  <View style={styles.detailActionMenuDivider} />
+                  <Pressable
+                    style={({ pressed }) => [styles.detailActionMenuItem, styles.detailActionMenuDangerItem, pressed && { backgroundColor: '#FFF0F0' }]}
+                    onPress={() => {
+                      setDetailActionMenuVisible(false);
+                      handleDeleteFlow(selectedFlow?.id);
+                    }}
+                  >
+                    <View style={[styles.detailActionMenuIcon, { backgroundColor: Colors.error + '12' }]}>
+                      {isFlowOwner(selectedFlow) ? <Trash2 size={18} color={Colors.error} /> : <LogOut size={18} color={Colors.error} />}
+                    </View>
+                    <Text style={[styles.detailActionMenuText, { color: Colors.error }]}>
+                      {isFlowOwner(selectedFlow) ? t('common.delete', 'Delete') : t('flow.alert.leave_flow', 'Leave Plan')}
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
             <Pressable
               style={({ pressed }) => [
                 {
@@ -2745,20 +2841,8 @@ const FlowScreen = ({ navigation, route }) => {
                 pressed && { opacity: 0.8, transform: [{ scale: 0.92 }] }
               ]}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setEditingStep(null);
-                setEditActivity('');
-                setEditMemo('');
-                const todayStr = new Date().toISOString().split('T')[0];
-                setEditDate(todayStr);
-                setEditEndDate(todayStr);
-                setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
-                setSelectedRegion(null);
-                setStepRepeatType(null);
-                setStepRepeatEndDate('');
-                setShowStepRepeatPicker(false);
-                setStepNotify(false);
-                openEditModal(true);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setDetailActionMenuVisible(prev => !prev);
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -2931,27 +3015,6 @@ const FlowScreen = ({ navigation, route }) => {
                             <Text style={styles.screenTitle}>{t('flow.my_flows', 'My Plans')}</Text>
                             <Text style={styles.screenSubtitle}>{t('flow.curated_journeys', 'Recommended plans')}</Text>
                           </View>
-                          <Pressable 
-                            style={({ pressed }) => [
-                              styles.joinFlowChip,
-                              { opacity: pressed ? 0.7 : 1 }
-                            ]} 
-                            onPress={() => {
-                              if (!user) {
-                                showConfirm(
-                                  t('common.login_required'),
-                                  t('common.login_required_msg'),
-                                  () => navigation.navigate('Login'),
-                                  true
-                                );
-                                return;
-                              }
-                              openJoinModal();
-                            }}
-                          >
-                            <MaterialCommunityIcons name="account-multiple-plus" size={16} color={Colors.primary} />
-                            <Text style={styles.joinFlowChipText}>{t('flow.join_shared_flow_btn')}</Text>
-                          </Pressable>
                         </View>
                       </View>
 
@@ -2970,6 +3033,50 @@ const FlowScreen = ({ navigation, route }) => {
               )}
             </View>
             <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
+            {flowCreateMenuVisible && (
+              <>
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={() => setFlowCreateMenuVisible(false)}
+                />
+                <View style={[styles.flowCreateMenu, { bottom: Math.max(insets.bottom, 20) + 10 + 64 + 16 + 76 }]}>
+                  <Pressable
+                    style={({ pressed }) => [styles.flowCreateMenuItem, pressed && styles.flowCreateMenuItemPressed]}
+                    onPress={() => {
+                      setFlowCreateMenuVisible(false);
+                      openFlowModal();
+                    }}
+                  >
+                    <View style={styles.flowCreateMenuIcon}>
+                      <Plus size={18} color={Colors.primary} strokeWidth={2.8} />
+                    </View>
+                    <Text style={styles.flowCreateMenuText}>{t('flow.new_flow', 'New Plan')}</Text>
+                  </Pressable>
+                  <View style={styles.flowCreateMenuDivider} />
+                  <Pressable
+                    style={({ pressed }) => [styles.flowCreateMenuItem, pressed && styles.flowCreateMenuItemPressed]}
+                    onPress={() => {
+                      setFlowCreateMenuVisible(false);
+                      if (!user) {
+                        showConfirm(
+                          t('common.login_required'),
+                          t('common.login_required_msg'),
+                          () => navigation.navigate('Login'),
+                          true
+                        );
+                        return;
+                      }
+                      openJoinModal();
+                    }}
+                  >
+                    <View style={styles.flowCreateMenuIcon}>
+                      <MaterialCommunityIcons name="account-multiple-plus" size={19} color={Colors.primary} />
+                    </View>
+                    <Text style={styles.flowCreateMenuText}>{t('flow.join_shared_flow_btn')}</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
             <Pressable
               style={({ pressed }) => [
                 {
@@ -2986,7 +3093,7 @@ const FlowScreen = ({ navigation, route }) => {
               ]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                openFlowModal();
+                setFlowCreateMenuVisible(prev => !prev);
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -4011,6 +4118,22 @@ const FlowScreen = ({ navigation, route }) => {
               <Text style={styles.flowMenuTitle} numberOfLines={1}>{selectedFlow?.title}</Text>
               <View style={styles.flowMenuDivider} />
 
+              <Pressable
+                style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#F4F7FE' }]}
+                onPress={() => {
+                  setFlowMenuVisible(false);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setStepSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                }}
+              >
+                <View pointerEvents="none"><ArrowUpDown size={18} color={Colors.primary} /></View>
+                <Text style={styles.flowMenuItemText}>
+                  {stepSortOrder === 'asc' ? t('flow.sort_newest_first', 'Newest First') : t('flow.sort_oldest_first', 'Oldest First')}
+                </Text>
+              </Pressable>
+
+              <View style={styles.flowMenuDivider} />
+
               {/* 이미지 공유 — 항상 */}
               <Pressable
                 style={({ pressed }) => [styles.flowMenuItem, pressed && { backgroundColor: '#F4F7FE' }]}
@@ -4136,6 +4259,96 @@ const styles = StyleSheet.create({
     width: 52, height: 52, borderRadius: 26, backgroundColor: Colors.primary,
     alignItems: 'center', justifyContent: 'center',
     ...Platform.select({ ios: { shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }, android: { elevation: 4 } })
+  },
+  flowCreateMenu: {
+    position: 'absolute',
+    right: 30,
+    width: 210,
+    borderRadius: 18,
+    backgroundColor: 'white',
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant + '50',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18 },
+      android: { elevation: 12 },
+    }),
+  },
+  flowCreateMenuItem: {
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+  },
+  flowCreateMenuItemPressed: {
+    backgroundColor: Colors.primary + '08',
+  },
+  flowCreateMenuIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '12',
+  },
+  flowCreateMenuText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.onBackground,
+  },
+  flowCreateMenuDivider: {
+    height: 1,
+    backgroundColor: Colors.outlineVariant + '40',
+    marginHorizontal: 12,
+  },
+  detailActionMenu: {
+    position: 'absolute',
+    right: 30,
+    width: 232,
+    borderRadius: 18,
+    backgroundColor: 'white',
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant + '50',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18 },
+      android: { elevation: 12 },
+    }),
+  },
+  detailActionMenuItem: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  detailActionMenuItemPressed: {
+    backgroundColor: Colors.primary + '08',
+  },
+  detailActionMenuDangerItem: {
+    minHeight: 50,
+  },
+  detailActionMenuIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '12',
+  },
+  detailActionMenuText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.onBackground,
+  },
+  detailActionMenuDivider: {
+    height: 1,
+    backgroundColor: Colors.outlineVariant + '40',
+    marginHorizontal: 12,
   },
   detailContainer: { flex: 1, backgroundColor: Colors.background, paddingTop: Platform.OS === 'ios' ? 44 : 0 },
   detailHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, height: 60, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant + '20' },
