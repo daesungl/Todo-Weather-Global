@@ -740,6 +740,71 @@ const FlowScreen = ({ navigation, route }) => {
     return getSharedFlowUnreadInfo(flow, user.uid);
   };
 
+  const getSelectedFlowRoleLabel = () => {
+    if (!selectedFlow) return '';
+    if (isFlowOwner(selectedFlow)) return 'OWNER';
+    return String(selectedFlow._role || 'viewer').toUpperCase();
+  };
+
+  const getMemberDisplayName = (member) => {
+    if (!member) return '';
+    if (member.uid === user?.uid) return user?.displayName || user?.email || member.displayName || '';
+    const ownerUid = selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId || user?.uid;
+    if (member.uid === ownerUid && member.displayName === 'Owner') return selectedFlow?.ownerName || member.email || '';
+    return member.displayName || member.email || '';
+  };
+
+  const getMemberInitials = (member) => {
+    const source = (getMemberDisplayName(member) || member?.uid || '?').trim();
+    if (!source) return '?';
+    const parts = source.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return source[0].toUpperCase();
+  };
+
+  const getMemberAvatarColor = (uid = '') => {
+    const colors = ['#0EA5E9', '#8B5CF6', '#F97316', '#10B981', '#EF4444', '#6366F1'];
+    const sum = String(uid).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[sum % colors.length];
+  };
+
+  const renderFlowMemberAvatars = () => {
+    const members = flowMembers.length > 0 ? flowMembers : [];
+    if (members.length <= 1) return null;
+    const sorted = [...members].sort((a, b) => {
+      if (a.role === 'owner') return -1;
+      if (b.role === 'owner') return 1;
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    });
+    const visible = sorted.slice(0, 4);
+    const hiddenCount = sorted.length - visible.length;
+
+    return (
+      <View style={styles.flowAvatarStack}>
+        {visible.map((member, index) => (
+          <View
+            key={member.uid}
+            style={[
+              styles.flowAvatar,
+              {
+                marginLeft: index === 0 ? 0 : -8,
+                backgroundColor: getMemberAvatarColor(member.uid),
+                zIndex: visible.length - index,
+              },
+            ]}
+          >
+            <Text style={styles.flowAvatarText} numberOfLines={1}>{getMemberInitials(member)}</Text>
+          </View>
+        ))}
+        {hiddenCount > 0 && (
+          <View style={[styles.flowAvatar, styles.flowAvatarMore, { marginLeft: -8 }]}>
+            <Text style={styles.flowAvatarMoreText}>+{hiddenCount}</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const openFlowDetail = (flow) => {
     if (!flow) return;
     setDetailReadBaseline({
@@ -827,18 +892,20 @@ const FlowScreen = ({ navigation, route }) => {
 
   // Membership Real-time Subscription
   useEffect(() => {
-    if (!inviteModalVisible || !selectedFlow) return;
+    if (!selectedFlow || !user?.uid) {
+      setFlowMembers([]);
+      return;
+    }
 
     const ownerUid = selectedFlow._ownerUid || user?.uid;
-    setIsMembersLoading(true);
+    if (inviteModalVisible) setIsMembersLoading(true);
     const unsub = subscribeToFlowMembers(ownerUid, selectedFlow.id, (members) => {
       setFlowMembers(members);
       setIsMembersLoading(false);
     });
 
-    // selectedFlow 전체가 아닌 식별자만 의존성으로 추가하여 초대 코드 갱신 시 재구독 방지
     return unsub;
-  }, [inviteModalVisible, selectedFlow?.id, selectedFlow?._ownerUid, user?.uid]);
+  }, [selectedFlow?.id, selectedFlow?._ownerUid, user?.uid, inviteModalVisible]);
 
   const handleGenerateCode = async (forcedRole = null) => {
     if (!user?.uid) return;
@@ -2376,24 +2443,12 @@ const FlowScreen = ({ navigation, route }) => {
           </View>
 
           <View style={styles.headerCenter}>
-            <Animated.View 
-              style={{ 
-                opacity: scrollY.interpolate({
-                  inputRange: [100, 150],
-                  outputRange: [0, 1],
-                  extrapolate: 'clamp'
-                }),
-                alignItems: 'center'
-              }}
-            >
+            <View style={styles.detailHeaderInline}>
               <Text style={styles.detailHeaderTitle} numberOfLines={1}>{selectedFlow.title}</Text>
-              {!isFlowOwner(selectedFlow) && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 }}>
-                  <Users size={10} color={Colors.outline} />
-                  <Text style={{ fontSize: 10, color: Colors.outline }}>{selectedFlow._role}</Text>
-                </View>
-              )}
-            </Animated.View>
+              <View style={styles.detailRoleChip}>
+                <Text style={styles.detailRoleChipText}>{getSelectedFlowRoleLabel()}</Text>
+              </View>
+            </View>
           </View>
 
           <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
@@ -2427,22 +2482,12 @@ const FlowScreen = ({ navigation, route }) => {
           <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={{ backgroundColor: Colors.background, padding: 12, borderRadius: 24 }}>
             {/* 히어로 섹션: 제목과 정보 통합 */}
             <View style={{ marginBottom: 28, paddingHorizontal: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <View style={{ width: 12, height: 2, backgroundColor: Colors.primary, borderRadius: 1 }} />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: Colors.primary, letterSpacing: 1 }}>{t('flow.schedule_plan', 'SCHEDULE PLAN')}</Text>
-              </View>
-              <Text style={{ ...Typography.h1, fontSize: 34, color: Colors.onBackground, marginBottom: 10, fontWeight: '900', letterSpacing: -1.2, lineHeight: 40 }}>{selectedFlow.title}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={styles.detailHeroMetaRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.surfaceContainerLow, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
                   <Calendar size={14} color={Colors.primary} />
                   <Text style={{ fontSize: 13, color: Colors.onBackground, fontWeight: '700' }}>{getLocalizedPeriod(selectedFlow.period)}</Text>
                 </View>
-                {!isFlowOwner(selectedFlow) && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '10', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: Colors.primary + '20' }}>
-                    <Users size={12} color={Colors.primary} />
-                    <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: '700', textTransform: 'capitalize' }}>{selectedFlow._role}</Text>
-                  </View>
-                )}
+                {renderFlowMemberAvatars()}
               </View>
             </View>
 
@@ -2928,20 +2973,6 @@ const FlowScreen = ({ navigation, route }) => {
                           delayLongPress={250}
                         >
                           <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
-                            {getFlowUnreadInfo(flow).hasUnread && (
-                              <View style={styles.planUnreadGroup}>
-                                {getFlowUnreadInfo(flow).hasUnreadSteps && (
-                                  <View style={styles.planUnreadChip}>
-                                    <Plus size={15} color="white" strokeWidth={3} />
-                                  </View>
-                                )}
-                                {getFlowUnreadInfo(flow).hasUnreadComments && (
-                                  <View style={styles.planUnreadChip}>
-                                    <MessageCircle size={16} color="white" strokeWidth={2.8} />
-                                  </View>
-                                )}
-                              </View>
-                            )}
                             <TouchableOpacity
                               onPress={() => {
                                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -2970,11 +3001,23 @@ const FlowScreen = ({ navigation, route }) => {
                             </View>
                             <View style={styles.cardBottom}>
                               <View style={styles.progressContainer}><View style={[styles.progressBar, { width: `${(flow.progress || 0) * 100}%` }]} /></View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                  <MapPin size={12} color="rgba(255,255,255,0.9)" />
-                                  <Text style={styles.tagText} numberOfLines={1}>
-                                    {(!flow.location || flow.location === 'No Region') ? t('flow.no_region', 'No Region') : flow.location}
-                                  </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                    <MapPin size={12} color="rgba(255,255,255,0.9)" />
+                                    <Text style={styles.tagText} numberOfLines={1}>
+                                      {(!flow.location || flow.location === 'No Region') ? t('flow.no_region', 'No Region') : flow.location}
+                                    </Text>
+                                  </View>
+                                  {getFlowUnreadInfo(flow).hasUnread && (
+                                    <View style={{ flexDirection: 'row', gap: 8, marginLeft: 8 }}>
+                                      {getFlowUnreadInfo(flow).hasUnreadSteps && (
+                                        <Plus size={14} color="rgba(255,255,255,0.8)" strokeWidth={3} />
+                                      )}
+                                      {getFlowUnreadInfo(flow).hasUnreadComments && (
+                                        <MessageCircle size={14} color="rgba(255,255,255,0.8)" strokeWidth={2.8} />
+                                      )}
+                                    </View>
+                                  )}
                                 </View>
                               <View style={styles.weatherSummary}>
                                 <View style={{ marginRight: 6 }}>
@@ -3309,7 +3352,10 @@ const FlowScreen = ({ navigation, route }) => {
                           disabled={isSaving}
                         >
                           {isSaving ? (
-                            <ActivityIndicator size="small" color={Colors.primary} />
+                            <View style={styles.headerSavingContent}>
+                              <ActivityIndicator size="small" color={Colors.primary} />
+                              <Text style={styles.headerSaveText}>{t('common.saving', 'Saving...')}</Text>
+                            </View>
                           ) : isKeyboardVisible ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                               <KeyboardIcon size={18} color={Colors.primary} />
@@ -3322,7 +3368,21 @@ const FlowScreen = ({ navigation, route }) => {
                       </View>
                     </View>
 
-                    <ScrollView ref={stepScrollRef} showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
+                    {isSaving && (
+                      <View style={styles.stepSavingBanner}>
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                        <Text style={styles.stepSavingText}>{t('common.saving', 'Saving...')}</Text>
+                      </View>
+                    )}
+
+                    <ScrollView
+                      ref={stepScrollRef}
+                      showsVerticalScrollIndicator={false}
+                      bounces={false}
+                      keyboardShouldPersistTaps="handled"
+                      automaticallyAdjustKeyboardInsets={true}
+                      pointerEvents={isSaving ? 'none' : 'auto'}
+                    >
                       <View style={styles.modalContentPadding}>
                         <View style={styles.labelRow}>
                           <Text style={styles.inputLabel}>{t('flow.activity', 'Activity')} <Text style={styles.requiredAsterisk}>*</Text></Text>
@@ -4221,24 +4281,6 @@ const styles = StyleSheet.create({
   },
   flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
   flowCard: { padding: Spacing.xl, borderRadius: 32, height: 220, justifyContent: 'space-between' },
-  planUnreadGroup: {
-    position: 'absolute',
-    top: Spacing.lg + 6,
-    right: Spacing.lg + 44,
-    flexDirection: 'row',
-    gap: 6,
-    zIndex: 10,
-  },
-  planUnreadChip: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   deleteBtnAbsolute: { position: 'absolute', top: Spacing.lg, right: Spacing.lg, padding: 8, zIndex: 10 },
   cardMainArea: { marginTop: Spacing.xs },
@@ -4354,11 +4396,60 @@ const styles = StyleSheet.create({
   detailHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, height: 60, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant + '20' },
   headerLeft: { width: 50, alignItems: 'flex-start', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerRight: { width: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
-  detailHeaderTitle: { ...Typography.h3, fontSize: 17, color: Colors.onBackground, textAlign: 'center' },
+  headerRight: { width: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  detailHeaderInline: { maxWidth: '100%', minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  detailHeaderTitle: { ...Typography.h3, flexShrink: 1, minWidth: 0, fontSize: 20, color: Colors.onBackground, textAlign: 'center' },
+  detailRoleChip: {
+    flexShrink: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 7,
+    backgroundColor: Colors.primary + '12',
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+  },
+  detailRoleChipText: {
+    color: Colors.primary,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
   iconBtn: { padding: 8 },
   detailContent: { paddingHorizontal: 4, paddingBottom: 200, paddingTop: Spacing.sm },
   heroSection: { marginBottom: Spacing.xl },
+  detailHeroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  flowAvatarStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  flowAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flowAvatarText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  flowAvatarMore: {
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  flowAvatarMoreText: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '900',
+  },
   heroDate: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
   heroLocationRow: { 
     flexDirection: 'row', alignItems: 'center', marginTop: Spacing.xs, justifyContent: 'space-between',
@@ -4458,7 +4549,26 @@ const styles = StyleSheet.create({
   editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
   editTitle: { ...Typography.h2, fontSize: 24, letterSpacing: -0.5, color: Colors.onBackground },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 16, opacity: 0.5 },
+  stepSavingBanner: {
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.md,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: Colors.primary + '10',
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  stepSavingText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
   headerActionBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(0, 191, 255, 0.05)' },
+  headerSavingContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerSaveText: { ...Typography.body, fontWeight: '800', color: Colors.primary },
   searchAccessoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0, 191, 255, 0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   searchAccessoryText: { fontSize: 13, fontWeight: '700', color: Colors.primary },

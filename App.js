@@ -48,10 +48,7 @@ const Tab = createBottomTabNavigator();
 
 const setAppIconBadge = async (count) => {
   try {
-    const didSet = await Notifications.setBadgeCountAsync(count);
-    if (__DEV__ && !didSet) {
-      console.log('[Badge] App icon badge not supported or not permitted on this device/launcher');
-    }
+    await Notifications.setBadgeCountAsync(count);
   } catch (error) {
     if (__DEV__) console.log('[Badge] Failed to set app icon badge:', error?.message || error);
   }

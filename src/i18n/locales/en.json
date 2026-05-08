@@ -16,6 +16,7 @@
     "close": "Close",
     "done": "Done",
     "save": "Save",
+    "saving": "Saving...",
     "select_all": "Select All",
     "deselect_all": "Deselect All",
     "select": "Select",
@@ -487,6 +488,8 @@
       "delete_comment_error": "Failed to delete comment.",
       "no_permission_comment": "You do not have permission to delete this comment."
     },
+    "sort_newest_first": "Newest First",
+    "sort_oldest_first": "Oldest First",
     "paywall": {
       "legal_notice": "Subscriptions automatically renew unless auto-renew is turned off at least 24-hours before the end of the current period. Manage subscriptions in Store Settings.",
       "terms_of_use": "Terms of Use",
