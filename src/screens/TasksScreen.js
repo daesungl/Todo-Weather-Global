@@ -1604,7 +1604,7 @@ const TasksScreen = ({ navigation }) => {
                       }).start();
                     }}
                   >
-                    <MapPin size={18} color={Colors.primary} />
+                    <MapPin size={18} color={Colors.primary} pointerEvents="none" />
                   </TouchableOpacity>
 
                   <View style={styles.groupDivider} />
@@ -1616,7 +1616,7 @@ const TasksScreen = ({ navigation }) => {
                       isAnyFiltered && styles.groupItemActive
                     ]}
                   >
-                    <Filter size={18} color={isAnyFiltered ? Colors.primary : Colors.textSecondary} />
+                    <Filter size={18} color={isAnyFiltered ? Colors.primary : Colors.textSecondary} pointerEvents="none" />
                     {isAnyFiltered && (
                       <View style={styles.filterBadgeSmall}>
                         <Text style={styles.filterBadgeTextSmall}>{activeFilterCount}</Text>

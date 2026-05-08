@@ -55,6 +55,7 @@ import {
   ArrowUpCircle,
   UserMinus,
   Info,
+  LayoutList,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ViewShot from 'react-native-view-shot';
@@ -1247,7 +1248,62 @@ const FlowScreen = ({ navigation, route }) => {
     }
     isSavingRef.current = true;
     setIsSaving(true);
+    let didCloseFlowModal = false;
+    const closeFlowModalNow = () => {
+      if (didCloseFlowModal) return;
+      didCloseFlowModal = true;
+      setFlowModalVisible(false);
+    };
+    let optimisticFlowId = null;
+
     try {
+      const now = new Date().toISOString();
+
+      if (!editingFlow) {
+        const newFlow = {
+          id: Date.now().toString(),
+          title: flowTitle,
+          description: flowDescription,
+          period: t('flow.multi_day_planning', 'Multi-day Planning'),
+          location: flowLocation || '',
+          address: flowAddress || '',
+          progress: 0,
+          gradient: flowGradient,
+          weatherTemp: null,
+          weatherCondKey: null,
+          weatherIsDay: true,
+          lat: flowLat,
+          lon: flowLon,
+          steps: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        optimisticFlowId = newFlow.id;
+        const optimisticFlow = { ...newFlow, _role: 'owner' };
+        setFlows(prev => [optimisticFlow, ...prev]);
+        closeFlowModalNow();
+
+        const updatedFlows = await addFlow(newFlow);
+        setFlows(updatedFlows);
+
+        if (flowLat && flowLon) {
+          WeatherService.getWeather(flowLat, flowLon, false, flowLocation, flowLocation)
+            .then(weather => {
+              if (!weather) return;
+              const weatherPatch = {
+                weatherTemp: weather?.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°',
+                weatherCondKey: weather?.condKey || 'cloudy',
+                weatherIsDay: weather?.isDay !== false,
+              };
+              const refreshedFlow = { ...newFlow, ...weatherPatch, updatedAt: new Date().toISOString(), _role: 'owner' };
+              setFlows(prev => prev.map(f => f.id === newFlow.id ? { ...f, ...weatherPatch } : f));
+              updateFlowDoc(refreshedFlow).catch(e => console.warn('[FlowScreen] new flow weather update failed:', e));
+            })
+            .catch(e => console.warn('[FlowScreen] new flow weather fetch failed:', e));
+        }
+        return;
+      }
+
       let weatherTemp = null;
       let weatherCondKey = null;
       let weatherIsDay = true;
@@ -1258,7 +1314,6 @@ const FlowScreen = ({ navigation, route }) => {
         weatherIsDay = weather?.isDay !== false;
       }
 
-      const now = new Date().toISOString();
       const updatedFlows = editingFlow
         ? flows.map(f => f.id === editingFlow.id ? {
             ...f,
@@ -1274,24 +1329,7 @@ const FlowScreen = ({ navigation, route }) => {
             weatherIsDay,
             updatedAt: now
           } : f)
-        : await addFlow({
-            id: Date.now().toString(),
-            title: flowTitle,
-            description: flowDescription,
-            period: t('flow.multi_day_planning', 'Multi-day Planning'),
-            location: flowLocation || '',
-            address: flowAddress || '',
-            progress: 0,
-            gradient: flowGradient,
-            weatherTemp,
-            weatherCondKey,
-            weatherIsDay,
-            lat: flowLat,
-            lon: flowLon,
-            steps: [],
-            createdAt: now,
-            updatedAt: now
-          });
+        : flows;
 
       setFlows(updatedFlows);
       if (editingFlow) {
@@ -1303,6 +1341,9 @@ const FlowScreen = ({ navigation, route }) => {
         if (updatedSelected) setSelectedFlow(updatedSelected);
       }
     } catch (e) {
+      if (!editingFlow && optimisticFlowId) {
+        setFlows(prev => prev.filter(f => f.id !== optimisticFlowId));
+      }
       console.error('[FlowScreen] saveFlow error:', {
         code: e?.code,
         message: e?.message,
@@ -1318,7 +1359,7 @@ const FlowScreen = ({ navigation, route }) => {
       );
     }
     finally {
-      setFlowModalVisible(false);
+      closeFlowModalNow();
       isSavingRef.current = false;
       setIsSaving(false);
     }
@@ -1385,13 +1426,35 @@ const FlowScreen = ({ navigation, route }) => {
     };
 
     try {
-      setIsSearching(true);
-      let weatherData = null;
-      let hasWarning = false;
       const now = new Date().toISOString();
       const targetLat = selectedRegion ? selectedRegion.lat : null;
       const targetLon = selectedRegion ? selectedRegion.lon : null;
       const targetName = selectedRegion ? selectedRegion.name : null;
+      const finalEndDate = matchStartDate ? editDate : editEndDate;
+      const finalEndTime = matchStartDate ? editTime : editEndTime;
+      const regionSignature = (region) => JSON.stringify(region || null);
+      const hasStepFormChanges = !editingStep ? true : (
+        (editTime || '') !== (editingStep.time || '') ||
+        (editDate || '') !== (editingStep.date || '') ||
+        (finalEndTime || '') !== (editingStep.endTime || editingStep.time || '') ||
+        (finalEndDate || '') !== (editingStep.endDate || editingStep.date || '') ||
+        (editActivity || '') !== (editingStep.activity || '') ||
+        (editMemo || '') !== (editingStep.memo || '') ||
+        regionSignature(selectedRegion) !== regionSignature(editingStep.region) ||
+        !!stepNotify !== !!editingStep.notify ||
+        (stepRepeatType || null) !== (editingStep.repeat || null) ||
+        (stepRepeatType ? (stepRepeatEndDate || '') : '') !== (editingStep.repeat ? (editingStep.repeatEndDate || '') : '')
+      );
+
+      if (editingStep && !hasStepFormChanges) {
+        closeEditModal();
+        releaseSaving();
+        return;
+      }
+
+      setIsSearching(true);
+      let weatherData = null;
+      let hasWarning = false;
 
       try {
         if (targetLat && targetLon) {
@@ -1403,9 +1466,6 @@ const FlowScreen = ({ navigation, route }) => {
         }
       } catch (e) { console.error(e); }
       finally { setIsSearching(false); }
-
-      const finalEndDate = matchStartDate ? editDate : editEndDate;
-      const finalEndTime = matchStartDate ? editTime : editEndTime;
 
       const applyToFlow = async (updatedSteps) => {
         if (__DEV__) console.log('[FlowScreen] applyToFlow starting...', { flowId: selectedFlow.id, ownerUid: selectedFlow._ownerUid });
@@ -2691,6 +2751,17 @@ const FlowScreen = ({ navigation, route }) => {
                   keyExtractor={(item) => item.id}
                   onDragEnd={({ data }) => { setFlows(data); saveFlows(data); }}
                   activationDistance={20}
+                  ListEmptyComponent={(
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: 32 }}>
+                      <LayoutList size={48} color={Colors.outlineVariant} strokeWidth={1.5} style={{ marginBottom: 16 }} />
+                      <Text style={{ fontSize: 17, fontWeight: '700', color: Colors.onBackground, marginBottom: 8 }}>
+                        {t('flow.empty_title')}
+                      </Text>
+                      <Text style={{ fontSize: 14, color: Colors.outline, textAlign: 'center', lineHeight: 20 }}>
+                        {t('flow.empty_desc')}
+                      </Text>
+                    </View>
+                  )}
                   renderItem={({ item: flow, drag, isActive }) => (
                     <ScaleDecorator>
                       <View style={styles.flowCardContainer}>
@@ -3304,7 +3375,7 @@ const FlowScreen = ({ navigation, route }) => {
                           onPress={() => { Keyboard.dismiss(); setShowStepRepeatPicker(prev => !prev); }}
                         >
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Repeat size={16} color={stepRepeatType ? Colors.primary : Colors.outline} />
+                            <Repeat size={16} color={stepRepeatType ? Colors.primary : Colors.outline} pointerEvents="none" />
                             <Text style={[styles.inputLabel, { marginBottom: 0, color: stepRepeatType ? Colors.primary : Colors.onBackground }]}>
                               {t('tasks.repeat', '반복')}
                             </Text>
@@ -3313,7 +3384,7 @@ const FlowScreen = ({ navigation, route }) => {
                             <Text style={{ fontSize: 14, color: stepRepeatType ? Colors.primary : Colors.outline, fontWeight: '500' }}>
                               {stepRepeatType ? t(`tasks.repeat_${stepRepeatType}`) : t('tasks.repeat_none', '없음')}
                             </Text>
-                            <ChevronDown size={14} color={Colors.outline} />
+                            <ChevronDown size={14} color={Colors.outline} pointerEvents="none" />
                           </View>
                         </Pressable>
                         {showStepRepeatPicker && (
@@ -3340,7 +3411,7 @@ const FlowScreen = ({ navigation, route }) => {
                               style={styles.editInputWrap}
                               onPress={() => { Keyboard.dismiss(); setShowStepRepeatEndPicker(true); }}
                             >
-                              <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                              <Calendar size={18} color={Colors.primary} style={{ marginRight: 8 }} pointerEvents="none" />
                               <Text style={[styles.editInputText, !stepRepeatEndDate && { color: Colors.error }]}>
                                 {stepRepeatEndDate || t('tasks.repeat_end_required', '종료일 선택 필요')}
                               </Text>

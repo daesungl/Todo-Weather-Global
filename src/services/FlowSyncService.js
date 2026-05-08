@@ -321,7 +321,7 @@ const _refreshFlowStepsOnce = async (flowId) => {
   }
 };
 
-const _saveFlowToGlobal = async (uid, flow, { syncSteps = true, previousSteps } = {}) => {
+const _saveFlowToGlobal = async (uid, flow, { syncSteps = true, previousSteps, flowExists } = {}) => {
   if (!uid || !flow?.id) return;
   const ownerUid = flow._ownerUid || flow.ownerUid || uid;
   const isOwner = ownerUid === uid && (!flow._role || flow._role === 'owner');
@@ -333,7 +333,7 @@ const _saveFlowToGlobal = async (uid, flow, { syncSteps = true, previousSteps } 
   }
 
   const flowRef = _globalFlowsCollection().doc(flow.id);
-  const flowExists = _flowDocs.has(flow.id);
+  const hasExistingFlowDoc = flowExists ?? _flowDocs.has(flow.id);
   const meta = _cleanFlowDocData({ ...flow, ownerUid }, { includeOrder: false });
   meta.ownerUid = ownerUid;
   meta.updatedAt = flow.updatedAt || firestore.FieldValue.serverTimestamp();
@@ -344,7 +344,7 @@ const _saveFlowToGlobal = async (uid, flow, { syncSteps = true, previousSteps } 
     if (stepChangeMeta) Object.assign(meta, stepChangeMeta);
   }
 
-  if (syncSteps && flowExists) {
+  if (syncSteps && hasExistingFlowDoc) {
     await _replaceFlowSteps(flow.id, flow.steps || []);
   }
 
@@ -369,7 +369,7 @@ const _saveFlowToGlobal = async (uid, flow, { syncSteps = true, previousSteps } 
   }
 
   if (syncSteps) {
-    if (!flowExists) {
+    if (!hasExistingFlowDoc) {
       await _replaceFlowSteps(flow.id, flow.steps || []);
     }
     _flowSteps.set(flow.id, _sortSteps(_filterDeletedSteps(flow.id, flow.steps || [])));
@@ -774,6 +774,7 @@ export const saveFlows = async (flows) => {
   const ownFlows = ordered.filter(f => !f._ownerUid || f._role === 'owner');
   const sharedFlows = ordered.filter(f => f._ownerUid || (f._role && f._role !== 'owner'));
   const previousFlowSteps = new Map(_flowSteps);
+  const previousFlowDocIds = new Set(_flowDocs.keys());
 
   _flowRefs = new Map();
   ordered.forEach(flow => {
@@ -794,7 +795,11 @@ export const saveFlows = async (flows) => {
       for (const flow of ownFlows) {
         const previousSteps = previousFlowSteps.get(flow.id);
         const syncSteps = _haveStepsChanged(flow.id, previousSteps, flow.steps || []);
-        await _saveFlowToGlobal(_userId, { ...flow, _role: 'owner' }, { syncSteps, previousSteps });
+        await _saveFlowToGlobal(_userId, { ...flow, _role: 'owner' }, {
+          syncSteps,
+          previousSteps,
+          flowExists: previousFlowDocIds.has(flow.id),
+        });
       }
       for (const flow of sharedFlows) {
         await _saveFlowRef(_userId, flow);
