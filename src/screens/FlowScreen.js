@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Mod
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton } from 'react-native-gesture-handler';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
@@ -990,36 +991,7 @@ const FlowScreen = ({ navigation, route }) => {
   const loadInitialData = async () => {
     setIsLoading(true);
     const savedFlows = await getFlows();
-    let currentFlows = [];
-    if (savedFlows.length === 0 && !user?.uid) {
-      const today = new Date().toISOString().split('T')[0];
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-      
-      const sample = {
-        id: 'sample-1',
-        title: 'Welcome Plan',
-        period: 'Multi-day Planning',
-        location: 'Dream Destination',
-        progress: 0.3,
-        gradient: ['#6366f1', '#a855f7'],
-        weatherSummary: 'Curated multi-day planning',
-        weatherCondKey: 'sunny',
-        weatherIsDay: true,
-        lat: 37.5665,
-        lon: 126.9780,
-        steps: [
-          { id: 's1', date: today, time: '10:00', activity: 'Arrival & Coffee', status: 'completed' },
-          { id: 's2', date: today, time: '14:00', activity: 'Hotel Check-in', status: 'current' },
-          { id: 's3', date: tomorrow, time: '09:00', activity: 'City Tour Start', status: 'upcoming' }
-        ]
-      };
-      currentFlows = [sample];
-      setFlows(currentFlows);
-    } else {
-      currentFlows = savedFlows;
-      setFlows(currentFlows);
-    }
-
+    setFlows(savedFlows);
     setIsLoading(false);
   };
 
@@ -1540,7 +1512,7 @@ const FlowScreen = ({ navigation, route }) => {
       const repeatMetaUpdates = editingStep?.repeatGroupId && stepRepeatType
         ? { repeat: stepRepeatType, repeatEndDate: stepRepeatEndDate || editingStep.repeatEndDate || null }
         : {};
-      const baseUpdates = { time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now, notify: stepNotify, notificationId: stepNotify ? notificationId : null, ...repeatMetaUpdates };
+      const baseUpdates = { time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now, updatedBy: user?.uid || null, updatedByName: user?.displayName || user?.email || null, notify: stepNotify, notificationId: stepNotify ? notificationId : null, ...repeatMetaUpdates };
 
       const doEdit = async (scope) => {
         let updatedSteps;
@@ -1742,6 +1714,7 @@ const FlowScreen = ({ navigation, route }) => {
           notificationId: null, // refill handles this
           createdAt: now,
           createdBy: user?.uid || null,
+          createdByName: user?.displayName || user?.email || null,
           updatedAt: now,
         }];
       const newRepeatSteps = [...currentSteps, ...newSteps];
@@ -1763,6 +1736,7 @@ const FlowScreen = ({ navigation, route }) => {
         status: 'upcoming',
         createdAt: now,
         createdBy: user?.uid || null,
+        createdByName: user?.displayName || user?.email || null,
       };
         await applyToFlow([...currentSteps, newStep]);
         if (stepNotify) {
@@ -1911,6 +1885,17 @@ const FlowScreen = ({ navigation, route }) => {
         .catch(e => { if (__DEV__) console.warn('[FlowScreen] cancel notification error:', e); });
     }
     await persistStepDeletion(updatedF, updatedFlows, stepId ? [stepId] : []);
+  };
+
+  const confirmDeleteStepById = (step) => {
+    Alert.alert(
+      step.repeatGroupId ? t('tasks.delete_repeat_title') : t('tasks.delete_confirm'),
+      step.repeatGroupId ? t('tasks.delete_repeat_msg') : t('tasks.delete_confirm_msg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.delete', 'Delete'), style: 'destructive', onPress: () => deleteStepById(step.id) },
+      ]
+    );
   };
 
   const handleShareFlowImage = async () => {
@@ -2519,6 +2504,47 @@ const FlowScreen = ({ navigation, route }) => {
                           </View>
                         ) : (
                           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Swipeable
+                              enabled={canEditSteps(selectedFlow)}
+                              overshootRight={false}
+                              containerStyle={{ flex: 1 }}
+                              renderRightActions={(progress, dragX) => {
+                                const trans = dragX.interpolate({
+                                  inputRange: [-120, 0],
+                                  outputRange: [0, 120],
+                                  extrapolate: 'clamp',
+                                });
+                                const opacity = progress.interpolate({
+                                  inputRange: [0, 0.5, 1],
+                                  outputRange: [0, 0.3, 1],
+                                });
+                                const scale = progress.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [0.8, 1],
+                                });
+                                return (
+                                  <View style={styles.swipeActionsContainer}>
+                                    <Animated.View style={[
+                                      styles.swipeActionWrapper,
+                                      { transform: [{ translateX: trans }, { scale }], opacity }
+                                    ]}>
+                                      <GHButton
+                                        onPress={() => openEditStep(step)}
+                                        style={[styles.swipeBtn, { backgroundColor: Colors.primary }]}
+                                      >
+                                        <Edit3 size={18} color="white" pointerEvents="none" />
+                                      </GHButton>
+                                      <GHButton
+                                        onPress={() => confirmDeleteStepById(step)}
+                                        style={[styles.swipeBtn, { backgroundColor: Colors.error }]}
+                                      >
+                                        <Trash2 size={18} color="white" pointerEvents="none" />
+                                      </GHButton>
+                                    </Animated.View>
+                                  </View>
+                                );
+                              }}
+                            >
                             <Pressable
                               style={({ pressed }) => [styles.stepInfoCard, pressed && canEditSteps(selectedFlow) && { opacity: 0.7 }, { flex: 1 }]}
                               onPress={canEditSteps(selectedFlow) ? () => openEditStep(step) : undefined}
@@ -2543,6 +2569,19 @@ const FlowScreen = ({ navigation, route }) => {
                                     )}
                                   </View>
                                   {step.memo ? <Text style={styles.stepMemo} numberOfLines={2} ellipsizeMode="tail">{step.memo}</Text> : null}
+                                  {(() => {
+                                    const editorUid = step.updatedBy || step.createdBy;
+                                    const editorName = step.updatedByName || step.createdByName;
+                                    if (!editorUid || !editorName || editorUid === user?.uid) return null;
+                                    return (
+                                      <View style={styles.lastEditorRow}>
+                                        <Edit3 size={10} color={Colors.outline} strokeWidth={2.5} />
+                                        <Text style={styles.lastEditorText} numberOfLines={1}>
+                                          {editorName}
+                                        </Text>
+                                      </View>
+                                    );
+                                  })()}
                                 </View>
 
                                 {step.weather && (
@@ -2664,6 +2703,7 @@ const FlowScreen = ({ navigation, route }) => {
                                 );
                               })()}
                             </Pressable>
+                            </Swipeable>
                           </View>
                         )}
                       </View>
@@ -4143,7 +4183,7 @@ const styles = StyleSheet.create({
   stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   stepActivity: { ...Typography.h3, fontSize: 18, color: Colors.onBackground, fontWeight: '800', letterSpacing: -0.5, marginTop: 1 },
   stepTime: { fontSize: 11.5, color: Colors.primary, fontWeight: '800', letterSpacing: 0.6, marginBottom: 2 },
-  stepMemo: { ...Typography.caption, color: Colors.outline, marginTop: 10, lineHeight: 22, fontSize: 17.5 },
+  stepMemo: { ...Typography.caption, color: Colors.onSurfaceVariant, marginTop: 8, lineHeight: 20, fontSize: 14.5, opacity: 0.8 },
   stepWeatherMini: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, minWidth: 52 },
   stepWeatherTemp: { fontSize: 13.5, fontWeight: '800', color: Colors.onBackground, marginTop: 1 },
   repeatStepBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '18', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
@@ -4367,10 +4407,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.onBackground,
   },
-  commentsContainer: { marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingBottom: 2 },
-  commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 1, marginBottom: 0 },
-  commentText: { fontSize: 15, color: Colors.onSurfaceVariant, lineHeight: 20 },
-  commentAuthor: { fontWeight: '800', color: Colors.primary },
+  commentsContainer: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingBottom: 2 },
+  commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 2, marginBottom: 4 },
+  commentText: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 20 },
+  commentAuthor: { fontWeight: '700', color: Colors.onBackground },
   flowToast: { position: 'absolute', bottom: 100, alignSelf: 'center', backgroundColor: 'rgba(30,30,30,0.88)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 22, zIndex: 9999 },
   flowToastText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 16, gap: 8 },
@@ -4399,27 +4439,66 @@ const styles = StyleSheet.create({
   commentCountText: { fontSize: 14, fontWeight: '700' },
   commentUnreadDot: {
     position: 'absolute',
-    top: -2,
-    right: -3,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: -1,
+    right: -1,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
     backgroundColor: Colors.error,
-    borderWidth: 1.5,
-    borderColor: Colors.background,
+    borderWidth: 2,
+    borderColor: 'white',
   },
   newStepBadge: {
-    backgroundColor: Colors.error + '15',
-    borderColor: Colors.error + '35',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 6,
+    backgroundColor: Colors.error,
+    borderRadius: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
+    shadowColor: Colors.error,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   newStepBadgeText: {
-    fontSize: 10,
-    color: Colors.error,
+    fontSize: 9,
+    color: 'white',
     fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  swipeActionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingLeft: 12,
+    paddingRight: 4,
+  },
+  swipeActionWrapper: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  swipeBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 6 },
+      android: { elevation: 3 }
+    }),
+  },
+  lastEditorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 5,
+    opacity: 0.7,
+  },
+  lastEditorText: {
+    fontSize: 10.5,
+    color: Colors.outline,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   joinFlowChip: {
     flexDirection: 'row',

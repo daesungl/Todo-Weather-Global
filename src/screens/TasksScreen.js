@@ -3327,7 +3327,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    overflow: 'hidden'
+    overflow: 'visible'
   },
   groupItem: {
     width: 44,
@@ -3345,22 +3345,24 @@ const styles = StyleSheet.create({
   },
   filterBadgeSmall: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: 4,
+    right: 4,
     backgroundColor: Colors.primary,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
     borderWidth: 2,
     borderColor: 'white'
   },
   filterBadgeTextSmall: {
     color: 'white',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
+    lineHeight: 10,
+    includeFontPadding: false,
   },
   monthSelectBtn: { flexDirection: 'row', alignItems: 'center' },
   monthText: { fontSize: 24, fontWeight: '800', color: '#1B254B' },
