@@ -34,7 +34,7 @@ import {
   Pencil, AlignLeft, Eye, MoreHorizontal, Share2, CornerUpLeft, ArrowRight, Tag, Keyboard as KeyboardIcon, ChevronDown, Repeat, Bell, BellOff, Filter
 } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
-import { getTasks, addTask, addRepeatTasks, toggleTaskCompletion, deleteTask, deleteRepeatTasks, updateTask, updateRepeatTasks, updateRepeatSeriesEndDate, subscribeToTasks } from '../services/task/TaskSyncService';
+import { getTasks, addTask, addRepeatTasks, toggleTaskCompletion, deleteTask, deleteRepeatTasks, updateTask, updateRepeatTasks, updateRepeatSeriesEndDate, convertRepeatTaskToSingle, subscribeToTasks } from '../services/task/TaskSyncService';
 import { requestPermission, scheduleNotification, cancelNotification, hasPermission, refillTaskNotifications } from '../services/NotificationService';
 import { onTaskCompleted } from '../services/ReviewService';
 import { getWeather } from '../services/weather/WeatherService';
@@ -411,6 +411,7 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
   );
 }, (prev, next) => {
   if (prev.tasks !== next.tasks) return false;
+  if (prev.flows !== next.flows) return false;
   if (prev.holidaysMap !== next.holidaysMap) return false;
   if (prev.index !== next.index) return false;
   if (prev.calendarFilter !== next.calendarFilter) return false;
@@ -1251,16 +1252,43 @@ const TasksScreen = ({ navigation }) => {
           ? `${repeatEndDate.getFullYear()}-${String(repeatEndDate.getMonth() + 1).padStart(2, '0')}-${String(repeatEndDate.getDate()).padStart(2, '0')}`
           : null;
         const repEndChanged = newRepEndStr !== (editingTask.repeatEndDate || null);
+        const repeatTaskData = repeatType
+          ? { ...taskData, repeat: repeatType, repeatEndDate: newRepEndStr || editingTask.repeatEndDate || null }
+          : taskData;
+
+        if (!repeatType) {
+          const oldIds = tasks
+            .filter(t => t.repeatGroupId === editingTask.repeatGroupId)
+            .map(t => t.notificationId)
+            .filter(Boolean);
+          const idsToCancel = new Set(oldIds);
+          if (taskNotify && notificationId) idsToCancel.delete(notificationId);
+          await Promise.all([...idsToCancel].map(cancelNotification));
+
+          const nonRepeatData = {
+            ...taskData,
+            repeat: null,
+            repeatEndDate: null,
+            repeatGroupId: null,
+            isRepeatMaster: null,
+          };
+          const updated = await convertRepeatTaskToSingle(editingTask.id, nonRepeatData);
+          if (selectedTaskDetail?.id === editingTask.id) {
+            setSelectedTaskDetail({ ...editingTask, ...nonRepeatData });
+          }
+          finishSave(updated);
+          return;
+        }
 
         if (repEndChanged && newRepEndStr) {
           // Repeat end date changed → extend/shorten series globally, no 3-way choice
           let updated = await updateRepeatSeriesEndDate(editingTask.id, newRepEndStr);
           // Also apply other field changes to all instances
-          updated = await updateRepeatTasks(editingTask.id, taskData, 'all');
+          updated = await updateRepeatTasks(editingTask.id, repeatTaskData, 'all');
           if (selectedTaskDetail?.id === editingTask.id) {
             const updatedTask = updated.find(t => t.id === editingTask.id);
             if (updatedTask) setSelectedTaskDetail(updatedTask);
-            else setSelectedTaskDetail({ ...editingTask, ...taskData });
+            else setSelectedTaskDetail({ ...editingTask, ...repeatTaskData });
           }
           finishSave(updated);
           return;
@@ -1271,7 +1299,7 @@ const TasksScreen = ({ navigation }) => {
           try {
             let updated;
             if (scope === 'this') {
-              updated = await updateTask(editingTask.id, taskData);
+              updated = await updateTask(editingTask.id, repeatTaskData);
             } else {
               // 다중 범위: 영향받는 모든 인스턴스의 기존 알림 취소
               const pred = scope === 'future'
@@ -1282,7 +1310,7 @@ const TasksScreen = ({ navigation }) => {
               const allToCancel = [...new Set([...oldIds, ...(notificationId ? [notificationId] : [])])];
               await Promise.all(allToCancel.map(cancelNotification));
 
-              const multiData = taskNotify ? { ...taskData, notificationId: null } : taskData;
+              const multiData = taskNotify ? { ...repeatTaskData, notificationId: null } : repeatTaskData;
               updated = await updateRepeatTasks(editingTask.id, multiData, scope);
 
               if (taskNotify) {
@@ -1295,7 +1323,7 @@ const TasksScreen = ({ navigation }) => {
               if (updatedTask) {
                 setSelectedTaskDetail(updatedTask);
               } else {
-                setSelectedTaskDetail({ ...editingTask, ...taskData });
+                setSelectedTaskDetail({ ...editingTask, ...repeatTaskData });
               }
             }
             setTasks(updated);

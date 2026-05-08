@@ -2,22 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CLIENT_ID</key>
-	<string>156613478220-7k0jed2lfpt8g13khlcavkv77qgcjuhb.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.156613478220-7k0jed2lfpt8g13khlcavkv77qgcjuhb</string>
 	<key>API_KEY</key>
-	<string>AIzaSyBJ2gWFEJPu-gn9PrXhr1srKCSwyTB7ClQ</string>
+	<string>AIzaSyAowPOnVqo07GcKEoJorLocNS_9EltfPeM</string>
 	<key>GCM_SENDER_ID</key>
-	<string>156613478220</string>
+	<string>135255276638</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.appswayd.TodoWeatherGlobal</string>
 	<key>PROJECT_ID</key>
-	<string>todo-weather-global</string>
+	<string>todo-weather-dev</string>
 	<key>STORAGE_BUCKET</key>
-	<string>todo-weather-global.firebasestorage.app</string>
+	<string>todo-weather-dev.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -29,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:156613478220:ios:e8aa18018bfffd9d42b1e9</string>
+	<string>1:135255276638:ios:d36d62d922a247fb8d88cf</string>
 </dict>
 </plist>

@@ -28,7 +28,7 @@ const _cleanFlowData = (flowData = {}) => {
 export const generateInviteCode = async (uid, flowId, role = 'viewer', flowData = null) => {
   const code = _generateCode();
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+  expiresAt.setHours(expiresAt.getHours() + 24);
   const expiresTs = firestore.Timestamp.fromDate(expiresAt);
 
   const batch = firestore().batch();
@@ -41,11 +41,14 @@ export const generateInviteCode = async (uid, flowId, role = 'viewer', flowData 
   });
 
   // 플로우 실제 데이터가 있으면 함께 씀 (오너 구버전 대응: Firestore에 title/steps 동기화)
-  const flowDocUpdate = { inviteCode: code, inviteRole: role, inviteCodeExpiresAt: expiresTs };
-  if (flowData) {
-    Object.assign(flowDocUpdate, _cleanFlowData(flowData));
-  }
-  flowDocUpdate.ownerUid = uid;
+  // 초대 코드 관련 필드는 항상 새로 생성된 값이 우선 적용되도록 spread 순서를 지킴
+  const flowDocUpdate = {
+    ...(flowData ? _cleanFlowData(flowData) : {}),
+    inviteCode: code,
+    inviteRole: role,
+    inviteCodeExpiresAt: expiresTs,
+    ownerUid: uid,
+  };
 
   batch.set(
     firestore().collection('flows').doc(flowId),
@@ -77,7 +80,8 @@ export const invalidateInviteCode = async (uid, flowId, code) => {
 
 export const joinFlowByCode = async (uid, code, displayName = '') => {
   const inviteRef = firestore().collection('inviteCodes').doc(code.toUpperCase().trim());
-  const inviteDoc = await inviteRef.get();
+  // 서버에서 직접 읽어 오프라인 캐시 지연으로 인한 INVALID_CODE 오류 방지
+  const inviteDoc = await inviteRef.get({ source: 'server' });
   const invite = inviteDoc.data();
   if (!invite || !invite.expiresAt) throw new Error('INVALID_CODE');
   if (invite.expiresAt.toDate() < new Date()) throw new Error('EXPIRED_CODE');

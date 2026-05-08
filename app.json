@@ -3,7 +3,7 @@
     "name": "Todo Weather",
     "displayName": "Todo Weather",
     "slug": "global-todo-weather",
-    "version": "1.0.6",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,10 +19,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "48",
+      "buildNumber": "54",
       "newArchEnabled": true,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "CFBundleLocalizations": [
+          "ko",
+          "en",
           "ko",
           "en"
         ],
@@ -42,18 +45,26 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",
-      "versionCode": 12,
+      "versionCode": 18,
       "googleServicesFile": "./google-services.json",
       "notification": {
         "color": "#00a4df"
       },
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
         "com.google.android.gms.permission.AD_ID",
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE",
-        "POST_NOTIFICATIONS"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -159,6 +170,10 @@
       "eas": {
         "projectId": "779e407f-a0d8-4c52-9a92-f43c59072fd8"
       }
+    },
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/779e407f-a0d8-4c52-9a92-f43c59072fd8"
     }
   }
 }

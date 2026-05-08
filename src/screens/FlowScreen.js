@@ -1294,14 +1294,14 @@ const FlowScreen = ({ navigation, route }) => {
           });
 
       setFlows(updatedFlows);
-      await saveFlows(updatedFlows);
-      
+      if (editingFlow) {
+        await saveFlows(updatedFlows);
+      }
+
       if (editingFlow && selectedFlow && selectedFlow.id === editingFlow.id) {
         const updatedSelected = updatedFlows.find(f => f.id === editingFlow.id);
         if (updatedSelected) setSelectedFlow(updatedSelected);
       }
-      
-      setFlowModalVisible(false);
     } catch (e) {
       console.error('[FlowScreen] saveFlow error:', {
         code: e?.code,
@@ -1318,6 +1318,7 @@ const FlowScreen = ({ navigation, route }) => {
       );
     }
     finally {
+      setFlowModalVisible(false);
       isSavingRef.current = false;
       setIsSaving(false);
     }
@@ -1476,7 +1477,10 @@ const FlowScreen = ({ navigation, route }) => {
         notificationId = null;
       }
 
-      const baseUpdates = { time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now, notify: stepNotify, notificationId: stepNotify ? notificationId : null };
+      const repeatMetaUpdates = editingStep?.repeatGroupId && stepRepeatType
+        ? { repeat: stepRepeatType, repeatEndDate: stepRepeatEndDate || editingStep.repeatEndDate || null }
+        : {};
+      const baseUpdates = { time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now, notify: stepNotify, notificationId: stepNotify ? notificationId : null, ...repeatMetaUpdates };
 
       const doEdit = async (scope) => {
         let updatedSteps;
@@ -1553,6 +1557,33 @@ const FlowScreen = ({ navigation, route }) => {
       if (editingStep) {
         if (editingStep.repeatGroupId) {
           const repEndChanged = stepRepeatEndDate !== (editingStep.repeatEndDate || '');
+
+          if (!stepRepeatType) {
+            const groupId = editingStep.repeatGroupId;
+            const oldIds = currentSteps
+              .filter(s => s.repeatGroupId === groupId)
+              .map(s => s.notificationId)
+              .filter(Boolean);
+            const idsToCancel = new Set(oldIds);
+            if (stepNotify && notificationId) idsToCancel.delete(notificationId);
+            await Promise.all([...idsToCancel].map(cancelNotification));
+
+            const nonRepeatUpdates = {
+              ...baseUpdates,
+              repeat: null,
+              repeatEndDate: null,
+              repeatGroupId: null,
+              isRepeatMaster: null,
+            };
+            const updatedSteps = currentSteps
+              .filter(s => s.repeatGroupId !== groupId || s.id === editingStep.id || s.isRepeatMaster)
+              .map(s => (s.id === editingStep.id || (s.repeatGroupId === groupId && s.isRepeatMaster))
+                ? { ...s, ...nonRepeatUpdates }
+                : s
+              );
+            await applyToFlow(updatedSteps);
+            return;
+          }
 
           if (repEndChanged && stepRepeatEndDate) {
             // Repeat end date changed → extend/shorten series globally, no 3-way choice

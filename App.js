@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { Easing, StyleSheet, AppState, Animated, Platform } from 'react-native';
+import { Easing, StyleSheet, AppState, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -227,10 +227,6 @@ export default function App() {
   const routeNameRef = React.useRef();
   const navigationRef = React.useRef();
   const [appIsReady, setAppIsReady] = React.useState(false);
-  const splashOpacity = React.useRef(new Animated.Value(1)).current;
-  // 안드로이드는 fake splash 없이 native splash만 사용
-  const [showSplash, setShowSplash] = React.useState(Platform.OS === 'ios');
-  const hideSplashTriggeredRef = React.useRef(false);
 
   useEffect(() => {
     const prepare = async () => {
@@ -253,27 +249,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!appIsReady || hideSplashTriggeredRef.current) return;
-    hideSplashTriggeredRef.current = true;
-
-    if (Platform.OS === 'android') {
-      // 안드로이드: fake splash 없이 native splash만 즉시 숨김
-      SplashScreen.hideAsync().catch(() => { });
-    } else {
-      // iOS: fake splash 페이드아웃 후 숨김
-      SplashScreen.hideAsync().catch(() => { });
-      Animated.timing(splashOpacity, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      }).start(() => setShowSplash(false));
-    }
+    if (!appIsReady) return;
+    SplashScreen.hideAsync().catch(() => {});
   }, [appIsReady]);
 
   return (
-    <GestureHandlerRootView
-      style={styles.root}
-    >
+    <GestureHandlerRootView style={styles.root}>
       <AuthProvider>
         <AppContent
           navigationRef={navigationRef}
@@ -281,32 +262,6 @@ export default function App() {
           slideFromRight={slideFromRight}
         />
       </AuthProvider>
-
-      {/* 가짜 스플래시 레이어 (페이드아웃용) - 최상위 레벨로 이동 */}
-      {showSplash && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: '#b2ebf2',
-              opacity: splashOpacity,
-              justifyContent: 'center',
-              alignItems: 'center',
-              zIndex: 9999,
-            },
-          ]}
-        >
-          <Animated.Image
-            source={require('./assets/splash-icon-v3.png')}
-            style={{
-              width: '100%',
-              height: '100%',
-              resizeMode: 'contain',
-            }}
-          />
-        </Animated.View>
-      )}
     </GestureHandlerRootView>
   );
 }

@@ -415,6 +415,42 @@ export const updateRepeatSeriesEndDate = async (taskId, newRepeatEndDate) => {
   return updated;
 };
 
+export const convertRepeatTaskToSingle = async (taskId, updates) => {
+  const tasks = await getTasks();
+  const now = new Date().toISOString();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task || !task.repeatGroupId) return updateTask(taskId, updates);
+
+  const groupId = task.repeatGroupId;
+  const keptTask = {
+    ...task,
+    ...updates,
+    repeat: null,
+    repeatEndDate: null,
+    repeatGroupId: null,
+    isRepeatMaster: null,
+    updatedAt: now,
+  };
+  const updated = tasks
+    .filter((t) => t.repeatGroupId !== groupId || t.id === taskId)
+    .map((t) => (t.id === taskId ? keptTask : t));
+
+  if (_userId) {
+    try {
+      const toDelete = tasks
+        .filter((t) => t.repeatGroupId === groupId && t.id !== taskId)
+        .map((t) => t.id);
+      await _batchWrite(_userId, [keptTask], toDelete);
+      _cachedTasks = updated;
+      return updated;
+    } catch (e) {
+      console.warn('[TaskSync] convertRepeatTaskToSingle Firestore error, falling back:', e);
+    }
+  }
+  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+  return updated;
+};
+
 export const updateRepeatTasks = async (taskId, updates, scope) => {
   const tasks = await getTasks();
   const now = new Date().toISOString();
