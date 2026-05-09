@@ -17,7 +17,7 @@ import { useSubscription } from './src/contexts/SubscriptionContext';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
-import { refillTaskNotifications, refillStepNotifications, setupAndroidChannel, cancelPastNotifications } from './src/services/NotificationService';
+import { refillTaskNotifications, refillStepNotifications, setupAndroidChannel, cancelPastNotifications, setUserNotifPref } from './src/services/NotificationService';
 import { getTasks, updateTask } from './src/services/task/TaskSyncService';
 import { getFlows, saveFlows, subscribeToFlows } from './src/services/FlowSyncService';
 import { incrementLaunchCount } from './src/services/ReviewService';
@@ -130,6 +130,7 @@ function AppOpenAdHandler() {
 
 function NotificationRefillHandler() {
   const appStateRef = React.useRef(AppState.currentState);
+  const { user } = useAuth();
 
   useEffect(() => {
     const runRefill = async () => {
@@ -139,22 +140,20 @@ function NotificationRefillHandler() {
           await updateTask(id, patch);
         });
 
+        if (!user?.uid) return;
         const flows = await getFlows();
-        await refillStepNotifications(flows, async (flowId, stepId, patch) => {
-          const updatedFlows = flows.map(f => {
-            if (f.id !== flowId) return f;
-            return { ...f, steps: f.steps.map(s => s.id === stepId ? { ...s, ...patch } : s) };
-          });
-          await saveFlows(updatedFlows);
+        await refillStepNotifications(flows, user.uid, async (sId, newNotifId) => {
+          await setUserNotifPref(user.uid, sId, true, newNotifId);
         });
       } catch (e) {
         console.warn('[NotificationRefill]', e);
       }
     };
 
-    // 앱 시작 시 1회 실행: 과거 알림 정리 후 refill
     setupAndroidChannel();
-    cancelPastNotifications().then(runRefill);
+    if (user?.uid) {
+      cancelPastNotifications().then(runRefill);
+    }
 
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
@@ -163,7 +162,7 @@ function NotificationRefillHandler() {
       appStateRef.current = nextAppState;
     });
     return () => subscription.remove();
-  }, []);
+  }, [user?.uid]);
 
   return null;
 }

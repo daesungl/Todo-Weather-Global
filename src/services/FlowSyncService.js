@@ -746,6 +746,22 @@ export const deleteFlowStepDocs = async (flow, stepIds = []) => {
   return true;
 };
 
+export const getLocalCachedFlows = async () => {
+  if (_cachedFlows !== null) return _cachedFlows;
+  try {
+    const ownJson = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
+    const sharedJson = _userId ? await AsyncStorage.getItem(getSharedFlowsStorageKey(_userId)) : null;
+    const own = ownJson ? JSON.parse(ownJson) : [];
+    const shared = sharedJson ? JSON.parse(sharedJson) : [];
+    return [
+      ...(Array.isArray(own) ? own : []),
+      ...(Array.isArray(shared) ? shared : []),
+    ].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  } catch {
+    return [];
+  }
+};
+
 export const getFlows = async () => {
   if (_userId) {
     if (_cachedFlows !== null) return _cachedFlows;

@@ -165,9 +165,9 @@ export const getHolidaysForYear = (year, countries) => {
 export const getDefaultCountry = () => {
   const locales = Localization.getLocales();
   if (locales && locales.length > 0 && locales[0].regionCode) {
-    return locales[0].regionCode;
+    return locales[0].regionCode.toUpperCase();
   }
-  return Localization.region || 'KR'; // 한국 사용자 우선 고려하여 기본값 KR로 설정
+  return Localization.region ? Localization.region.toUpperCase() : null;
 };
 
 /**
@@ -179,10 +179,10 @@ export const loadSavedCountries = async () => {
     if (saved) {
       return JSON.parse(saved);
     }
-    return [getDefaultCountry()];
+    return [getDefaultCountry()].filter(Boolean);
   } catch (e) {
     console.error('Failed to load holiday countries', e);
-    return [getDefaultCountry()];
+    return [getDefaultCountry()].filter(Boolean);
   }
 };
 

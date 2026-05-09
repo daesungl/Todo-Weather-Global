@@ -68,6 +68,14 @@ const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const ITEM_HEIGHT = 50;
+const buildHolidayMap = (year, countries) => {
+  if (!countries?.length) return {};
+  return {
+    ...getHolidaysForYear(year - 1, countries),
+    ...getHolidaysForYear(year, countries),
+    ...getHolidaysForYear(year + 1, countries),
+  };
+};
 const TASK_COLOR_LABELS = [
   { key: 'midnight', color: '#0F172A', name: '미드나잇' },
   { key: 'dark_blue', name: '다크 블루', color: '#2A234F' },
@@ -518,8 +526,9 @@ const TasksScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
 
   // Holiday State
-  const [holidayCountries, setHolidayCountries] = useState(['KR']); // Default, will be updated from storage
+  const [holidayCountries, setHolidayCountries] = useState([]);
   const [holidaysMap, setHolidaysMap] = useState({});
+  const holidayComputedKey = useRef('');
 
   // Calendar Filter State
   const [calendarFilter, setCalendarFilter] = useState({ showUserTasks: true, showHolidays: true, hiddenFlowIds: new Set() });
@@ -835,24 +844,36 @@ const TasksScreen = ({ navigation }) => {
     const saved = await loadSavedCountries();
     setHolidayCountries(saved);
     setAllCountries(getSupportedCountries());
+
+    if (saved.length > 0) {
+      const year = selectedDate.getFullYear();
+      const key = `${year}_${[...saved].sort().join(',')}`;
+      const map = buildHolidayMap(year, saved);
+      setHolidaysMap(map);
+      holidayComputedKey.current = key;
+
+      const cacheKey = `@holiday_map_${key}`;
+      AsyncStorage.setItem(cacheKey, JSON.stringify(map)).catch(() => {});
+    }
   };
 
   useEffect(() => {
     const year = selectedDate.getFullYear();
     if (holidayCountries.length === 0) {
       setHolidaysMap({});
+      holidayComputedKey.current = '';
       return;
     }
 
-    // Defer the heavy calculation by 50ms so the UI (checkbox) updates instantly
-    const timer = setTimeout(() => {
-      const h1 = getHolidaysForYear(year - 1, holidayCountries);
-      const h2 = getHolidaysForYear(year, holidayCountries);
-      const h3 = getHolidaysForYear(year + 1, holidayCountries);
-      setHolidaysMap({ ...h1, ...h2, ...h3 });
-    }, 50);
+    const key = `${year}_${[...holidayCountries].sort().join(',')}`;
+    if (holidayComputedKey.current === key) return;
 
-    return () => clearTimeout(timer);
+    const map = buildHolidayMap(year, holidayCountries);
+    setHolidaysMap(map);
+    holidayComputedKey.current = key;
+
+    const cacheKey = `@holiday_map_${key}`;
+    AsyncStorage.setItem(cacheKey, JSON.stringify(map)).catch(() => {});
   }, [holidayCountries, selectedDate.getFullYear()]);
 
   const loadPreferences = async () => {
@@ -1772,7 +1793,10 @@ const TasksScreen = ({ navigation }) => {
                           <View style={styles.holidaySection}>
                             {holidaysMap[dateStr(selectedDate)].map((h, idx) => (
                               <View key={idx} style={styles.holidayBadge}>
-                                <Text style={styles.holidayNameText}>{h.name}</Text>
+                                <View style={styles.holidayNameRow}>
+                                  <Text style={styles.holidayCountryCode}>{h.country}</Text>
+                                  <Text style={styles.holidayNameText}>{h.name}</Text>
+                                </View>
                                 <Text style={styles.holidayTypeText}>{h.type === 'public' ? t('tasks.public_holiday', 'Public Holiday') : t('tasks.observance', 'Observance')}</Text>
                               </View>
                             ))}
@@ -3726,7 +3750,20 @@ const styles = StyleSheet.create({
   holidayHint: { fontSize: 12, color: Colors.textSecondary, marginBottom: 8 },
   holidaySection: { marginBottom: 12, gap: 8 },
   holidayBadge: { backgroundColor: '#DC2626' + '10', borderRadius: 16, padding: 12, borderLeftWidth: 4, borderLeftColor: '#DC2626' },
-  holidayNameText: { fontSize: 15, fontWeight: '800', color: '#DC2626' },
+  holidayNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  holidayCountryCode: {
+    minWidth: 30,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: '#DC2626' + '18',
+    color: '#DC2626',
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'center',
+    overflow: 'hidden',
+  },
+  holidayNameText: { flex: 1, fontSize: 15, fontWeight: '800', color: '#DC2626' },
   holidayTypeText: { fontSize: 11, fontWeight: '700', color: '#DC2626' + '80', marginTop: 2 },
 
   closeBtnAbsolute: { position: 'absolute', top: 0, right: 0, width: 40, height: 40, borderRadius: 20, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },

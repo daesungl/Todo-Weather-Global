@@ -2,12 +2,99 @@ import * as Notifications from 'expo-notifications';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import firestore from '@react-native-firebase/firestore';
 import i18n from '../i18n';
 import { dateStr, expandFlowStepsForRange } from '../utils/flowRecurrence';
 
 const MAX_PER_SERIES = 10;
 const PERM_ASKED_KEY = '@notification_perm_asked';
 const CHANNEL_ID = 'schedule_alerts';
+const NOTIF_PREFS_PREFIX = '@notif_prefs_';
+
+const flowStepNotifPrefsCollection = (uid) =>
+  firestore().collection('users').doc(uid).collection('flowStepNotifications');
+
+const prefDocId = (flowId, stepId) =>
+  flowId && stepId ? `${flowId}_${stepId}` : null;
+
+const getLocalUserNotifPrefs = async (uid) => {
+  if (!uid) return {};
+  try {
+    const raw = await AsyncStorage.getItem(`${NOTIF_PREFS_PREFIX}${uid}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+};
+
+const saveLocalUserNotifPrefs = async (uid, prefs) => {
+  if (!uid) return;
+  await AsyncStorage.setItem(`${NOTIF_PREFS_PREFIX}${uid}`, JSON.stringify(prefs || {}));
+};
+
+// Per-user flow-step notification preferences.
+// Firestore stores the account-level on/off state; notificationId stays local because OS ids are device-specific.
+export const getUserNotifPrefs = async (uid) => {
+  if (!uid) return {};
+  const localPrefs = await getLocalUserNotifPrefs(uid);
+  try {
+    const snap = await flowStepNotifPrefsCollection(uid).get();
+    if (snap.empty) return localPrefs;
+
+    const merged = { ...localPrefs };
+    snap.forEach(doc => {
+      const data = doc.data() || {};
+      if (!data.stepId) return;
+      merged[data.stepId] = {
+        notify: !!data.notify,
+        notificationId: localPrefs[data.stepId]?.notificationId ?? null,
+        flowId: data.flowId || localPrefs[data.stepId]?.flowId || null,
+        scheduleKey: localPrefs[data.stepId]?.scheduleKey || null,
+      };
+    });
+    await saveLocalUserNotifPrefs(uid, merged).catch(() => {});
+    return merged;
+  } catch {
+    return localPrefs;
+  }
+};
+
+export const setUserNotifPref = async (uid, stepId, notify, notificationId, flowId = null, meta = {}) => {
+  if (!uid || !stepId) return;
+  try {
+    const prefs = await getLocalUserNotifPrefs(uid);
+    prefs[stepId] = {
+      notify,
+      notificationId: notificationId ?? null,
+      flowId: flowId || prefs[stepId]?.flowId || null,
+      scheduleKey: notify ? (meta.scheduleKey ?? prefs[stepId]?.scheduleKey ?? null) : null,
+    };
+    await saveLocalUserNotifPrefs(uid, prefs);
+
+    const docId = prefDocId(flowId, stepId);
+    if (docId) {
+      await flowStepNotifPrefsCollection(uid).doc(docId).set({
+        flowId,
+        stepId,
+        notify: !!notify,
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch {}
+};
+
+export const deleteUserNotifPref = async (uid, stepId, flowId = null) => {
+  if (!uid || !stepId) return;
+  try {
+    const prefs = await getLocalUserNotifPrefs(uid);
+    const resolvedFlowId = flowId || prefs[stepId]?.flowId || null;
+    delete prefs[stepId];
+    await saveLocalUserNotifPrefs(uid, prefs);
+
+    const docId = prefDocId(resolvedFlowId, stepId);
+    if (docId) {
+      await flowStepNotifPrefsCollection(uid).doc(docId).delete();
+    }
+  } catch {}
+};
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -181,9 +268,12 @@ export const refillTaskNotifications = async (tasks, updateTask) => {
 };
 
 // flows: 전체 플로우 배열, updateStep: (flowId, stepId, patch) => Promise<void>
-export const refillStepNotifications = async (flows, updateStep) => {
-  if (!flows?.length) return;
+// uid: current user id
+// saveNotifId: async (stepId, newNotifId) => void - saves to per-user AsyncStorage
+export const refillStepNotifications = async (flows, uid, saveNotifId) => {
+  if (!flows?.length || !uid) return;
 
+  const userPrefs = await getUserNotifPrefs(uid);
   const scheduledIds = await getScheduledIds();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const refillEnd = new Date(today);
@@ -196,23 +286,31 @@ export const refillStepNotifications = async (flows, updateStep) => {
 
     const expandedSteps = expandFlowStepsForRange(flow.steps, todayStr, refillEndStr);
     const future = expandedSteps.filter(s => {
-      if (!s.notify || !s.time) return false;
-      if (!s.date) return false;
+      const sid = s._sourceStepId || s.id;
+      const pref = userPrefs[sid];
+      const shouldNotify = pref !== undefined ? pref.notify : false;
+      if (!shouldNotify || !s.time || !s.date) return false;
       const [y, m, d] = s.date.split('-').map(Number);
       return new Date(y, m - 1, d) >= today;
     });
 
-    // repeatGroupId별 활성 집계
     const groupActive = {};
     for (const s of future) {
-      if (s.repeatGroupId && s.notificationId && scheduledIds.has(s.notificationId)) {
+      const sid = s._sourceStepId || s.id;
+      const notifId = userPrefs[sid]?.notificationId;
+      const scheduleKey = `${s.date}_${s.time}`;
+      if (s.repeatGroupId && notifId && scheduledIds.has(notifId) && userPrefs[sid]?.scheduleKey === scheduleKey) {
         groupActive[s.repeatGroupId] = (groupActive[s.repeatGroupId] || 0) + 1;
       }
     }
 
     const groupScheduled = { ...groupActive };
     for (const s of future.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))) {
-      if (s.notificationId && scheduledIds.has(s.notificationId)) continue;
+      const sid = s._sourceStepId || s.id;
+      const notifId = userPrefs[sid]?.notificationId;
+      const scheduleKey = `${s.date}_${s.time}`;
+      if (notifId && scheduledIds.has(notifId) && userPrefs[sid]?.scheduleKey === scheduleKey) continue;
+      if (notifId) await cancelNotification(notifId);
 
       const gid = s.repeatGroupId;
       if (gid) {
@@ -222,7 +320,7 @@ export const refillStepNotifications = async (flows, updateStep) => {
       }
 
       const newId = await scheduleNotification(s.activity || flow.title, s.activity || flow.title, s.date, s.time);
-      if (newId) await updateStep(flow.id, s._sourceStepId || s.id, { notificationId: newId });
+      if (newId) await saveNotifId(sid, newId, { scheduleKey });
     }
   }
 };
