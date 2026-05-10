@@ -152,8 +152,11 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
     }
   }, [visible]);
 
-  const toggleLanguage = () => {
+  const toggleLanguage = async () => {
     const nextLang = currentLang.startsWith('ko') ? 'en' : 'ko';
+    try {
+      await AsyncStorage.setItem('@user_language', nextLang);
+    } catch (_) {}
     i18n.changeLanguage(nextLang);
   };
 
@@ -332,11 +335,11 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                         <Text style={styles.subText}>{currentLang.startsWith('ko') ? '한국어 (KR)' : 'English (EN)'}</Text>
                       </View>
                       <View style={styles.toggleTrack}>
-                        <View style={[styles.toggleChip, currentLang.startsWith('ko') && styles.activeChip]}>
-                          <Text style={[styles.toggleText, currentLang.startsWith('ko') && styles.activeToggleText]}>KR</Text>
-                        </View>
                         <View style={[styles.toggleChip, !currentLang.startsWith('ko') && styles.activeChip]}>
                           <Text style={[styles.toggleText, !currentLang.startsWith('ko') && styles.activeToggleText]}>EN</Text>
+                        </View>
+                        <View style={[styles.toggleChip, currentLang.startsWith('ko') && styles.activeChip]}>
+                          <Text style={[styles.toggleText, currentLang.startsWith('ko') && styles.activeToggleText]}>KR</Text>
                         </View>
                       </View>
                     </TouchableOpacity>

@@ -383,19 +383,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isGuest, 
-      loading, 
+    <AuthContext.Provider value={{
+      user,
+      isGuest,
+      loading,
       syncLoading,
-      login, 
-      signup, 
+      login,
+      signup,
       resetPassword,
       resendVerificationEmail,
-      logout, 
+      logout,
       continueAsGuest,
-      signInWithGoogle, 
-      signInWithApple 
+      signInWithGoogle,
+      signInWithApple,
+      updateUserProfile: (patch) => setUser(prev => prev ? { ...prev, ...patch } : prev),
     }}>
       {children}
     </AuthContext.Provider>

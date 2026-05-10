@@ -54,7 +54,8 @@ service cloud.firestore {
               'commentLastUid',
               'commentsUpdatedAt',
               'commentsCount',
-              'commentsLastUid'
+              'commentsLastUid',
+              'memberCount'
             ]));
       allow delete: if isFlowOwner(flowId);
 
@@ -180,6 +181,18 @@ service cloud.firestore {
       }
 
       match /flowStepNotifications/{prefId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /badge/{badgeDocId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /unreadFlowBadges/{flowId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /pushTokens/{tokenId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
 

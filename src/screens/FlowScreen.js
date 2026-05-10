@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity, ToastAndroid } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Easing, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton } from 'react-native-gesture-handler';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import AdBanner from '../components/AdBanner';
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
@@ -80,13 +81,17 @@ import {
   getFlowMembers,
   subscribeToFlowMembers,
   updateMemberPermissions,
+  syncMemberDisplayName,
+  syncMemberCount,
 } from '../services/InviteService';
-import { requestPermission, scheduleNotification, cancelNotification, refillStepNotifications, getUserNotifPrefs, setUserNotifPref, deleteUserNotifPref } from '../services/NotificationService';
+import { requestPermission, requestBadgePermission, getNotificationPermissionStatus, scheduleNotification, cancelNotification, refillStepNotifications, getUserNotifPrefs, setUserNotifPref, deleteUserNotifPref } from '../services/NotificationService';
+import { markFlowBadgeRead, subscribeToUnreadFlowBadges } from '../services/FlowBadgeService';
 import * as CommentService from '../services/CommentService';
 import { getFlowUnreadInfo as getSharedFlowUnreadInfo } from '../utils/flowUnread';
 
 
 const { width, height } = Dimensions.get('window');
+const BADGE_PERMISSION_PROMPT_KEY = '@flow_badge_permission_prompted';
 
 const _dateStrFlow = (date) => {
   const y = date.getFullYear();
@@ -152,6 +157,25 @@ const FLOW_GRADIENT_PRESETS = [
   { key: 'peach',         name: '피치',     colors: ['#fb923c', '#fbbf24'] },
   { key: 'arctic',        name: '아틱',     colors: ['#bae6fd', '#a5b4fc'] },
 ];
+
+const PulsingDot = ({ ringStyle, dotStyle }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 700, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        Animated.timing(anim, { toValue: 0, duration: 700, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+      ])
+    ).start();
+  }, []);
+  const scale = anim.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
+  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
+  return (
+    <Animated.View style={[ringStyle, { transform: [{ scale }], opacity }]}>
+      <View style={dotStyle} />
+    </Animated.View>
+  );
+};
 
 const FlowScreen = ({ navigation, route }) => {
   const { t, i18n } = useTranslation();
@@ -280,6 +304,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [editModalHeight, setEditModalHeight] = useState(0);
   const [searchModalHeight, setSearchModalHeight] = useState(0);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
+  const [unreadFlowBadges, setUnreadFlowBadges] = useState({});
   const [flowToastMsg, setFlowToastMsg] = useState('');
   const flowToastAnim = useRef(new Animated.Value(0)).current;
   const flowToastTimeout = useRef(null);
@@ -301,10 +326,16 @@ const FlowScreen = ({ navigation, route }) => {
   const [commentInputs, setCommentInputs] = useState({}); // { stepId: 'text' }
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [expandedCommentSteps, setExpandedCommentSteps] = useState({}); // { stepId: bool }
+  const expandedCommentStepsRef = useRef({});
+  useEffect(() => { expandedCommentStepsRef.current = expandedCommentSteps; }, [expandedCommentSteps]);
 
   const toggleComments = (stepId, e) => {
     if (e && e.stopPropagation) e.stopPropagation();
+    const isOpening = !expandedCommentSteps[stepId];
     setExpandedCommentSteps(prev => ({ ...prev, [stepId]: !prev[stepId] }));
+    if (isOpening) {
+      markSelectedFlowReadOptimistic({ steps: false, comments: true, preserveDetailIndicators: false });
+    }
   };
 
   // --- Initialization ---
@@ -321,6 +352,14 @@ const FlowScreen = ({ navigation, route }) => {
     return unsub;
   }, []);
 
+  useEffect(() => {
+    if (!user?.uid) {
+      setUnreadFlowBadges({});
+      return () => {};
+    }
+    return subscribeToUnreadFlowBadges(user.uid, setUnreadFlowBadges);
+  }, [user?.uid]);
+
   // 타임라인 스크롤 위치 추적 (댓글 입력 포커스 시 scrollTo 계산용)
   useEffect(() => {
     const listenerId = scrollY.addListener(({ value }) => {
@@ -331,9 +370,8 @@ const FlowScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress', () => {
+      closeFlowDetail();
       selectedFlowRef.current = null;
-      setDetailReadBaseline(null);
-      setSelectedFlow(null);
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
     return unsubscribe;
@@ -398,11 +436,126 @@ const FlowScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     if (!selectedFlow?.id || !user?.uid) return () => {};
+    let isFirstLoad = true;
     return subscribeToFlowSteps(selectedFlow.id, (steps) => {
+      if (isFirstLoad) {
+        isFirstLoad = false;
+        prevStepsRef.current = steps;
+        prevStepsFlowIdRef.current = selectedFlow.id;
+      }
       setFlows(prev => prev.map(flow => flow.id === selectedFlow.id ? { ...flow, steps } : flow));
       setSelectedFlow(prev => prev?.id === selectedFlow.id ? { ...prev, steps } : prev);
     });
   }, [selectedFlow?.id, user?.uid]);
+
+  const markSelectedFlowReadOptimistic = useCallback((options = { steps: true, comments: true, preserveDetailIndicators: true }) => {
+    const flowId = selectedFlowRef.current?.id || selectedFlow?.id;
+    if (!flowId || !user?.uid) return;
+
+    const now = new Date().toISOString();
+    const localPatch = {};
+    if (options.steps) localPatch._lastReadStepsAt = now;
+    if (options.comments) localPatch._lastReadCommentsAt = now;
+
+    setFlows(prev => prev.map(flow => flow.id === flowId ? { ...flow, ...localPatch } : flow));
+    if (options.preserveDetailIndicators === false) {
+      setSelectedFlow(prev => prev?.id === flowId ? { ...prev, ...localPatch } : prev);
+      setDetailReadBaseline(prev => (
+        prev?.flowId === flowId
+          ? {
+            ...prev,
+            stepsAt: options.steps ? now : prev.stepsAt,
+            commentsAt: options.comments ? now : prev.commentsAt,
+          }
+          : prev
+      ));
+    }
+    markFlowRead(flowId, options);
+    setUnreadFlowBadges(prev => {
+      if (!prev[flowId]) return prev;
+      const next = { ...prev };
+      delete next[flowId];
+      return next;
+    });
+    markFlowBadgeRead(user.uid, flowId);
+  }, [selectedFlow?.id, user?.uid]);
+
+  const getActorName = useCallback((uid, fallback) => {
+    if (fallback) return fallback;
+    const member = flowMembers.find(m => m.uid === uid);
+    if (!member) return t('flow.member', '멤버');
+    if (member.uid === user?.uid) return user?.displayName || user?.email || member.displayName || t('flow.member', '멤버');
+    const ownerUid = selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId || user?.uid;
+    if (member.uid === ownerUid && member.displayName === 'Owner') return selectedFlow?.ownerName || member.email || t('flow.member', '멤버');
+    return member.displayName || member.email || t('flow.member', '멤버');
+  }, [flowMembers, selectedFlow?._ownerUid, selectedFlow?.ownerId, selectedFlow?.ownerName, selectedFlow?.ownerUid, t, user?.displayName, user?.email, user?.uid]);
+
+  const getStepTitleById = useCallback((stepId) => {
+    const step = (selectedFlow?.steps || []).find(s => s.id === stepId);
+    return step?.activity || t('flow.step', '일정');
+  }, [selectedFlow?.steps, t]);
+
+  // 다른 멤버가 스텝을 추가/수정했을 때 상세 화면에서 토스트 표시
+  const prevStepsRef = useRef(null);
+  const prevStepsFlowIdRef = useRef(null);
+  useEffect(() => {
+    const currentSteps = selectedFlow?.steps;
+    const flowId = selectedFlow?.id;
+    if (!flowId || !currentSteps || !user?.uid) {
+      prevStepsRef.current = null;
+      prevStepsFlowIdRef.current = null;
+      return;
+    }
+    const prevSteps = prevStepsRef.current;
+    const prevFlowId = prevStepsFlowIdRef.current;
+    prevStepsRef.current = currentSteps;
+    prevStepsFlowIdRef.current = flowId;
+
+    if (!prevSteps || prevFlowId !== flowId) return;
+
+    const prevById = new Map(prevSteps.map(s => [s.id, s]));
+    const remoteAddedStep = currentSteps.find(step => {
+      if (step.createdBy === user.uid) return false;
+      const prev = prevById.get(step.id);
+      return !prev;
+    });
+    if (remoteAddedStep) {
+      const name = getActorName(remoteAddedStep.createdBy, remoteAddedStep.createdByName);
+      showFlowToast(t('flow.toast.step_added_by_member', {
+        name,
+        defaultValue: `${name}: 일정을 추가했습니다.`,
+      }));
+      markSelectedFlowReadOptimistic({ steps: true, comments: false });
+      return;
+    }
+
+    const remoteUpdatedStep = currentSteps.find(step => {
+      if (step.updatedBy === user.uid) return false;
+      const prev = prevById.get(step.id);
+      if (!prev) return false;
+      const hasDateTimeMarkerChange = (
+        (step.dateUpdatedAt && step.dateUpdatedAt !== prev.dateUpdatedAt) ||
+        (step.timeUpdatedAt && step.timeUpdatedAt !== prev.timeUpdatedAt) ||
+        (step.contentUpdatedAt && step.contentUpdatedAt !== prev.contentUpdatedAt)
+      );
+      const hasGeneralUpdate = _toMillis(step.updatedAt) > _toMillis(prev.updatedAt);
+      return (
+        hasDateTimeMarkerChange ||
+        (
+          hasGeneralUpdate &&
+          JSON.stringify({ ...step, order: undefined }) !== JSON.stringify({ ...prev, order: undefined })
+        )
+      );
+    });
+    if (remoteUpdatedStep) {
+      const name = getActorName(remoteUpdatedStep.updatedBy, remoteUpdatedStep.updatedByName);
+      showFlowToast(t('flow.toast.step_updated_by_member', {
+        name,
+        defaultValue: `${name}: 일정을 수정했습니다.`,
+      }));
+      markSelectedFlowReadOptimistic({ steps: true, comments: false });
+    }
+  }, [selectedFlow?.steps, selectedFlow?.id, user?.uid, getActorName, markSelectedFlowReadOptimistic, t]);
 
   const selectedFlowNotificationSignature = useMemo(
     () => (selectedFlow?.steps || [])
@@ -432,12 +585,51 @@ const FlowScreen = ({ navigation, route }) => {
     }
 
     const ownerUid = selectedFlow._ownerUid || user?.uid;
+    let isFirstLoad = true;
     const unsub = CommentService.subscribeToComments(ownerUid, selectedFlow.id, (data) => {
+      if (isFirstLoad) {
+        isFirstLoad = false;
+        prevCommentsRef.current = data;
+        prevCommentsFlowIdRef.current = selectedFlow.id;
+      }
       setComments(data);
     });
 
     return unsub;
   }, [selectedFlow?.id, selectedFlow?._ownerUid, user?.uid]);
+
+  const prevCommentsRef = useRef(null);
+  const prevCommentsFlowIdRef = useRef(null);
+  useEffect(() => {
+    const flowId = selectedFlow?.id;
+    if (!flowId || !user?.uid) {
+      prevCommentsRef.current = null;
+      prevCommentsFlowIdRef.current = null;
+      return;
+    }
+
+    const prevComments = prevCommentsRef.current;
+    const prevFlowId = prevCommentsFlowIdRef.current;
+    prevCommentsRef.current = comments;
+    prevCommentsFlowIdRef.current = flowId;
+
+    if (!prevComments || prevFlowId !== flowId) return;
+
+    const prevIds = new Set(prevComments.map(comment => comment.id));
+    const newComment = comments.find(comment => !prevIds.has(comment.id) && comment.uid !== user.uid);
+    if (!newComment) return;
+
+    const name = getActorName(newComment.uid, newComment.displayName);
+    const stepTitle = getStepTitleById(newComment.stepId);
+    showFlowToast(t('flow.toast.comment_added_by_member', {
+      name,
+      stepTitle,
+      defaultValue: `${name}: ${stepTitle}에 댓글을 남겼습니다.`,
+    }));
+
+    const isStepExpanded = !!expandedCommentStepsRef.current[newComment.stepId];
+    markSelectedFlowReadOptimistic({ steps: false, comments: true, preserveDetailIndicators: !isStepExpanded });
+  }, [comments, selectedFlow?.id, user?.uid, getActorName, getStepTitleById, markSelectedFlowReadOptimistic, t]);
 
   const handlePostComment = async (stepId) => {
     const text = commentInputs[stepId];
@@ -455,7 +647,14 @@ const FlowScreen = ({ navigation, route }) => {
     setIsPostingComment(true);
     const ownerUid = selectedFlow._ownerUid || user?.uid;
     try {
-      await CommentService.addComment(ownerUid, selectedFlow.id, stepId, user, text);
+      const createdComment = await CommentService.addComment(ownerUid, selectedFlow.id, stepId, user, text);
+      if (createdComment) {
+        setComments(prev => (
+          prev.some(comment => comment.id === createdComment.id)
+            ? prev
+            : [...prev, createdComment]
+        ));
+      }
       setCommentInputs(prev => ({ ...prev, [stepId]: '' }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
@@ -702,8 +901,10 @@ const FlowScreen = ({ navigation, route }) => {
     setFlowDescription('');
   };
 
-  const isFlowOwner = (flow) => !flow?._ownerUid;
-  const canEditFlow = (flow) => !flow || !flow._ownerUid || flow._role === 'owner' || flow._role === 'editor';
+  const isFlowOwner = (flow) =>
+    !!flow && (!flow._ownerUid && (!flow.ownerUid || flow.ownerUid === user?.uid));
+  const canEditFlow = (flow) =>
+    !flow || isFlowOwner(flow) || flow._role === 'owner' || flow._role === 'editor';
   
   const canEdit = (flow) => {
     if (isFlowOwner(flow)) return true;
@@ -749,6 +950,30 @@ const FlowScreen = ({ navigation, route }) => {
     return createdAt > getFlowReadBaselines(flow, preferDetailBaseline).stepsAt;
   };
 
+  const _isSharedFlow = (flow) =>
+    !!(flow?._ownerUid || flow?.inviteCode || (flow?.memberCount ?? 0) > 1);
+
+  const isStepDateUpdated = (flow, step) => {
+    if (!flow || !step || !_isSharedFlow(flow)) return false;
+    if (!step.dateUpdatedAt || step.updatedBy === user?.uid) return false;
+    const ms = _toMillis(step.dateUpdatedAt);
+    return ms > 0 && ms > getFlowReadBaselines(flow, true).stepsAt;
+  };
+
+  const isStepTimeUpdated = (flow, step) => {
+    if (!flow || !step || !_isSharedFlow(flow)) return false;
+    if (!step.timeUpdatedAt || step.updatedBy === user?.uid) return false;
+    const ms = _toMillis(step.timeUpdatedAt);
+    return ms > 0 && ms > getFlowReadBaselines(flow, true).stepsAt;
+  };
+
+  const isStepContentUpdated = (flow, step) => {
+    if (!flow || !step || !_isSharedFlow(flow)) return false;
+    if (!step.contentUpdatedAt || step.updatedBy === user?.uid) return false;
+    const ms = _toMillis(step.contentUpdatedAt);
+    return ms > 0 && ms > getFlowReadBaselines(flow, true).stepsAt;
+  };
+
   const isUnreadComment = (flow, comment, preferDetailBaseline = false) => {
     if (!flow || !comment || comment.uid === user?.uid) return false;
     const createdAt = _toMillis(comment.createdAt);
@@ -758,7 +983,12 @@ const FlowScreen = ({ navigation, route }) => {
 
   const getFlowUnreadInfo = (flow) => {
     if (!flow || !user?.uid) return { hasUnreadSteps: false, hasUnreadComments: false, hasUnread: false };
-    return getSharedFlowUnreadInfo(flow, user.uid);
+    const localUnreadInfo = getSharedFlowUnreadInfo(flow, user.uid);
+    if (!unreadFlowBadges[flow.id]) return localUnreadInfo;
+    return {
+      ...localUnreadInfo,
+      hasUnread: true,
+    };
   };
 
   const getSelectedFlowRoleLabel = () => {
@@ -828,15 +1058,77 @@ const FlowScreen = ({ navigation, route }) => {
 
   const openFlowDetail = (flow) => {
     if (!flow) return;
+    resetFlowToast();
+    setExpandedCommentSteps({});
     setDetailReadBaseline({
       flowId: flow.id,
-      stepsAt: flow._lastReadStepsAt,
-      commentsAt: flow._lastReadCommentsAt,
+      // null이면 getFlowReadBaselines에서 markFlowRead 이후의 _lastReadStepsAt으로 fallback돼
+      // baseline이 바뀌면 기존 빨콩이 사라지므로, 열기 전 시점으로 항상 고정함
+      stepsAt: flow._lastReadStepsAt || flow._joinedAt || 1,
+      commentsAt: flow._lastReadCommentsAt || flow._joinedAt || 1,
     });
     setSelectedFlow(flow);
     if (user?.uid) {
-      setTimeout(() => markFlowRead(flow.id, { steps: true, comments: true }), 1200);
+      setTimeout(() => {
+        markFlowRead(flow.id, { steps: true, comments: true });
+        setUnreadFlowBadges(prev => {
+          if (!prev[flow.id]) return prev;
+          const next = { ...prev };
+          delete next[flow.id];
+          return next;
+        });
+        markFlowBadgeRead(user.uid, flow.id);
+      }, 1200);
     }
+    maybePromptForBadgePermission(flow);
+  };
+
+  const maybePromptForBadgePermission = async (flow) => {
+    if (Platform.OS !== 'ios' || !flow || !_isSharedFlow(flow)) return;
+    try {
+      const hasPrompted = await AsyncStorage.getItem(BADGE_PERMISSION_PROMPT_KEY);
+      if (hasPrompted) return;
+
+      const status = await getNotificationPermissionStatus();
+      if (status !== 'undetermined') {
+        await AsyncStorage.setItem(BADGE_PERMISSION_PROMPT_KEY, '1');
+        return;
+      }
+
+      await AsyncStorage.setItem(BADGE_PERMISSION_PROMPT_KEY, '1');
+      showConfirm(
+        t('flow.badge_permission_title', '공유 플랜 알림 표시'),
+        t('flow.badge_permission_message', '새 일정과 댓글을 놓치지 않도록 앱 아이콘에 표시할 수 있어요.'),
+        () => requestBadgePermission(user?.uid),
+        false,
+        t('common.confirm'),
+        true
+      );
+    } catch {}
+  };
+
+  const closeFlowDetail = () => {
+    const flowId = selectedFlowRef.current?.id;
+    if (flowId && user?.uid) {
+      // flows 상태를 즉시 업데이트해 setSelectedFlow(null)과 같은 렌더에서 빨콩이 사라지도록 함
+      // (markFlowRead는 비동기라 다음 틱에서야 반영되므로 플리커 발생)
+      const now = new Date().toISOString();
+      setFlows(prev => prev.map(f =>
+        f.id === flowId ? { ...f, _lastReadStepsAt: now, _lastReadCommentsAt: now } : f
+      ));
+      markFlowRead(flowId, { steps: true, comments: true });
+      setUnreadFlowBadges(prev => {
+        if (!prev[flowId]) return prev;
+        const next = { ...prev };
+        delete next[flowId];
+        return next;
+      });
+      markFlowBadgeRead(user.uid, flowId);
+    }
+    resetFlowToast();
+    setExpandedCommentSteps({});
+    setDetailReadBaseline(null);
+    setSelectedFlow(null);
   };
 
   const openNewStepModal = () => {
@@ -844,7 +1136,7 @@ const FlowScreen = ({ navigation, route }) => {
     setEditingStep(null);
     setEditActivity('');
     setEditMemo('');
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = _dateStrFlow(new Date());
     setEditDate(todayStr);
     setEditEndDate(todayStr);
     setEditTime(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
@@ -920,9 +1212,81 @@ const FlowScreen = ({ navigation, route }) => {
 
     const ownerUid = selectedFlow._ownerUid || user?.uid;
     if (inviteModalVisible) setIsMembersLoading(true);
+    const currentName = user?.displayName || user?.email || '';
+    const isOwner = isFlowOwner(selectedFlow);
+    let lastSyncedCount = null;
+    let isFirstLoad = true;
+    let currentRole = selectedFlow._role || (isOwner ? 'owner' : 'viewer');
+    let currentPermissions = selectedFlow._permissions || null;
     const unsub = subscribeToFlowMembers(ownerUid, selectedFlow.id, (members) => {
-      setFlowMembers(members);
+      const currentFlow = selectedFlowRef.current || selectedFlow;
+      const myEntry = members.find(m => m.uid === user?.uid);
+      if (!isOwner && !myEntry && !isLeaving) {
+        const kickedFlowId = selectedFlow.id;
+        setFlowMembers([]);
+        setFlows(prev => prev.filter(flow => flow.id !== kickedFlowId));
+        setSelectedFlow(null);
+        setDetailReadBaseline(null);
+        prevSelectedFlowRoleRef.current = null;
+        setInviteModalVisible(false);
+        setFlowMenuVisible(false);
+        showConfirm(
+          t('common.info'),
+          t('flow.alert.kicked_msg'),
+          null,
+          false,
+          t('common.confirm'),
+          false
+        );
+        return;
+      }
+      if (myEntry && !isOwner) {
+        const nextRole = myEntry.role || currentRole || 'viewer';
+        const nextPermissions = myEntry.permissions || currentPermissions || null;
+        const roleChanged = nextRole !== currentRole;
+        const permChanged = JSON.stringify(nextPermissions) !== JSON.stringify(currentPermissions);
+        if (roleChanged || permChanged) {
+          const patch = {
+            _role: nextRole,
+            _permissions: nextPermissions,
+          };
+          currentRole = nextRole;
+          currentPermissions = nextPermissions;
+          if (currentFlow?.id) {
+            selectedFlowRef.current = { ...currentFlow, ...patch };
+          }
+          setSelectedFlow(prev => prev?.id === selectedFlow.id ? { ...prev, ...patch } : prev);
+          setFlows(prev => prev.map(flow => flow.id === selectedFlow.id ? { ...flow, ...patch } : flow));
+          if (!isFirstLoad) {
+            showConfirm(
+              t('common.info'),
+              nextRole === 'editor'
+                ? t('flow.alert.perm_changed_editor')
+                : t('flow.alert.perm_changed_viewer'),
+              null,
+              false,
+              t('common.confirm'),
+              false
+            );
+          }
+        }
+      }
+      if (myEntry && currentName && myEntry.displayName !== currentName) {
+        syncMemberDisplayName(selectedFlow.id, user.uid, currentName).catch(() => {});
+      }
+      const patched = currentName
+        ? members.map(m => m.uid === user?.uid ? { ...m, displayName: currentName } : m)
+        : members;
+      setFlowMembers(patched);
+      setSelectedFlow(prev => prev?.id === selectedFlow.id ? { ...prev, memberCount: members.length } : prev);
+      setFlows(prev => prev.map(flow => flow.id === selectedFlow.id ? { ...flow, memberCount: members.length } : flow));
       setIsMembersLoading(false);
+
+      if (isOwner && members.length !== lastSyncedCount) {
+        lastSyncedCount = members.length;
+        syncMemberCount(selectedFlow.id, members.length).catch(() => {});
+      }
+      isFirstLoad = false;
     });
 
     return unsub;
@@ -1112,8 +1476,30 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   const refreshFlowWeather = async (flow) => {
-    if (!flow.lat || !flow.lon) return;
+    if (!flow.lat || !flow.lon) {
+      if (__DEV__) {
+        console.warn('[FlowScreen] refreshFlowWeather skipped: missing coordinates', {
+          flowId: flow?.id,
+          title: flow?.title,
+          location: flow?.location,
+          address: flow?.address,
+          lat: flow?.lat,
+          lon: flow?.lon,
+        });
+      }
+      return;
+    }
     try {
+      if (__DEV__) {
+        console.log('[FlowScreen] refreshFlowWeather', {
+          flowId: flow.id,
+          title: flow.title,
+          location: flow.location,
+          address: flow.address,
+          lat: flow.lat,
+          lon: flow.lon,
+        });
+      }
       const weather = await WeatherService.getWeather(flow.lat, flow.lon, false, flow.location, flow.location);
       if (!weather) return;
       const weatherTemp = weather.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
@@ -1136,7 +1522,7 @@ const FlowScreen = ({ navigation, route }) => {
           const updatedFlow = updated.find(f => f.id === selectedFlowRef.current.id);
           // Firestore 원격 변경(예: 초대 코드 발급))에 의한 re-notify일 경우 write-back 안 함
           if (updatedFlow && canEditFlow(updatedFlow) && !isRemoteFlowUpdate()) {
-            updateFlowDoc(updatedFlow);
+            updateFlowDoc(updatedFlow, { syncSteps: false });
           }
         }, 0);
         return updated;
@@ -1272,7 +1658,7 @@ const FlowScreen = ({ navigation, route }) => {
           setTimeout(() => {
             const flowToUpdate = updated.find(f => f.id === flow.id);
             if (flowToUpdate && canEditFlow(flowToUpdate)) {
-              updateFlowDoc(flowToUpdate);
+              updateFlowDoc(flowToUpdate, { markStepsUpdated: false });
             }
           }, 0);
           
@@ -1307,18 +1693,24 @@ const FlowScreen = ({ navigation, route }) => {
   const isFlowDataLoading = isLoading || (!!user?.uid && syncLoading && flows.length === 0);
 
   const showFlowToast = (msg) => {
-    if (Platform.OS === 'android') {
-      ToastAndroid.show(msg, ToastAndroid.SHORT);
-      return;
-    }
     if (flowToastTimeout.current) clearTimeout(flowToastTimeout.current);
     setFlowToastMsg(msg);
     flowToastAnim.setValue(0);
     Animated.sequence([
       Animated.timing(flowToastAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.delay(1800),
+      Animated.delay(2100),
       Animated.timing(flowToastAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => setFlowToastMsg(''));
+  };
+
+  const resetFlowToast = () => {
+    if (flowToastTimeout.current) {
+      clearTimeout(flowToastTimeout.current);
+      flowToastTimeout.current = null;
+    }
+    flowToastAnim.stopAnimation();
+    flowToastAnim.setValue(0);
+    setFlowToastMsg('');
   };
 
   const saveFlow = async () => {
@@ -1385,48 +1777,54 @@ const FlowScreen = ({ navigation, route }) => {
               };
               const refreshedFlow = { ...newFlow, ...weatherPatch, updatedAt: new Date().toISOString(), _role: 'owner' };
               setFlows(prev => prev.map(f => f.id === newFlow.id ? { ...f, ...weatherPatch } : f));
-              updateFlowDoc(refreshedFlow).catch(e => console.warn('[FlowScreen] new flow weather update failed:', e));
+              updateFlowDoc(refreshedFlow, { syncSteps: false }).catch(e => console.warn('[FlowScreen] new flow weather update failed:', e));
             })
             .catch(e => console.warn('[FlowScreen] new flow weather fetch failed:', e));
         }
         return;
       }
 
-      let weatherTemp = null;
-      let weatherCondKey = null;
-      let weatherIsDay = true;
-      if (flowLat && flowLon) {
-        const weather = await WeatherService.getWeather(flowLat, flowLon, false, flowLocation, flowLocation);
-        weatherTemp = weather?.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°';
-        weatherCondKey = weather?.condKey || 'cloudy';
-        weatherIsDay = weather?.isDay !== false;
-      }
+      const basePatch = {
+        title: flowTitle,
+        description: flowDescription,
+        location: flowLocation,
+        address: flowAddress,
+        lat: flowLat,
+        lon: flowLon,
+        gradient: flowGradient,
+        updatedAt: now,
+      };
 
-      const updatedFlows = editingFlow
-        ? flows.map(f => f.id === editingFlow.id ? {
-            ...f,
-            title: flowTitle,
-            description: flowDescription,
-            location: flowLocation,
-            address: flowAddress,
-            lat: flowLat,
-            lon: flowLon,
-            gradient: flowGradient,
-            weatherTemp,
-            weatherCondKey,
-            weatherIsDay,
-            updatedAt: now
-          } : f)
-        : flows;
-
-      setFlows(updatedFlows);
-      if (editingFlow) {
-        await saveFlows(updatedFlows);
-      }
-
+      const optimisticFlows = flows.map(f =>
+        f.id === editingFlow.id ? { ...f, ...basePatch } : f
+      );
+      setFlows(optimisticFlows);
       if (editingFlow && selectedFlow && selectedFlow.id === editingFlow.id) {
-        const updatedSelected = updatedFlows.find(f => f.id === editingFlow.id);
-        if (updatedSelected) setSelectedFlow(updatedSelected);
+        setSelectedFlow(prev => ({ ...prev, ...basePatch }));
+      }
+      closeFlowModalNow();
+
+      await saveFlows(optimisticFlows);
+
+      if (flowLat && flowLon) {
+        WeatherService.getWeather(flowLat, flowLon, false, flowLocation, flowLocation)
+          .then(weather => {
+            if (!weather) return;
+            const weatherPatch = {
+              weatherTemp: weather?.temp ? (String(weather.temp).includes('°') ? weather.temp : `${weather.temp}°`) : '--°',
+              weatherCondKey: weather?.condKey || 'cloudy',
+              weatherIsDay: weather?.isDay !== false,
+            };
+            setFlows(prev => prev.map(f => f.id === editingFlow.id ? { ...f, ...weatherPatch } : f));
+            if (selectedFlow && selectedFlow.id === editingFlow.id) {
+              setSelectedFlow(prev => prev ? { ...prev, ...weatherPatch } : prev);
+            }
+            const weatherFlows = optimisticFlows.map(f =>
+              f.id === editingFlow.id ? { ...f, ...weatherPatch } : f
+            );
+            saveFlows(weatherFlows).catch(() => {});
+          })
+          .catch(() => {});
       }
     } catch (e) {
       if (!editingFlow && optimisticFlowId) {
@@ -1683,8 +2081,20 @@ const FlowScreen = ({ navigation, route }) => {
       const repeatMetaUpdates = editingStep?.repeatGroupId && stepRepeatType
         ? { repeat: stepRepeatType, repeatEndDate: stepRepeatEndDate || editingStep.repeatEndDate || null }
         : {};
+      const hasDateChange = !!editingStep && (
+        (editDate || '') !== (editingStep.date || '') ||
+        (finalEndDate || '') !== (editingStep.endDate || editingStep.date || '')
+      );
+      const hasTimeChange = !!editingStep && (
+        (editTime || '') !== (editingStep.time || '') ||
+        (finalEndTime || '') !== (editingStep.endTime || editingStep.time || '')
+      );
+      const hasContentChange = !!editingStep && (
+        (editActivity || '') !== (editingStep.activity || '') ||
+        (editMemo || '') !== (editingStep.memo || '')
+      );
       // notify/notificationId는 Firestore에 저장하지 않음 — 사용자별 AsyncStorage에서 관리
-      const baseUpdates = { time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now, updatedBy: user?.uid || null, updatedByName: user?.displayName || user?.email || null, ...repeatMetaUpdates };
+      const baseUpdates = { time: editTime, date: editDate, endTime: finalEndTime, endDate: finalEndDate, activity: editActivity, memo: editMemo, region: selectedRegion, weather: weatherData, warning: hasWarning, lat: targetLat, lon: targetLon, updatedAt: now, updatedBy: user?.uid || null, updatedByName: user?.displayName || user?.email || null, ...(hasDateChange ? { dateUpdatedAt: now } : {}), ...(hasTimeChange ? { timeUpdatedAt: now } : {}), ...(hasContentChange ? { contentUpdatedAt: now } : {}), ...repeatMetaUpdates };
 
       const doEdit = async (scope) => {
         let updatedSteps;
@@ -2548,8 +2958,7 @@ const FlowScreen = ({ navigation, route }) => {
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setDetailActionMenuVisible(false);
-                setDetailReadBaseline(null);
-                setSelectedFlow(null);
+                closeFlowDetail();
               }} 
               style={styles.iconBtn}
               hitSlop={{ top: 20, bottom: 20, left: 20, right: 10 }}
@@ -2642,6 +3051,9 @@ const FlowScreen = ({ navigation, route }) => {
                   {date !== 'Unscheduled' ? (
                     <View style={styles.dayHeader}>
                       <Text style={styles.dayDateText}>{formatDateLabel(date)}</Text>
+                      {groupedSteps[date].some(s => isStepDateUpdated(selectedFlow, s)) && (
+                        <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3B30', marginLeft: 5 }} />
+                      )}
                     </View>
                   ) : (
                     <View style={[styles.dayHeader, { marginTop: 8 }]}>
@@ -2769,11 +3181,19 @@ const FlowScreen = ({ navigation, route }) => {
                             >
                               <View style={styles.stepHeader}>
                                 <View style={{ flex: 1, marginRight: 10 }}>
-                                  <Text style={[styles.stepTime, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                    <Text style={[styles.stepTime, step.inactive && { color: Colors.outline }]}>{step.time || '--:--'}</Text>
+                                    {isStepTimeUpdated(selectedFlow, step) && (
+                                      <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3B30' }} />
+                                    )}
+                                  </View>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                     <Text style={styles.stepActivity} numberOfLines={2}>
                                       {step.activity && step.activity.trim() !== '' ? step.activity : t('flow.untitled_schedule', 'Untitled Schedule')}
                                     </Text>
+                                    {isStepContentUpdated(selectedFlow, step) && (
+                                      <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3B30' }} />
+                                    )}
                                     {isUnreadStep(selectedFlow, step, true) && (
                                       <View style={styles.newStepBadge}>
                                         <Text style={styles.newStepBadgeText}>{t('flow.new_badge', 'NEW')}</Text>
@@ -3112,7 +3532,7 @@ const FlowScreen = ({ navigation, route }) => {
                                   <Trash2 size={18} color="rgba(255,255,255,0.8)" />
                                 </View>
                               </TouchableOpacity>
-                              <View style={styles.cardMainArea}>
+                              <View style={[styles.cardMainArea, { flex: 1, justifyContent: 'center' }]}>
                                 <Text style={styles.cardTitle} numberOfLines={2}>{flow.title}</Text>
                                 <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{getLocalizedPeriod(flow.period)}</Text></View>
                               </View>
@@ -3125,44 +3545,104 @@ const FlowScreen = ({ navigation, route }) => {
                             </LinearGradient>
                           </View>
                         ) : (
-                        <TouchableOpacity
-                          onLongPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                            drag();
+                        <Swipeable
+                          enabled={!isActive}
+                          overshootRight={false}
+                          renderRightActions={(progress, dragX) => {
+                            const isOwner = isFlowOwner(flow);
+                            const actionCount = isOwner ? 2 : 1;
+                            const btnSize = 56;
+                            const gap = 8;
+                            const padH = 12;
+                            const totalWidth = actionCount * btnSize + (actionCount - 1) * gap + padH * 2;
+                            const trans = dragX.interpolate({
+                              inputRange: [-totalWidth, 0],
+                              outputRange: [0, totalWidth],
+                              extrapolate: 'clamp',
+                            });
+                            const opacity = progress.interpolate({
+                              inputRange: [0, 0.5, 1],
+                              outputRange: [0, 0.3, 1],
+                            });
+                            const scale = progress.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.8, 1],
+                            });
+                            return (
+                              <Animated.View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                paddingHorizontal: padH,
+                                gap,
+                                transform: [{ translateX: trans }, { scale }],
+                                opacity,
+                              }}>
+                                {isOwner && (
+                                  <GHButton
+                                    onPress={() => openFlowModal(flow)}
+                                    style={[styles.swipeBtn, { width: btnSize, height: btnSize, borderRadius: btnSize / 2, backgroundColor: '#F5F5F5' }]}
+                                  >
+                                    <Edit3 size={20} color="#616161" pointerEvents="none" />
+                                  </GHButton>
+                                )}
+                                <GHButton
+                                  onPress={() => {
+                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                                    handleDeleteFlow(flow.id);
+                                  }}
+                                  style={[styles.swipeBtn, { width: btnSize, height: btnSize, borderRadius: btnSize / 2, backgroundColor: '#FFEBEE' }]}
+                                >
+                                  {isOwner
+                                    ? <Trash2 size={20} color={Colors.error} pointerEvents="none" />
+                                    : <LogOut size={20} color={Colors.error} pointerEvents="none" />}
+                                </GHButton>
+                              </Animated.View>
+                            );
                           }}
-                          onPress={() => openFlowDetail(flow)}
-                          style={isActive ? { opacity: 0.8 } : undefined}
-                          activeOpacity={0.9}
-                          delayLongPress={250}
                         >
+                          <TouchableOpacity
+                            onLongPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              drag();
+                            }}
+                            onPress={() => openFlowDetail(flow)}
+                            style={isActive ? { opacity: 0.8 } : undefined}
+                            activeOpacity={0.9}
+                            delayLongPress={250}
+                          >
                           <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                                handleDeleteFlow(flow.id);
-                              }}
-                              hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-                              style={styles.deleteBtnAbsolute}
-                            >
-                              <View pointerEvents="none">
-                                {isFlowOwner(flow)
-                                  ? <Trash2 size={18} color="rgba(255,255,255,0.8)" />
-                                  : <LogOut size={18} color="rgba(255,255,255,0.8)" />}
-                              </View>
-                            </TouchableOpacity>
 
-                            <View style={styles.cardMainArea}>
-                              {/* Shared flow badge */}
-                              {!isFlowOwner(flow) && (
-                                <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8 }}>
-                                  <Users size={11} color="white" />
-                                  <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>{flow._role}</Text>
+                            {getFlowUnreadInfo(flow).hasUnread && (
+                              <PulsingDot ringStyle={styles.cardUnreadDotRing} dotStyle={styles.cardUnreadDot} />
+                            )}
+
+                            <View style={[styles.cardMainArea, { flex: 1 }]}>
+                              {/* Role + member count badge — always visible */}
+                              <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
+                                  <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>
+                                    {isFlowOwner(flow) ? 'OWNER' : String(flow._role || 'VIEWER').toUpperCase()}
+                                  </Text>
                                 </View>
-                              )}
-                              <Text style={styles.cardTitle} numberOfLines={2}>{flow.title}</Text>
-                              <View style={styles.dateRow}><Calendar size={14} color="rgba(255,255,255,0.8)" /><Text style={styles.cardDate}>{getLocalizedPeriod(flow.period)}</Text></View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 }}>
+                                  <Users size={11} color="rgba(255,255,255,0.9)" />
+                                  <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '600' }}>{flow.memberCount || 1}</Text>
+                                </View>
+                              </View>
+                              {/* title vertically centered in remaining space */}
+                              <View style={{ flex: 1, justifyContent: 'center' }}>
+                                <Text style={styles.cardTitle} numberOfLines={2}>{flow.title}</Text>
+                              </View>
                             </View>
                             <View style={styles.cardBottom}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                {flow.description
+                                  ? <FileText size={12} color="rgba(255,255,255,0.9)" />
+                                  : <Calendar size={12} color="rgba(255,255,255,0.9)" />}
+                                <Text style={styles.tagText} numberOfLines={1} ellipsizeMode="tail">
+                                  {flow.description || getLocalizedPeriod(flow.period)}
+                                </Text>
+                              </View>
                               <View style={styles.progressContainer}><View style={[styles.progressBar, { width: `${(flow.progress || 0) * 100}%` }]} /></View>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
@@ -3171,16 +3651,6 @@ const FlowScreen = ({ navigation, route }) => {
                                       {(!flow.location || flow.location === 'No Region') ? t('flow.no_region', 'No Region') : flow.location}
                                     </Text>
                                   </View>
-                                  {getFlowUnreadInfo(flow).hasUnread && (
-                                    <View style={{ flexDirection: 'row', gap: 8, marginLeft: 8 }}>
-                                      {getFlowUnreadInfo(flow).hasUnreadSteps && (
-                                        <Plus size={14} color="rgba(255,255,255,0.8)" strokeWidth={3} />
-                                      )}
-                                      {getFlowUnreadInfo(flow).hasUnreadComments && (
-                                        <MessageCircle size={14} color="rgba(255,255,255,0.8)" strokeWidth={2.8} />
-                                      )}
-                                    </View>
-                                  )}
                                 </View>
                               <View style={styles.weatherSummary}>
                                 <View style={{ marginRight: 6 }}>
@@ -3208,7 +3678,8 @@ const FlowScreen = ({ navigation, route }) => {
                               </View>
                             </View>
                           </LinearGradient>
-                        </TouchableOpacity>
+                          </TouchableOpacity>
+                        </Swipeable>
                         )}
                       </View>
                     </ScaleDecorator>
@@ -3322,11 +3793,6 @@ const FlowScreen = ({ navigation, route }) => {
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeFlowModal} />
-            {Platform.OS === 'ios' && flowToastMsg !== '' && (
-              <Animated.View style={[styles.flowToast, { opacity: flowToastAnim, transform: [{ translateY: flowToastAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }]} pointerEvents="none">
-                <Text style={styles.flowToastText}>{flowToastMsg}</Text>
-              </Animated.View>
-            )}
             <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
               <Animated.View
                 onLayout={(e) => setFlowModalHeight(e.nativeEvent.layout.height)}
@@ -4415,6 +4881,21 @@ const FlowScreen = ({ navigation, route }) => {
           </Pressable>
         </Modal>
 
+        {flowToastMsg !== '' && (
+          <Animated.View
+            style={[
+              styles.flowToast,
+              {
+                opacity: flowToastAnim,
+                transform: [{ translateY: flowToastAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <Text style={styles.flowToastText}>{flowToastMsg}</Text>
+          </Animated.View>
+        )}
+
         {renderConfirmModal()}
       </View>
     </GestureHandlerRootView>
@@ -4436,18 +4917,20 @@ const styles = StyleSheet.create({
     }),
   },
   flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
-  flowCard: { padding: Spacing.xl, borderRadius: 32, height: 220, justifyContent: 'space-between' },
+  flowCard: { paddingTop: 20, paddingHorizontal: Spacing.xl, paddingBottom: 22, borderRadius: 32, height: 220, flexDirection: 'column' },
+  cardUnreadDotRing: { position: 'absolute', top: 13, right: 13, width: 14, height: 14, borderRadius: 7, backgroundColor: 'white', zIndex: 1, alignItems: 'center', justifyContent: 'center' },
+  cardUnreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FF3B30' },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   deleteBtnAbsolute: { position: 'absolute', top: Spacing.lg, right: Spacing.lg, padding: 8, zIndex: 10 },
-  cardMainArea: { marginTop: Spacing.xs },
+  cardMainArea: {},
   tagContainer: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   tagText: { color: 'white', fontSize: 12, fontWeight: '700' },
   deleteBtn: { padding: 10 },
   cardMiddle: { marginTop: Spacing.md },
-  cardTitle: { ...Typography.h2, color: 'white', fontSize: 26, lineHeight: 32, paddingRight: 50 },
+  cardTitle: { ...Typography.h2, color: 'white', fontSize: 24, lineHeight: 30 },
   dateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 },
   cardDate: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '500' },
-  cardBottom: { marginTop: Spacing.lg },
+  cardBottom: { marginTop: Spacing.md },
   progressContainer: { height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, marginBottom: 12, overflow: 'hidden' },
   progressBar: { height: '100%', backgroundColor: 'white', borderRadius: 2 },
   weatherSummary: { flexDirection: 'row', alignItems: 'center' },
@@ -4890,7 +5373,7 @@ const styles = StyleSheet.create({
   commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 2, marginBottom: 4 },
   commentText: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 20 },
   commentAuthor: { fontWeight: '700', color: Colors.onBackground },
-  flowToast: { position: 'absolute', bottom: 100, alignSelf: 'center', backgroundColor: 'rgba(30,30,30,0.88)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 22, zIndex: 9999 },
+  flowToast: { position: 'absolute', top: Constants.statusBarHeight + 72, alignSelf: 'center', maxWidth: width - 48, backgroundColor: 'rgba(30,30,30,0.88)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 22, zIndex: 9999 },
   flowToastText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 16, gap: 8 },
   commentInput: {

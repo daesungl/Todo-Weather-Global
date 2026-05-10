@@ -479,7 +479,7 @@ const CountryItem = React.memo(({ item, isSelected, onPress }) => (
       {item.displaySecondary ? <Text style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{item.displaySecondary}</Text> : null}
     </View>
     <Text style={styles.countryResultCode}>{item.code}</Text>
-    {isSelected && <CheckCircle2 size={18} color={Colors.primary} />}
+    {isSelected && <CheckCircle2 size={18} color={Colors.primary} pointerEvents="none" />}
   </TouchableOpacity>
 ));
 
@@ -492,8 +492,9 @@ const SelectedCountryItem = React.memo(({ code, country, onRemove }) => (
     <TouchableOpacity
       style={styles.countryRemoveBtn}
       onPress={() => onRemove(code)}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
     >
-      <Trash2 size={18} color={Colors.error} />
+      <Trash2 size={18} color={Colors.error} pointerEvents="none" />
     </TouchableOpacity>
   </View>
 ));

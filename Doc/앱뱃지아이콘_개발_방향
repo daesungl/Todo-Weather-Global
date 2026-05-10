@@ -1,0 +1,83 @@
+피드백 전부 타당해. 특히 **batch.create + count increment 원자성**은 꼭 그렇게 해야 해요. 내가 말한 큰 방향에 이 피드백을 합치면 최종 설계는 이렇게 잡는 게 좋겠습니다.
+
+**최종 구조**
+
+```txt
+/users/{uid}/badge/state
+  unreadFlowBadgeCount: number
+
+/users/{uid}/unreadFlowBadges/{flowId}
+  flowId
+  reason: "step" | "comment"
+  actorUid
+  actorName
+  stepId
+  stepTitle
+  createdAt
+  updatedAt
+
+/users/{uid}/pushTokens/{tokenId}
+  token
+  platform
+  createdAt
+  updatedAt
+```
+
+나는 `unreadFlowBadgeCount`를 `/users/{uid}`에 직접 두기보다 `/users/{uid}/badge/state`에 두는 쪽이 더 좋아 보여요. 프로필 문서 변경과 뱃지 변경을 분리할 수 있고, 앱에서는 작은 문서 하나만 listen하면 됩니다.
+
+**Cloud Functions 흐름**
+
+```txt
+flows/{flowId}/steps/{stepId} onCreate/onUpdate
+flows/{flowId}/comments/{commentId} onCreate
+
+1. actorUid 확인
+2. 의미 있는 변경인지 필터링
+3. flows/{flowId}/members 조회
+4. actor 제외
+5. 각 uid에 대해 batch:
+   - create users/{uid}/unreadFlowBadges/{flowId}
+   - update users/{uid}/badge/state unreadFlowBadgeCount +1
+6. batch 성공한 uid에게만 FCM 발송
+7. already-exists면 skip
+```
+
+**중요 필터**
+스텝 `onUpdate`는 반드시 아래 중 하나가 실제로 바뀐 경우만 처리:
+
+```txt
+contentUpdatedAt
+dateUpdatedAt
+timeUpdatedAt
+```
+
+`weather`, `order`, `updatedAt`만 바뀐 경우는 푸시/뱃지 없음.
+
+**읽음 처리**
+이건 클라이언트에서 직접 `delete + decrement`를 하면 race condition이 생길 수 있어서, 가능하면 Cloud Function callable 또는 transaction 함수로 빼는 게 안전합니다.
+
+```txt
+markFlowBadgeRead(flowId)
+
+transaction:
+  badgeRef exists 확인
+  exists면 badge 삭제
+  badge/state unreadFlowBadgeCount -1
+  lastReadStepsAt/commentsAt 갱신
+  없으면 lastRead만 갱신
+```
+
+이렇게 해야 count가 음수로 내려가는 걸 막을 수 있어요.
+
+**클라이언트 역할**
+
+- 포그라운드:
+  - `/users/{uid}/badge/state` listen → 네비/앱 아이콘 count 갱신
+  - `/users/{uid}/unreadFlowBadges` listen 또는 캐시 → 플랜 카드 빨콩
+- 백그라운드/종료:
+  - FCM/APNs push payload badge count → 앱 아이콘 뱃지 갱신
+- 상세 내부 NEW/댓글 빨콩:
+  - 기존 `lastReadStepsAt/commentsAt` 또는 상세 baseline 유지
+
+결론적으로, 이 피드백 기준으로 가면 설계가 꽤 단단해져요.  
+내 추천은 **`/users/{uid}/badge/state` 분리 + Cloud Functions batch create/increment + callable read 처리**입니다. 이게 비용, 안정성, UX 균형이 제일 좋아 보여요.

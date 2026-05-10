@@ -1,0 +1,6 @@
+{
+  "projectRef": "YOUR_PROD_PROJECT_REF",
+  "url": "https://YOUR_PROD_PROJECT_REF.supabase.co",
+  "anonKey": "YOUR_PROD_SUPABASE_ANON_KEY",
+  "planBackend": "supabase"
+}

@@ -57,6 +57,7 @@ const assertFirebaseProject = () => {
 };
 
 run('node', ['scripts/switch-firebase-env.js', env]);
+run('node', ['scripts/switch-supabase-env.js', env]);
 assertFirebaseProject();
 
 if (mode === 'run') {

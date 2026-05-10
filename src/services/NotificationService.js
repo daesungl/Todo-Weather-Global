@@ -3,13 +3,17 @@ import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
+import Constants from 'expo-constants';
 import i18n from '../i18n';
 import { dateStr, expandFlowStepsForRange } from '../utils/flowRecurrence';
+import { shouldUseSupabasePlans } from '../config/supabaseConfig';
+import { registerPlanPushToken } from './supabase/PlanApiService';
 
 const MAX_PER_SERIES = 10;
 const PERM_ASKED_KEY = '@notification_perm_asked';
 const CHANNEL_ID = 'schedule_alerts';
 const NOTIF_PREFS_PREFIX = '@notif_prefs_';
+const PUSH_TOKEN_PREFIX = '@push_token_';
 
 const flowStepNotifPrefsCollection = (uid) =>
   firestore().collection('users').doc(uid).collection('flowStepNotifications');
@@ -132,6 +136,92 @@ export const requestPermission = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
     await AsyncStorage.setItem(PERM_ASKED_KEY, '1');
     return status === 'granted';
+  } catch {
+    return false;
+  }
+};
+
+export const getNotificationPermissionStatus = async () => {
+  try {
+    const permissions = await Notifications.getPermissionsAsync();
+    return permissions.status;
+  } catch {
+    return 'undetermined';
+  }
+};
+
+const tokenDocId = (token) =>
+  String(token || '').replace(/[/.#$[\]]/g, '_').slice(0, 500);
+
+const getExpoProjectId = () =>
+  Constants?.easConfig?.projectId
+  || Constants?.expoConfig?.extra?.eas?.projectId
+  || Constants?.manifest2?.extra?.eas?.projectId
+  || Constants?.manifest?.extra?.eas?.projectId
+  || null;
+
+export const registerPushToken = async (uid) => {
+  if (!uid) return null;
+  try {
+    await setupAndroidChannel();
+    const permissions = await Notifications.getPermissionsAsync();
+    if (permissions.status !== 'granted') return null;
+
+    const projectId = getExpoProjectId();
+    if (!projectId) return null;
+
+    const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token = tokenResult?.data;
+    if (!token) return null;
+
+    const docId = tokenDocId(token);
+    if (!docId) return null;
+
+    const localKey = `${PUSH_TOKEN_PREFIX}${uid}`;
+    const cached = await AsyncStorage.getItem(localKey).catch(() => null);
+    if (shouldUseSupabasePlans()) {
+      await registerPlanPushToken({ token, tokenType: 'expo', platform: Platform.OS });
+    } else {
+      const now = firestore.FieldValue.serverTimestamp();
+      const tokenRef = firestore().collection('users').doc(uid).collection('pushTokens').doc(docId);
+      await tokenRef.set({
+        token,
+        tokenType: 'expo',
+        platform: Platform.OS,
+        enabled: true,
+        updatedAt: now,
+        ...(cached === token ? {} : { createdAt: now }),
+      }, { merge: true });
+    }
+    await AsyncStorage.setItem(localKey, token).catch(() => {});
+    return token;
+  } catch (error) {
+    if (__DEV__) console.log('[Notification] registerPushToken failed:', error?.message || error);
+    return null;
+  }
+};
+
+export const requestBadgePermission = async (uid = null) => {
+  try {
+    await setupAndroidChannel();
+
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    if (existing === 'granted') {
+      if (uid) registerPushToken(uid);
+      return true;
+    }
+    if (existing === 'denied') return false;
+
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: false,
+        allowBadge: true,
+        allowSound: false,
+      },
+    });
+    const granted = status === 'granted';
+    if (granted && uid) registerPushToken(uid);
+    return granted;
   } catch {
     return false;
   }

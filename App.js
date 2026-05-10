@@ -10,16 +10,17 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
-import './src/i18n';
+import { initLanguage } from './src/i18n';
 import { UnitProvider } from './src/contexts/UnitContext';
 import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import { useSubscription } from './src/contexts/SubscriptionContext';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { getAnalytics, logEvent } from '@react-native-firebase/analytics';
 import AdManager from './src/services/ad/AdManager';
-import { refillTaskNotifications, refillStepNotifications, setupAndroidChannel, cancelPastNotifications, setUserNotifPref } from './src/services/NotificationService';
+import { refillTaskNotifications, refillStepNotifications, setupAndroidChannel, cancelPastNotifications, setUserNotifPref, registerPushToken } from './src/services/NotificationService';
 import { getTasks, updateTask } from './src/services/task/TaskSyncService';
 import { getFlows, saveFlows, subscribeToFlows } from './src/services/FlowSyncService';
+import { subscribeToFlowBadgeState } from './src/services/FlowBadgeService';
 import { incrementLaunchCount } from './src/services/ReviewService';
 import { countUnreadFlows } from './src/utils/flowUnread';
 
@@ -48,7 +49,11 @@ const Tab = createBottomTabNavigator();
 
 const setAppIconBadge = async (count) => {
   try {
-    await Notifications.setBadgeCountAsync(count);
+    const badgeCount = Math.max(0, Number(count) || 0);
+    const didSet = await Notifications.setBadgeCountAsync(badgeCount);
+    if (__DEV__ && !didSet) {
+      console.log('[Badge] App icon badge not supported or not permitted on this device/launcher');
+    }
   } catch (error) {
     if (__DEV__) console.log('[Badge] Failed to set app icon badge:', error?.message || error);
   }
@@ -79,22 +84,37 @@ const slideFromRight = {
 function TabNavigator() {
   const { user } = useAuth();
   const [unreadPlanCount, setUnreadPlanCount] = React.useState(0);
+  const hasServerBadgeStateRef = React.useRef(false);
 
   useEffect(() => {
     if (!user?.uid) {
+      hasServerBadgeStateRef.current = false;
       setUnreadPlanCount(0);
       setAppIconBadge(0);
       return undefined;
     }
 
-    const unsubscribe = subscribeToFlows((flows) => {
+    registerPushToken(user.uid);
+
+    const unsubscribeBadgeState = subscribeToFlowBadgeState(user.uid, ({ exists, count }) => {
+      hasServerBadgeStateRef.current = exists;
+      if (!exists) return;
+      setUnreadPlanCount(count);
+      setAppIconBadge(count);
+    });
+
+    const unsubscribeFlows = subscribeToFlows((flows) => {
       if (flows === null) return;
+      if (hasServerBadgeStateRef.current) return;
       const count = countUnreadFlows(flows, user.uid);
       setUnreadPlanCount(count);
       setAppIconBadge(count);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeBadgeState?.();
+      unsubscribeFlows?.();
+    };
   }, [user?.uid]);
 
   return (
@@ -228,6 +248,7 @@ export default function App() {
     const prepare = async () => {
       try {
         incrementLaunchCount();
+        await initLanguage();
         if (Platform.OS === 'ios') {
           const { status } = await requestTrackingPermissionsAsync();
           if (status === 'granted') {

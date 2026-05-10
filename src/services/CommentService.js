@@ -1,4 +1,10 @@
 import firestore from '@react-native-firebase/firestore';
+import {
+  addPlanComment,
+  deletePlanComment,
+  isSupabasePlanBackendEnabled,
+  listPlanComments,
+} from './supabase/PlanApiService';
 
 /**
  * flows/{flowId}/comments/{commentId}
@@ -9,6 +15,25 @@ const _commentsCol = (ownerUid, flowId) =>
 
 export const subscribeToComments = (ownerUid, flowId, onUpdate) => {
   if (!ownerUid || !flowId) return () => {};
+  if (isSupabasePlanBackendEnabled()) {
+    let cancelled = false;
+    const load = () => {
+      listPlanComments(flowId)
+        .then(comments => {
+          if (!cancelled) onUpdate(comments.map(comment => ({
+            ...comment,
+            createdAt: comment.createdAt ? new Date(comment.createdAt) : new Date(),
+          })));
+        })
+        .catch(err => console.warn('[CommentService] Supabase comments load error:', err));
+    };
+    load();
+    const interval = setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }
   
   return _commentsCol(ownerUid, flowId)
     .orderBy('createdAt', 'asc')
@@ -26,6 +51,15 @@ export const subscribeToComments = (ownerUid, flowId, onUpdate) => {
 
 export const addComment = async (ownerUid, flowId, stepId, user, text) => {
   if (!ownerUid || !flowId || !stepId || !user || !text.trim()) return;
+  if (isSupabasePlanBackendEnabled()) {
+    const result = await addPlanComment(flowId, stepId, text);
+    return result?.comment
+      ? {
+        ...result.comment,
+        createdAt: result.comment.createdAt ? new Date(result.comment.createdAt) : new Date(),
+      }
+      : null;
+  }
 
   const commentData = {
     stepId,
@@ -52,10 +86,20 @@ export const addComment = async (ownerUid, flowId, stepId, user, text) => {
       commentsLastUid: user.uid,
     })
     .catch(() => {});
+
+  return {
+    id: `local_${Date.now()}`,
+    ...commentData,
+    createdAt: new Date(),
+  };
 };
 
 export const deleteComment = async (ownerUid, flowId, stepId, commentId) => {
   if (!ownerUid || !flowId || !commentId) return;
+  if (isSupabasePlanBackendEnabled()) {
+    await deletePlanComment(flowId, commentId);
+    return;
+  }
 
   const batch = firestore().batch();
   const commentRef = _commentsCol(ownerUid, flowId).doc(commentId);

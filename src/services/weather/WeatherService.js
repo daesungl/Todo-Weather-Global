@@ -11,6 +11,16 @@ import { getCache, saveCache } from '../StorageService';
  * Strategy: Cache Check -> VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
  */
 export const getWeather = async (lat, lon, force = false, regionId = '', providedAddress = '') => {
+  console.log(`[WeatherService] getWeather called: lat=${lat}, lon=${lon}, regionId=${regionId}, address=${providedAddress}`);
+  if (__DEV__) {
+    console.log('[WeatherService] coordinate debug', {
+      lat,
+      lon,
+      regionId,
+      providedAddress,
+      coordBasedIsKorea: lat >= 33 && lat <= 39 && lon >= 124 && lon <= 132,
+    });
+  }
   const cacheKey = `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
 
   try {
@@ -56,19 +66,18 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
 
     // 1. Determine location info (Resilient VWorld check)
     let locationInfo = { isKorea: false };
+    const koreaLatRange = lat >= 33 && lat <= 39;
+    const koreaLonRange = lon >= 124 && lon <= 132;
+    const coordBasedIsKorea = koreaLatRange && koreaLonRange;
     try {
-      const koreaLatRange = lat >= 33 && lat <= 39;
-      const koreaLonRange = lon >= 124 && lon <= 132;
-      const coordBasedIsKorea = koreaLatRange && koreaLonRange;
-
       // 한국 광역시/도 리스트 (검증용)
       const validProvinces = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
       const isFullAddress = providedAddress && validProvinces.some(p => providedAddress.startsWith(p));
 
       // 1. 주소가 상위 행정구역 정보를 포함한 정석적인 주소인 경우에만 지름길 사용
       if (isFullAddress && coordBasedIsKorea) {
-        locationInfo = { 
-          isKorea: true, 
+        locationInfo = {
+          isKorea: true,
           address: providedAddress,
           region: providedAddress.split(' ')[0],
           city: providedAddress.split(' ')[1] || ''
@@ -85,11 +94,14 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
       console.warn('[WeatherService] Location Check (VWorld) failed, assuming Global.', locErr);
       locationInfo = { isKorea: false };
     }
-    
+
     const { isKorea, address, region, city } = locationInfo;
 
     // 2. Domestic Priority Path (KMA)
-    if (isKorea) {
+    // coordBasedIsKorea 이중 가드: VWorld가 isKorea:true를 반환하더라도 좌표가
+    // 한국 범위(33-39°N, 124-132°E)를 벗어나면 절대 KMA를 사용하지 않음.
+    // (Greater London 등 해외 지역이 VWorld API 이상으로 isKorea:true가 되는 경우 방어)
+    if (isKorea && coordBasedIsKorea) {
       try {
         console.log(`[${address}] 날씨 데이터 ( KMA ) 조회 중`);
         const [kma, sun, alert] = await Promise.all([

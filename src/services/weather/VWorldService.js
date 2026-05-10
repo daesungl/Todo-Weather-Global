@@ -25,10 +25,12 @@ export const checkIsKorea = async (lat, lon) => {
     });
 
     if (response.data?.response?.status === 'OK') {
-      const result = response.data.response.result[0];
+      const result = response.data.response.result?.[0];
+      // result나 text가 없으면 한국 외 지역으로 처리
+      if (!result?.text) return { isKorea: false };
       const structure = result.structure;
-      return { 
-        isKorea: true, 
+      return {
+        isKorea: true,
         address: result.text,
         region: structure?.level1 || '',
         city: structure?.level2 || '',

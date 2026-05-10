@@ -74,7 +74,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     uvIndex: '--',
     sunrise: '--',
     sunset: '--',
-    source: 'KOREA METEOROLOGICAL ADMINISTRATION'
+    source: '--'
   };
 
   // initialData를 그대로 쓰면 낮에 캐시된 condKey(sunny)가 밤에도 노출됨.

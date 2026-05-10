@@ -25,7 +25,7 @@ import { deleteCurrentUserAccount, isRecentLoginRequired } from '../services/Acc
 
 const ProfileScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { user, logout, resetPassword } = useAuth();
+  const { user, logout, resetPassword, updateUserProfile } = useAuth();
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [newName, setNewName] = useState(user?.displayName || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -68,12 +68,15 @@ const ProfileScreen = ({ navigation }) => {
 
     setIsSaving(true);
     try {
-      // update 대신 set과 merge옵션을 사용하여, 문서가 없으면 자동 생성되도록 처리 (not-found 에러 방지)
-      await firestore().collection('users').doc(user.uid).set({
-        displayName: newName.trim(),
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-
+      const trimmedName = newName.trim();
+      await Promise.all([
+        auth().currentUser.updateProfile({ displayName: trimmedName }),
+        firestore().collection('users').doc(user.uid).set({
+          displayName: trimmedName,
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }),
+      ]);
+      updateUserProfile({ displayName: trimmedName });
       setEditModalVisible(false);
       Alert.alert(t('common.success'), t('auth.profileUpdated'));
     } catch (error) {

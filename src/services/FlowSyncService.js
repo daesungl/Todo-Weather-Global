@@ -1,5 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
+import {
+  getPlanSteps as getSupabasePlanSteps,
+  isSupabasePlanBackendEnabled,
+  listPlans as listSupabasePlans,
+  markPlanRead as markSupabasePlanRead,
+  replacePlanSteps as replaceSupabasePlanSteps,
+  deletePlan as deleteSupabasePlan,
+  leavePlan as leaveSupabasePlan,
+  savePlan as saveSupabasePlan,
+} from './supabase/PlanApiService';
 
 const getFlowsStorageKey = (uid) => `@todo_weather_flows_${uid || 'guest'}`;
 const getSharedFlowsStorageKey = (uid) => `@todo_weather_shared_flows_${uid}`;
@@ -8,6 +18,7 @@ const MIGRATION_KEY_PREFIX = '@flows_global_schema_migrated_';
 let _userId = null;
 let _snapshotListeners = new Set();
 let _unsubscribeFlowRefs = null;
+let _membershipPollInterval = null;
 let _flowListeners = new Map(); // flowId -> { flowUnsub, stepsUnsub }
 let _stepListeners = new Map(); // flowId -> { unsub, callbacks }
 let _flowRefs = new Map();      // flowId -> ref data from users/{uid}/flowRefs
@@ -62,6 +73,51 @@ const _isPermissionDenied = (error) =>
   error?.code === 'firestore/permission-denied'
   || String(error?.message || '').includes('permission-denied');
 
+const _stopMembershipPoll = () => {
+  if (_membershipPollInterval) {
+    clearInterval(_membershipPollInterval);
+    _membershipPollInterval = null;
+  }
+};
+
+const _startMembershipPoll = (uid) => {
+  _stopMembershipPoll();
+  if (!isSupabasePlanBackendEnabled() || !uid) return;
+  _membershipPollInterval = setInterval(async () => {
+    if (!_userId) return;
+    try {
+      const plans = await listSupabasePlans();
+      const returnedIds = new Set(plans.map(p => p.id));
+      const toRevoke = [];
+      for (const [flowId, ref] of _flowRefs.entries()) {
+        if (ref.role !== 'owner' && !returnedIds.has(flowId)) toRevoke.push(flowId);
+      }
+      toRevoke.forEach(flowId => _dropInaccessibleFlow(flowId, 'membership revoked'));
+      plans.forEach(plan => {
+        const normalized = {
+          ...plan,
+          _ownerUid: plan.ownerUid && plan.ownerUid !== uid ? plan.ownerUid : undefined,
+          _role: plan._role || (plan.ownerUid === uid ? 'owner' : 'viewer'),
+        };
+        _flowRefs.set(plan.id, {
+          flowId: plan.id,
+          ownerUid: plan.ownerUid,
+          role: normalized._role,
+          permissions: normalized._permissions,
+          order: normalized.order ?? 1000000,
+          joinedAt: normalized._joinedAt,
+          lastReadStepsAt: normalized._lastReadStepsAt,
+          lastReadCommentsAt: normalized._lastReadCommentsAt,
+        });
+        _flowDocs.set(plan.id, { ...(_flowDocs.get(plan.id) || {}), ...normalized, id: plan.id });
+      });
+      _mergeAndNotify(true);
+    } catch (e) {
+      console.warn('[FlowSync] membership poll error:', e);
+    }
+  }, 7000);
+};
+
 const _dropInaccessibleFlow = (flowId, reason = 'inaccessible') => {
   if (!flowId) return;
   console.warn('[FlowSync] dropping inaccessible flowRef', { flowId, reason });
@@ -70,7 +126,7 @@ const _dropInaccessibleFlow = (flowId, reason = 'inaccessible') => {
   _flowSteps.delete(flowId);
   _stopFlowListener(flowId);
   _stopStepListener(flowId);
-  if (_userId) {
+  if (_userId && !isSupabasePlanBackendEnabled()) {
     _flowRefsCollection(_userId).doc(flowId).delete()
       .catch(e => console.warn('[FlowSync] failed to delete inaccessible flowRef:', flowId, e));
   }
@@ -349,6 +405,7 @@ const _saveFlowToGlobal = async (uid, flow, { syncSteps = true, previousSteps, f
   }
 
   if (isOwner) {
+    if (!hasExistingFlowDoc) meta.memberCount = 1;
     await flowRef.set(meta, { merge: true });
     const ownerBatch = firestore().batch();
     ownerBatch.set(_membersCollection(flow.id).doc(uid), {
@@ -519,6 +576,40 @@ const _startFlowRefsSubscription = (uid) => {
 };
 
 const _loadRemoteFlows = async (uid) => {
+  if (isSupabasePlanBackendEnabled()) {
+    const plans = await listSupabasePlans();
+    const normalizedPlans = plans.map(plan => ({
+      ...plan,
+      _ownerUid: plan.ownerUid && plan.ownerUid !== uid ? plan.ownerUid : undefined,
+      _role: plan._role || (plan.ownerUid === uid ? 'owner' : 'viewer'),
+    }));
+    const plansWithSteps = await Promise.all(normalizedPlans.map(async (plan) => {
+      try {
+        const steps = await getSupabasePlanSteps(plan.id);
+        return { ...plan, steps };
+      } catch (e) {
+        console.warn('[FlowSync] Supabase initial steps load failed:', plan.id, e);
+        return { ...plan, steps: [] };
+      }
+    }));
+    for (const plan of plansWithSteps) {
+      _flowRefs.set(plan.id, {
+        flowId: plan.id,
+        ownerUid: plan.ownerUid,
+        role: plan._role,
+        permissions: plan._permissions,
+        order: plan.order ?? 1000000,
+        joinedAt: plan._joinedAt,
+        lastReadStepsAt: plan._lastReadStepsAt,
+        lastReadCommentsAt: plan._lastReadCommentsAt,
+      });
+      _flowDocs.set(plan.id, { ...plan, id: plan.id });
+      _flowSteps.set(plan.id, _sortSteps(_filterDeletedSteps(plan.id, plan.steps || [])));
+    }
+    _cachedFlows = plansWithSteps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return _cachedFlows;
+  }
+
   const refsSnapshot = await _flowRefsCollection(uid).orderBy('order', 'asc').get();
   const flows = [];
 
@@ -564,16 +655,23 @@ const _initFlowSyncInternal = async (uid) => {
   _flowListeners.clear();
   _stepListeners.forEach((_, flowId) => _stopStepListener(flowId));
   _stepListeners.clear();
+  _stopMembershipPoll();
 
   if (uid) {
-    await _migrateIfNeeded(uid);
+    if (!isSupabasePlanBackendEnabled()) {
+      await _migrateIfNeeded(uid);
+    }
     try {
       const flows = await _loadRemoteFlows(uid);
       _snapshotListeners.forEach(cb => cb(flows));
     } catch (e) {
       console.warn('[FlowSync] initial load error:', e);
     }
-    _startFlowRefsSubscription(uid);
+    if (!isSupabasePlanBackendEnabled()) {
+      _startFlowRefsSubscription(uid);
+    } else {
+      _startMembershipPoll(uid);
+    }
   } else {
     const localFlows = await getFlows();
     _snapshotListeners.forEach(cb => cb(localFlows));
@@ -603,6 +701,41 @@ export const subscribeToFlowSteps = (flowId, callback) => {
 
   const cachedSteps = _sortSteps(_flowSteps.get(flowId) || []);
   if (callback) callback(cachedSteps);
+
+  if (isSupabasePlanBackendEnabled()) {
+    const flow = _flowFromParts(flowId);
+    if (!flow) {
+      if (callback) callback([]);
+      return () => {};
+    }
+    let cancelled = false;
+    let previousSignature = _stepsSignature(flowId, cachedSteps);
+    const load = () => {
+      getSupabasePlanSteps(flowId).then(steps => {
+        if (cancelled) return;
+        const sortedSteps = _sortSteps(_filterDeletedSteps(flowId, steps));
+        const nextSignature = _stepsSignature(flowId, sortedSteps);
+        if (nextSignature === previousSignature) return;
+        previousSignature = nextSignature;
+        _flowSteps.set(flowId, sortedSteps);
+        _mergeAndNotify(true);
+        if (callback) callback(sortedSteps);
+      }).catch(err => {
+        if (err?.status === 403) {
+          _dropInaccessibleFlow(flowId, 'supabase steps permission-denied');
+          if (callback) callback([]);
+          return;
+        }
+        console.warn('[FlowSync] Supabase steps load failed:', err);
+      });
+    };
+    load();
+    const interval = setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }
 
   let entry = _stepListeners.get(flowId);
   if (!entry) {
@@ -649,6 +782,13 @@ export const subscribeToFlowSteps = (flowId, callback) => {
 export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
   if (!_userId || !flowId) return;
 
+  if (isSupabasePlanBackendEnabled()) {
+    _loadRemoteFlows(_userId)
+      .then(flows => _snapshotListeners.forEach(cb => cb(flows)))
+      .catch(e => console.warn('[FlowSync] Supabase refresh flow failed:', e));
+    return;
+  }
+
   _flowRefsCollection(_userId).doc(flowId).set({
     flowId,
     ownerUid,
@@ -680,7 +820,11 @@ export const markFlowRead = async (flowId, options = {}) => {
   _mergeAndNotify();
 
   try {
-    await _flowRefsCollection(_userId).doc(flowId).set(updates, { merge: true });
+    if (isSupabasePlanBackendEnabled()) {
+      await markSupabasePlanRead(flowId, options);
+    } else {
+      await _flowRefsCollection(_userId).doc(flowId).set(updates, { merge: true });
+    }
   } catch (e) {
     console.warn('[FlowSync] markFlowRead failed:', e);
   }
@@ -695,8 +839,31 @@ export const removeSharedFlowOptimistic = (flowId) => {
   _mergeAndNotify();
 };
 
-export const updateFlowDoc = async (flow) => {
+export const updateFlowDoc = async (flow, options = {}) => {
   if (!flow || !_userId) return;
+  if (isSupabasePlanBackendEnabled()) {
+    const {
+      syncSteps = true,
+      markStepsUpdated = true,
+    } = options || {};
+    await saveSupabasePlan(flow);
+    _flowDocs.set(flow.id, {
+      ...(_flowDocs.get(flow.id) || {}),
+      id: flow.id,
+      ..._cleanFlowDocData(flow),
+      ownerUid: flow._ownerUid || flow.ownerUid || _userId,
+    });
+    if (syncSteps && Array.isArray(flow.steps)) {
+      const previousSteps = _flowSteps.get(flow.id);
+      const stepsChanged = _haveStepsChanged(flow.id, previousSteps, flow.steps || []);
+      if (stepsChanged) {
+        await replaceSupabasePlanSteps(flow.id, flow.steps, { markUpdated: markStepsUpdated });
+      }
+      _flowSteps.set(flow.id, _sortSteps(_filterDeletedSteps(flow.id, flow.steps || [])));
+    }
+    _mergeAndNotify();
+    return;
+  }
   await _saveFlowToGlobal(_userId, flow);
 };
 
@@ -728,7 +895,12 @@ export const deleteFlowStepDocs = async (flow, stepIds = []) => {
   ];
 
   try {
-    await _commitBatched(ops);
+    if (isSupabasePlanBackendEnabled()) {
+      await saveSupabasePlan({ ...meta, id: flow.id, ownerUid });
+      await replaceSupabasePlanSteps(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
+    } else {
+      await _commitBatched(ops);
+    }
   } catch (e) {
     _forgetDeletedStepIds(flow.id, ids);
     console.warn('[FlowSync] deleteFlowStepDocs:commitFailed', {
@@ -809,6 +981,15 @@ export const saveFlows = async (flows) => {
   if (_userId) {
     try {
       for (const flow of ownFlows) {
+        if (isSupabasePlanBackendEnabled()) {
+          await saveSupabasePlan({ ...flow, _role: 'owner' });
+          const previousSteps = previousFlowSteps.get(flow.id);
+          const nextSteps = _filterDeletedSteps(flow.id, flow.steps || []);
+          if (_haveStepsChanged(flow.id, previousSteps, nextSteps)) {
+            await replaceSupabasePlanSteps(flow.id, nextSteps);
+          }
+          continue;
+        }
         const previousSteps = previousFlowSteps.get(flow.id);
         const syncSteps = _haveStepsChanged(flow.id, previousSteps, flow.steps || []);
         await _saveFlowToGlobal(_userId, { ...flow, _role: 'owner' }, {
@@ -818,16 +999,29 @@ export const saveFlows = async (flows) => {
         });
       }
       for (const flow of sharedFlows) {
+        if (isSupabasePlanBackendEnabled()) {
+          await saveSupabasePlan(flow);
+          if (Array.isArray(flow.steps)) {
+            const previousSteps = previousFlowSteps.get(flow.id);
+            const nextSteps = _filterDeletedSteps(flow.id, flow.steps || []);
+            if (_haveStepsChanged(flow.id, previousSteps, nextSteps)) {
+              await replaceSupabasePlanSteps(flow.id, nextSteps);
+            }
+          }
+          continue;
+        }
         await _saveFlowRef(_userId, flow);
       }
 
-      const currentRefs = await _flowRefsCollection(_userId).get();
-      const nextIds = new Set(ordered.map(f => f.id));
-      const batch = firestore().batch();
-      currentRefs.docs
-        .filter(doc => !nextIds.has(doc.id) && doc.data().role === 'owner')
-        .forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      if (!isSupabasePlanBackendEnabled()) {
+        const currentRefs = await _flowRefsCollection(_userId).get();
+        const nextIds = new Set(ordered.map(f => f.id));
+        const batch = firestore().batch();
+        currentRefs.docs
+          .filter(doc => !nextIds.has(doc.id) && doc.data().role === 'owner')
+          .forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
     } catch (e) {
       console.warn('[FlowSync] saveFlows Firestore error:', {
         code: e?.code,
@@ -852,10 +1046,46 @@ export const saveFlows = async (flows) => {
 };
 
 export const addFlow = async (flow) => {
-  const current = await getFlows();
-  const ownFlows = current.filter(f => !f._ownerUid);
-  await saveFlows([{ ...flow, _role: 'owner' }, ...ownFlows]);
-  return [{ ...flow, _role: 'owner' }, ...current];
+  // Shift existing orders to make room at index 0 — shared flows stay in _flowRefs untouched
+  for (const [flowId, ref] of _flowRefs.entries()) {
+    _flowRefs.set(flowId, { ...ref, order: (ref.order ?? 0) + 1 });
+  }
+  for (const [flowId, doc] of _flowDocs.entries()) {
+    _flowDocs.set(flowId, { ...doc, order: (doc.order ?? 0) + 1 });
+  }
+
+  _flowRefs.set(flow.id, { flowId: flow.id, ownerUid: _userId, role: 'owner', order: 0 });
+  _flowDocs.set(flow.id, { id: flow.id, ...flow, ownerUid: _userId, order: 0 });
+  _flowSteps.set(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
+  _mergeAndNotify();
+
+  if (_userId) {
+    try {
+      if (isSupabasePlanBackendEnabled()) {
+        await saveSupabasePlan({ ...flow, _role: 'owner' });
+        await replaceSupabasePlanSteps(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
+      } else {
+        await _saveFlowToGlobal(_userId, { ...flow, ownerUid: _userId, _role: 'owner' }, {
+          syncSteps: true,
+          previousSteps: [],
+          flowExists: false,
+        });
+      }
+    } catch (e) {
+      console.warn('[FlowSync] addFlow backend save error:', e);
+    }
+
+    try {
+      const ownFlows = Array.from(_flowDocs.values())
+        .filter(f => !f._ownerUid || f._role === 'owner')
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      await AsyncStorage.setItem(getFlowsStorageKey(_userId), JSON.stringify(ownFlows));
+    } catch (e) {
+      console.warn('[FlowSync] addFlow AsyncStorage error:', e);
+    }
+  }
+
+  return _cachedFlows;
 };
 
 export const deleteFlow = async (id) => {
@@ -867,6 +1097,18 @@ export const deleteFlow = async (id) => {
   _mergeAndNotify();
 
   if (_userId) {
+    if (isSupabasePlanBackendEnabled()) {
+      try {
+        const role = _flowRefs.get(id)?.role || _flowDocs.get(id)?._role || 'owner';
+        if (role === 'owner') {
+          await deleteSupabasePlan(id);
+        } else {
+          await leaveSupabasePlan(id);
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[FlowSync] deleteFlow Supabase error:', e);
+      }
+    } else {
     try {
       const membersSnapshot = await _membersCollection(id).get();
       const stepsSnapshot = await _stepsCollection(id).get();
@@ -881,6 +1123,7 @@ export const deleteFlow = async (id) => {
       await batch.commit();
     } catch (e) {
       if (__DEV__) console.warn('[FlowSync] deleteFlow Firestore error:', e);
+    }
     }
   }
 
