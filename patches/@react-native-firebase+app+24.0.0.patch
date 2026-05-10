@@ -1,0 +1,50 @@
+diff --git a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBAppModule.m b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBAppModule.m
+index 878f6c8..f1f5ee2 100644
+--- a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBAppModule.m
++++ b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBAppModule.m
+@@ -15,6 +15,8 @@
+  *
+  */
+ 
++#import <React/RCTDefines.h>
++#import <React/RCTBridgeModule.h>
+ #import <Firebase/Firebase.h>
+ #import <React/RCTUtils.h>
+ 
+diff --git a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBSharedUtils.h b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBSharedUtils.h
+index 7f0e06d..3577a2f 100644
+--- a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBSharedUtils.h
++++ b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBSharedUtils.h
+@@ -19,6 +19,7 @@
+ #define RNFBSharedUtils_h
+ 
+ #import <FirebaseCore/FirebaseCore.h>
++#import <RNFBApp/RNFBAppModule.h>
+ #import <React/RCTBridgeModule.h>
+ 
+ #ifdef DEBUG
+diff --git a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.h b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.h
+index 40714ff..1845d55 100644
+--- a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.h
++++ b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.h
+@@ -18,6 +18,7 @@
+ #import <Foundation/Foundation.h>
+ #import <Photos/Photos.h>
+ 
++#import <RNFBApp/RNFBAppModule.h>
+ #import <React/RCTBridgeModule.h>
+ 
+ @interface RNFBUtilsModule : NSObject <RCTBridgeModule>
+diff --git a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.m b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.m
+index b246cb1..64dd1c8 100644
+--- a/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.m
++++ b/node_modules/@react-native-firebase/app/ios/RNFBApp/RNFBUtilsModule.m
+@@ -15,6 +15,8 @@
+  *
+  */
+ 
++#import <React/RCTDefines.h>
++#import <React/RCTBridgeModule.h>
+ #import <React/RCTUtils.h>
+ 
+ #import "RNFBApp/RNFBSharedUtils.h"
