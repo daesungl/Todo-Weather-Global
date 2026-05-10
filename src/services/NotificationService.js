@@ -227,6 +227,32 @@ export const requestBadgePermission = async (uid = null) => {
   }
 };
 
+export const requestSharedPlanNotificationPermission = async (uid = null) => {
+  try {
+    await setupAndroidChannel();
+
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    if (existing === 'granted') {
+      if (uid) registerPushToken(uid);
+      return true;
+    }
+    if (existing === 'denied') return false;
+
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
+    const granted = status === 'granted';
+    if (granted && uid) registerPushToken(uid);
+    return granted;
+  } catch {
+    return false;
+  }
+};
+
 export const hasPermission = async () => {
   try {
     const { status } = await Notifications.getPermissionsAsync();

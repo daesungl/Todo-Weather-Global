@@ -84,7 +84,7 @@ import {
   syncMemberDisplayName,
   syncMemberCount,
 } from '../services/InviteService';
-import { requestPermission, requestBadgePermission, getNotificationPermissionStatus, scheduleNotification, cancelNotification, refillStepNotifications, getUserNotifPrefs, setUserNotifPref, deleteUserNotifPref } from '../services/NotificationService';
+import { requestPermission, requestSharedPlanNotificationPermission, getNotificationPermissionStatus, scheduleNotification, cancelNotification, refillStepNotifications, getUserNotifPrefs, setUserNotifPref, deleteUserNotifPref } from '../services/NotificationService';
 import { markFlowBadgeRead, subscribeToUnreadFlowBadges } from '../services/FlowBadgeService';
 import * as CommentService from '../services/CommentService';
 import { getFlowUnreadInfo as getSharedFlowUnreadInfo } from '../utils/flowUnread';
@@ -1083,8 +1083,9 @@ const FlowScreen = ({ navigation, route }) => {
     maybePromptForBadgePermission(flow);
   };
 
-  const maybePromptForBadgePermission = async (flow) => {
-    if (Platform.OS !== 'ios' || !flow || !_isSharedFlow(flow)) return;
+  const maybePromptForBadgePermission = async (flow, options = {}) => {
+    const isSharedPrompt = options.forceShared || (flow && _isSharedFlow(flow));
+    if (!isSharedPrompt) return;
     try {
       const hasPrompted = await AsyncStorage.getItem(BADGE_PERMISSION_PROMPT_KEY);
       if (hasPrompted) return;
@@ -1097,9 +1098,9 @@ const FlowScreen = ({ navigation, route }) => {
 
       await AsyncStorage.setItem(BADGE_PERMISSION_PROMPT_KEY, '1');
       showConfirm(
-        t('flow.badge_permission_title', '공유 플랜 알림 표시'),
-        t('flow.badge_permission_message', '새 일정과 댓글을 놓치지 않도록 앱 아이콘에 표시할 수 있어요.'),
-        () => requestBadgePermission(user?.uid),
+        t('flow.badge_permission_title', '공유 플랜 알림'),
+        t('flow.badge_permission_message', '새 일정과 댓글을 놓치지 않도록 알림과 앱 아이콘 배지로 알려드릴게요.'),
+        () => requestSharedPlanNotificationPermission(user?.uid),
         false,
         t('common.confirm'),
         true
@@ -1440,7 +1441,8 @@ const FlowScreen = ({ navigation, route }) => {
         showConfirm(
           t('flow.alert.join_success'),
           `${titleLabel}${t('flow.alert.join_success_msg')}`,
-          null, false
+          () => maybePromptForBadgePermission({ id: result.flowId }, { forceShared: true }),
+          false
         );
       }
     } catch (e) {

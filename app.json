@@ -48,6 +48,7 @@
       "versionCode": 22,
       "googleServicesFile": "./google-services.json",
       "notification": {
+        "icon": "./assets/notification-icon.png",
         "color": "#00a4df"
       },
       "permissions": [

@@ -5,15 +5,15 @@ import {
   StyleSheet,
   Image,
   ScrollView,
-  SafeAreaView,
   Modal,
   TextInput,
   Alert,
   ActivityIndicator,
   Platform,
   TouchableOpacity,
-  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +31,7 @@ const ProfileScreen = ({ navigation }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const isLoggingOutRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -38,6 +39,25 @@ const ProfileScreen = ({ navigation }) => {
       navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
     }
   }, [navigation, user]);
+
+  React.useEffect(() => {
+    if (!isEditModalVisible) {
+      setKeyboardHeight(0);
+      return undefined;
+    }
+
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [isEditModalVisible]);
 
   if (!user) return null;
 
@@ -170,7 +190,7 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Custom Header */}
       <View style={styles.navBar}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -264,11 +284,8 @@ const ProfileScreen = ({ navigation }) => {
         transparent={true}
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalContent}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, keyboardHeight > 0 && { marginBottom: keyboardHeight }]}>
             <View style={styles.modalHeader}>
               <TouchableOpacity
                 onPress={() => setEditModalVisible(false)}
@@ -309,10 +326,12 @@ const ProfileScreen = ({ navigation }) => {
                 placeholder={t('auth.enterName', { defaultValue: 'Enter your name' })}
                 autoFocus={true}
                 autoCapitalize="none"
+                returnKeyType="done"
+                onSubmitEditing={handleUpdateProfile}
               />
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
