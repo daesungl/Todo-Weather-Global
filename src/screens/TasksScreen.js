@@ -22,6 +22,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { BorderlessButton } from 'react-native-gesture-handler';
+import ViewShot from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -522,6 +524,7 @@ const TasksScreen = ({ navigation }) => {
   const [taskWeather, setTaskWeather] = useState({});
   const [loading, setLoading] = useState(true);
   const [isTaskSaving, setIsTaskSaving] = useState(false);
+  const [isSharingTaskImage, setIsSharingTaskImage] = useState(false);
   const [topAdHidden, setTopAdHidden] = useState(false);
   const [footerAdHidden, setFooterAdHidden] = useState(false);
   const insets = useSafeAreaInsets();
@@ -563,6 +566,7 @@ const TasksScreen = ({ navigation }) => {
   const titleInputRef = useRef(null);
   const modalScrollRef = useRef(null);
   const calendarListRef = useRef(null);
+  const taskDetailShotRef = useRef(null);
   const isScrollingRef = useRef(false);
   const sheetAnim = useRef(new Animated.Value(0)).current; // 0: list, 1: detail
   const [isDetailMenuVisible, setIsDetailMenuVisible] = useState(false);
@@ -1430,6 +1434,35 @@ const TasksScreen = ({ navigation }) => {
     if (willComplete) onTaskCompleted();
   };
 
+  const handleShareTaskImage = async () => {
+    if (!taskDetailShotRef.current || !selectedTaskDetail || isSharingTaskImage) return;
+
+    setIsSharingTaskImage(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const uri = await taskDetailShotRef.current.capture();
+      if (!uri) return;
+
+      const isSharingAvailable = await Sharing.isAvailableAsync();
+      if (!isSharingAvailable) {
+        Alert.alert(t('common.error'), t('tasks.share_unavailable', 'Sharing is not available on this device.'));
+        return;
+      }
+
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: selectedTaskDetail.title || t('tasks.detail', 'Task'),
+        UTI: 'public.png',
+      });
+    } catch (error) {
+      console.error('[TasksScreen] share task image failed:', error);
+      Alert.alert(t('common.error'), t('tasks.share_failed', 'Failed to share this task as an image.'));
+    } finally {
+      setIsSharingTaskImage(false);
+    }
+  };
+
   const handleDelete = (id, onComplete) => {
     const task = tasks.find(t => t.id === id);
     if (task?.repeatGroupId) {
@@ -1892,74 +1925,81 @@ const TasksScreen = ({ navigation }) => {
                       showsVerticalScrollIndicator={false}
                       contentContainerStyle={{ paddingBottom: 60 }}
                     >
-                      <View style={styles.detailBody}>
-                        <View style={styles.detailTitleSection}>
-                          <View style={[styles.detailColorBar, { backgroundColor: selectedTaskDetail.color || Colors.primary }]} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
-                            {selectedTaskDetail.isFlowTask && (
-                              <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' }}>
-                                {t('tasks.flowReadOnlyNotice', '* This task is read-only information managed in Plan.')}
-                              </Text>
+                      <ViewShot
+                        ref={taskDetailShotRef}
+                        options={{ format: 'png', quality: 0.9 }}
+                        style={styles.taskShareShot}
+                        collapsable={false}
+                      >
+                        <View style={styles.detailBody}>
+                          <View style={styles.detailTitleSection}>
+                            <View style={[styles.detailColorBar, { backgroundColor: selectedTaskDetail.color || Colors.primary }]} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.detailTitle, { color: Colors.text }, selectedTaskDetail.isCompleted && styles.taskTitleCompleted]}>{selectedTaskDetail.title}</Text>
+                              {selectedTaskDetail.isFlowTask && (
+                                <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' }}>
+                                  {t('tasks.flowReadOnlyNotice', '* This task is read-only information managed in Plan.')}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+
+                          <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>
+                            {(() => {
+                              const { year, main } = formatDetailDate(selectedTaskDetail.date); return (
+                                <View style={{ alignItems: 'center' }}>
+                                  <Text style={styles.detailDateYear}>{year}</Text>
+                                  <Text style={styles.detailDateMain}>{main}</Text>
+                                  {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.time || '00:00'}</Text>}
+                                </View>
+                              );
+                            })()}
+                            <ArrowRight size={24} color={Colors.primary} />
+                            {(() => {
+                              const { year, main } = formatDetailDate(selectedTaskDetail.endDate || selectedTaskDetail.date); return (
+                                <View style={{ alignItems: 'center' }}>
+                                  <Text style={styles.detailDateYear}>{year}</Text>
+                                  <Text style={styles.detailDateMain}>{main}</Text>
+                                  {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.endTime || selectedTaskDetail.time || '00:00'}</Text>}
+                                </View>
+                              );
+                            })()}
+                          </View>
+
+                          <View style={styles.detailInfoList}>
+                            {selectedTaskDetail.isAllDay && (
+                              <View style={styles.detailInfoItem}>
+                                <Clock size={20} color={Colors.outline} />
+                                <Text style={styles.detailInfoText}>{t('tasks.allDay', '종일')}</Text>
+                              </View>
                             )}
-                          </View>
-                        </View>
-
-                        <View style={[styles.detailDateSection, { justifyContent: 'center', gap: 15 }]}>
-                          {(() => {
-                            const { year, main } = formatDetailDate(selectedTaskDetail.date); return (
-                              <View style={{ alignItems: 'center' }}>
-                                <Text style={styles.detailDateYear}>{year}</Text>
-                                <Text style={styles.detailDateMain}>{main}</Text>
-                                {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.time || '00:00'}</Text>}
+                            {!!(selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion) && (
+                              <View style={styles.detailInfoItem}>
+                                <MapPin size={20} color={Colors.outline} />
+                                <Text style={styles.detailInfoText}>
+                                  {selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion?.name}
+                                </Text>
                               </View>
-                            );
-                          })()}
-                          <ArrowRight size={24} color={Colors.primary} />
-                          {(() => {
-                            const { year, main } = formatDetailDate(selectedTaskDetail.endDate || selectedTaskDetail.date); return (
-                              <View style={{ alignItems: 'center' }}>
-                                <Text style={styles.detailDateYear}>{year}</Text>
-                                <Text style={styles.detailDateMain}>{main}</Text>
-                                {!selectedTaskDetail.isAllDay && <Text style={styles.detailDateTime}>{selectedTaskDetail.endTime || selectedTaskDetail.time || '00:00'}</Text>}
+                            )}
+                            <View style={styles.detailInfoItem}>
+                              <Tag size={20} color={Colors.outline} />
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: selectedTaskDetail.color || Colors.primary }} />
+                                <Text style={styles.detailInfoText}>
+                                  {(() => {
+                                    const label = TASK_COLOR_LABELS.find(l => l.color === (selectedTaskDetail.color || Colors.primary));
+                                    return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.defaultColor', 'Default Color');
+                                  })()}
+                                </Text>
                               </View>
-                            );
-                          })()}
-                        </View>
-
-                        <View style={styles.detailInfoList}>
-                          {selectedTaskDetail.isAllDay && (
-                            <View style={styles.detailInfoItem}>
-                              <Clock size={20} color={Colors.outline} />
-                              <Text style={styles.detailInfoText}>{t('tasks.allDay', '종일')}</Text>
                             </View>
-                          )}
-                          {!!(selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion) && (
                             <View style={styles.detailInfoItem}>
-                              <MapPin size={20} color={Colors.outline} />
-                              <Text style={styles.detailInfoText}>
-                                {selectedTaskDetail.locationName || selectedTaskDetail.weatherRegion?.name}
-                              </Text>
-                            </View>
-                          )}
-                          <View style={styles.detailInfoItem}>
-                            <Tag size={20} color={Colors.outline} />
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                              <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: selectedTaskDetail.color || Colors.primary }} />
-                              <Text style={styles.detailInfoText}>
-                                {(() => {
-                                  const label = TASK_COLOR_LABELS.find(l => l.color === (selectedTaskDetail.color || Colors.primary));
-                                  return label ? t(`tasks.colors.${label.key}`, label.name) : t('tasks.defaultColor', 'Default Color');
-                                })()}
-                              </Text>
+                              <AlignLeft size={20} color={Colors.outline} />
+                              <Text style={styles.detailInfoText}>{selectedTaskDetail.memo || 'No memo'}</Text>
                             </View>
                           </View>
-                          <View style={styles.detailInfoItem}>
-                            <AlignLeft size={20} color={Colors.outline} />
-                            <Text style={styles.detailInfoText}>{selectedTaskDetail.memo || 'No memo'}</Text>
-                          </View>
                         </View>
-                      </View>
+                      </ViewShot>
                     </ScrollView>
                   )}
 
@@ -2007,6 +2047,22 @@ const TasksScreen = ({ navigation }) => {
                           showToast(t('tasks.copy_success'));
                         }}>
                           <Share2 size={18} color={Colors.text} /><Text style={styles.menuText}>{t('tasks.share')}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          disabled={isSharingTaskImage}
+                          onPress={() => {
+                            setIsDetailMenuVisible(false);
+                            setTimeout(handleShareTaskImage, 120);
+                          }}
+                        >
+                          {isSharingTaskImage ? (
+                            <ActivityIndicator size="small" color={Colors.text} />
+                          ) : (
+                            <Share2 size={18} color={Colors.text} />
+                          )}
+                          <Text style={styles.menuText}>{t('tasks.share_as_image', 'Share as Image')}</Text>
                         </TouchableOpacity>
 
                         {!selectedTaskDetail.isFlowTask && (
@@ -3804,6 +3860,7 @@ const styles = StyleSheet.create({
   detailHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, height: 60 },
   detailHeaderBtn: { padding: 10 },
   detailBody: { paddingHorizontal: 24, paddingTop: 10 },
+  taskShareShot: { backgroundColor: 'white', paddingBottom: 36 },
   detailTitleSection: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 32 },
   detailColorBar: { width: 6, height: 32, borderRadius: 3, marginRight: 16, marginTop: 4 },
   detailTitle: { flex: 1, fontSize: 26, fontWeight: '800', lineHeight: 34 },
