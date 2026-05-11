@@ -284,6 +284,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [pendingPermissions, setPendingPermissions] = useState({});  // { [uid]: permissions }
   const [applyingPermissions, setApplyingPermissions] = useState({});  // { [uid]: bool }
   const [isLeaving, setIsLeaving] = useState(false);
+  const isLeavingRef = useRef(false);
   const prevSelectedFlowRoleRef = useRef(null); // tracks { _role, _permissions } to detect perm changes
   const [comments, setComments] = useState([]);
   const [isMembersLoading, setIsMembersLoading] = useState(false);
@@ -415,7 +416,7 @@ const FlowScreen = ({ navigation, route }) => {
           if (__DEV__) console.log('[FlowScreen] Syncing selectedFlow with latest from subscription');
           setSelectedFlow(latest);
         }
-      } else if (!isFlowOwner(selectedFlow) && !isLeaving) {
+      } else if (!isFlowOwner(selectedFlow) && !isLeavingRef.current) {
         // Kick detected: User is not owner AND flow is gone from the list AND user didn't leave voluntarily
         prevSelectedFlowRoleRef.current = null;
         setInviteModalVisible(false);
@@ -1092,6 +1093,9 @@ const FlowScreen = ({ navigation, route }) => {
 
       const status = await getNotificationPermissionStatus();
       if (status !== 'undetermined') {
+        if (status === 'granted' && user?.uid) {
+          requestSharedPlanNotificationPermission(user.uid).catch(() => {});
+        }
         await AsyncStorage.setItem(BADGE_PERMISSION_PROMPT_KEY, '1');
         return;
       }
@@ -1222,7 +1226,7 @@ const FlowScreen = ({ navigation, route }) => {
     const unsub = subscribeToFlowMembers(ownerUid, selectedFlow.id, (members) => {
       const currentFlow = selectedFlowRef.current || selectedFlow;
       const myEntry = members.find(m => m.uid === user?.uid);
-      if (!isOwner && !myEntry && !isLeaving) {
+      if (!isOwner && !myEntry && !isLeavingRef.current) {
         const kickedFlowId = selectedFlow.id;
         setFlowMembers([]);
         setFlows(prev => prev.filter(flow => flow.id !== kickedFlowId));
@@ -2637,6 +2641,7 @@ const FlowScreen = ({ navigation, route }) => {
         t('flow.alert.leave_flow_msg'),
         async () => {
           setIsLeaving(true);
+          isLeavingRef.current = true;
           try {
             removeSharedFlowOptimistic(flow.id);
             setSelectedFlow(null);
@@ -2646,6 +2651,9 @@ const FlowScreen = ({ navigation, route }) => {
             showConfirm(t('common.error'), e.message, null, false);
           } finally {
             setIsLeaving(false);
+            setTimeout(() => {
+              isLeavingRef.current = false;
+            }, 1000);
           }
         },
         true,

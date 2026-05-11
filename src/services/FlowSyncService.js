@@ -14,6 +14,7 @@ import {
 const getFlowsStorageKey = (uid) => `@todo_weather_flows_${uid || 'guest'}`;
 const getSharedFlowsStorageKey = (uid) => `@todo_weather_shared_flows_${uid}`;
 const MIGRATION_KEY_PREFIX = '@flows_global_schema_migrated_';
+const SUPABASE_MIGRATION_KEY_PREFIX = '@flows_supabase_migrated_';
 
 let _userId = null;
 let _snapshotListeners = new Set();
@@ -440,6 +441,80 @@ const _migrateLegacyFlow = async (uid, flow) => {
   await _saveFlowRef(uid, { ...flow, ownerUid: uid, _role: 'owner' });
 };
 
+const _saveLegacyFlowToSupabase = async (uid, flow) => {
+  if (!uid || !flow?.id) return;
+  const ownerUid = flow.ownerUid || flow._ownerUid || uid;
+  if (ownerUid !== uid) return;
+  const steps = _filterDeletedSteps(flow.id, flow.steps || []);
+  await saveSupabasePlan({ ...flow, ownerUid, _role: 'owner' });
+  await replaceSupabasePlanSteps(flow.id, steps, { markUpdated: false });
+};
+
+const _migrateSupabaseIfNeeded = async (uid) => {
+  if (!uid || !isSupabasePlanBackendEnabled()) return;
+  try {
+    const migrationKey = `${SUPABASE_MIGRATION_KEY_PREFIX}${uid}`;
+    const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
+    if (alreadyMigrated) {
+      const existingPlans = await listSupabasePlans();
+      if (existingPlans.length > 0) return;
+    }
+
+    const migratedIds = new Set();
+
+    const localJson = await AsyncStorage.getItem(getFlowsStorageKey(uid));
+    const legacyJson = await AsyncStorage.getItem('@todo_weather_flows');
+    const localFlows = localJson ? JSON.parse(localJson) : (legacyJson ? JSON.parse(legacyJson) : []);
+    for (const flow of Array.isArray(localFlows) ? localFlows : []) {
+      if (flow?._ownerUid || migratedIds.has(flow?.id)) continue;
+      try {
+        await _saveLegacyFlowToSupabase(uid, flow);
+        migratedIds.add(flow.id);
+      } catch (e) {
+        console.warn('[FlowSync] Supabase local flow migration skipped:', flow?.id, e);
+      }
+    }
+
+    const refSnapshot = await _flowRefsCollection(uid).get();
+    for (const refDoc of refSnapshot.docs) {
+      const refData = refDoc.data() || {};
+      if ((refData.role || 'owner') !== 'owner' || migratedIds.has(refDoc.id)) continue;
+      try {
+        const flowDoc = await _globalFlowsCollection().doc(refDoc.id).get();
+        if (!_docExists(flowDoc)) continue;
+        const stepsSnapshot = await _stepsCollection(refDoc.id).get();
+        const steps = stepsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        await _saveLegacyFlowToSupabase(uid, {
+          id: flowDoc.id,
+          ...flowDoc.data(),
+          steps,
+          order: refData.order,
+          ownerUid: uid,
+          _role: 'owner',
+        });
+        migratedIds.add(refDoc.id);
+      } catch (e) {
+        console.warn('[FlowSync] Supabase global flow migration skipped:', refDoc.id, e);
+      }
+    }
+
+    const legacyOwnSnapshot = await _legacyFlowsCollection(uid).get();
+    for (const doc of legacyOwnSnapshot.docs) {
+      if (migratedIds.has(doc.id)) continue;
+      try {
+        await _saveLegacyFlowToSupabase(uid, { id: doc.id, ...doc.data() });
+        migratedIds.add(doc.id);
+      } catch (e) {
+        console.warn('[FlowSync] Supabase legacy flow migration skipped:', doc.id, e);
+      }
+    }
+
+    await AsyncStorage.setItem(migrationKey, '1');
+  } catch (e) {
+    console.warn('[FlowSync] Supabase migration error:', e);
+  }
+};
+
 const _migrateIfNeeded = async (uid) => {
   try {
     const migrationKey = `${MIGRATION_KEY_PREFIX}${uid}`;
@@ -658,7 +733,9 @@ const _initFlowSyncInternal = async (uid) => {
   _stopMembershipPoll();
 
   if (uid) {
-    if (!isSupabasePlanBackendEnabled()) {
+    if (isSupabasePlanBackendEnabled()) {
+      await _migrateSupabaseIfNeeded(uid);
+    } else {
       await _migrateIfNeeded(uid);
     }
     try {

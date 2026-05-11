@@ -18,6 +18,7 @@
     "supabase:use:dev": "node scripts/switch-supabase-env.js dev",
     "supabase:use:prod": "node scripts/switch-supabase-env.js prod",
     "supabase:link:dev": "supabase link --project-ref ghrhxxlhhohgkdummdaq",
+    "supabase:link:prod": "supabase link --project-ref lptwysebhpaxgcmsrmgk",
     "supabase:deploy": "supabase db push && supabase functions deploy plan-api --no-verify-jwt",
     "env:use:dev": "node scripts/switch-firebase-env.js dev && node scripts/switch-supabase-env.js dev",
     "env:use:prod": "node scripts/switch-firebase-env.js prod && node scripts/switch-supabase-env.js prod",

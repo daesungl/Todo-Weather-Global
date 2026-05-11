@@ -206,6 +206,7 @@ const sendExpoPush = async (
       body: JSON.stringify(chunk.map(token => ({
         to: token,
         sound: 'default',
+        channelId: 'schedule_alerts',
         title: message.title,
         body: message.body,
         badge: message.badge,

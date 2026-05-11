@@ -18,6 +18,17 @@ const _docToTask = (doc) => ({ id: doc.id, ...doc.data() });
 
 const _tasksFromSnapshot = (snapshot) => snapshot.docs.map(_docToTask);
 
+const _loadLocalTasks = async () => {
+  try {
+    const json = await AsyncStorage.getItem(TASKS_STORAGE_KEY);
+    const tasks = json ? JSON.parse(json) : [];
+    return Array.isArray(tasks) ? tasks : [];
+  } catch (e) {
+    console.error('[TaskSync] local task cache error:', e);
+    return [];
+  }
+};
+
 const _batchWrite = async (uid, toSet = [], toDelete = []) => {
   const col = _tasksCollection(uid);
   const allOps = [
@@ -108,7 +119,10 @@ export const initTaskSync = async (uid) => {
   _cachedTasks = null;
 
   if (uid) {
-    await _migrateIfNeeded(uid);
+    const localTasks = await _loadLocalTasks();
+    _cachedTasks = localTasks;
+    _snapshotListeners.forEach((cb) => cb(localTasks));
+    _migrateIfNeeded(uid).catch(e => console.warn('[TaskSync] Migration error:', e));
     _startFirestoreSubscription(uid);
   } else {
     if (_unsubscribeFirestore) {
@@ -129,9 +143,10 @@ export const subscribeToTasks = (callback) => {
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export const getTasks = async () => {
+  if (_cachedTasks !== null) return _cachedTasks;
+
   if (_userId) {
     try {
-      if (_cachedTasks !== null) return _cachedTasks;
       const snapshot = await _tasksCollection(_userId).get();
       const tasks = _tasksFromSnapshot(snapshot);
       _cachedTasks = tasks;
@@ -140,13 +155,7 @@ export const getTasks = async () => {
       console.warn('[TaskSync] getTasks Firestore error, falling back:', e);
     }
   }
-  try {
-    const json = await AsyncStorage.getItem(TASKS_STORAGE_KEY);
-    return json ? JSON.parse(json) : [];
-  } catch (e) {
-    console.error('[TaskSync] getTasks AsyncStorage error:', e);
-    return [];
-  }
+  return _loadLocalTasks();
 };
 
 // ─── saveTasks: full rewrite (migration & internal bulk use only) ─────────────

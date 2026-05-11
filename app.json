@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "58",
+      "buildNumber": "59",
       "newArchEnabled": true,
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -45,7 +45,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",
-      "versionCode": 24,
+      "versionCode": 25,
       "googleServicesFile": "./google-services.json",
       "notification": {
         "icon": "./assets/notification-icon.png",
@@ -155,7 +155,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#00a4df",
           "sounds": []
         }

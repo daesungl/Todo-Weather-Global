@@ -118,6 +118,7 @@ export const setupAndroidChannel = async () => {
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#469dd3',
     sound: 'default',
+    showBadge: true,
   });
 };
 
@@ -207,7 +208,7 @@ export const requestBadgePermission = async (uid = null) => {
 
     const { status: existing } = await Notifications.getPermissionsAsync();
     if (existing === 'granted') {
-      if (uid) registerPushToken(uid);
+      if (uid) await registerPushToken(uid);
       return true;
     }
     if (existing === 'denied') return false;
@@ -220,7 +221,7 @@ export const requestBadgePermission = async (uid = null) => {
       },
     });
     const granted = status === 'granted';
-    if (granted && uid) registerPushToken(uid);
+    if (granted && uid) await registerPushToken(uid);
     return granted;
   } catch {
     return false;
@@ -233,7 +234,7 @@ export const requestSharedPlanNotificationPermission = async (uid = null) => {
 
     const { status: existing } = await Notifications.getPermissionsAsync();
     if (existing === 'granted') {
-      if (uid) registerPushToken(uid);
+      if (uid) await registerPushToken(uid);
       return true;
     }
     if (existing === 'denied') return false;
@@ -246,7 +247,7 @@ export const requestSharedPlanNotificationPermission = async (uid = null) => {
       },
     });
     const granted = status === 'granted';
-    if (granted && uid) registerPushToken(uid);
+    if (granted && uid) await registerPushToken(uid);
     return granted;
   } catch {
     return false;

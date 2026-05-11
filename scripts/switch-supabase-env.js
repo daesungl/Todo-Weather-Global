@@ -55,7 +55,7 @@ if (!fs.existsSync(constantsDir)) fs.mkdirSync(constantsDir, { recursive: true }
 const envConstFile = path.join(constantsDir, 'SupabaseEnv.js');
 fs.writeFileSync(
   envConstFile,
-  `export const SUPABASE_ENV = '${env}';\nexport const SUPABASE_PROJECT_REF = '${config.projectRef}';\nexport const IS_SUPABASE_DEV = SUPABASE_ENV === 'dev';\n`
+  `export const SUPABASE_ENV = '${env}';\nexport const SUPABASE_PROJECT_REF = '${config.projectRef}';\nexport const SUPABASE_CONFIG_URL = '${config.url}';\nexport const SUPABASE_CONFIG_ANON_KEY = '${config.anonKey}';\nexport const SUPABASE_PLAN_BACKEND = '${config.planBackend}';\nexport const IS_SUPABASE_DEV = SUPABASE_ENV === 'dev';\n`
 );
 console.log(`${env} -> ${path.relative(root, envConstFile)}`);
 console.log(`Supabase environment switched to ${env}`);
