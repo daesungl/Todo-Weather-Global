@@ -363,6 +363,9 @@ Deno.serve(async (req) => {
       if (!token) throw new Response('Missing push token', { status: 400, headers: corsHeaders });
       const tokenId = tokenDocId(token);
       if (!tokenId) throw new Response('Invalid push token', { status: 400, headers: corsHeaders });
+      
+      await admin.from('user_push_tokens').delete().eq('token_id', tokenId).neq('uid', user.uid);
+
       await admin.from('user_push_tokens').upsert({
         uid: user.uid,
         token_id: tokenId,

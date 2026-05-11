@@ -5,6 +5,7 @@ import {
   listUnreadPlanBadges,
   markPlanRead,
 } from './supabase/PlanApiService';
+import { getSupabaseClient } from './supabase/client';
 
 const docExists = (doc) =>
   typeof doc?.exists === 'function' ? doc.exists() : !!doc?.exists;
@@ -29,10 +30,22 @@ export const subscribeToFlowBadgeState = (uid, callback) => {
       }
     };
     load();
-    const interval = setInterval(load, 15000);
+    const interval = setInterval(load, 60000);
+
+    const client = getSupabaseClient();
+    let channel = null;
+    if (client) {
+      channel = client.channel(`badge_state_${uid}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'user_badge_state', filter: `uid=eq.${uid}` }, () => {
+          if (!cancelled) load();
+        })
+        .subscribe();
+    }
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      if (channel) channel.unsubscribe();
     };
   }
 
@@ -81,10 +94,22 @@ export const subscribeToUnreadFlowBadges = (uid, callback) => {
       }
     };
     load();
-    const interval = setInterval(load, 15000);
+    const interval = setInterval(load, 60000);
+
+    const client = getSupabaseClient();
+    let channel = null;
+    if (client) {
+      channel = client.channel(`unread_badges_${uid}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'unread_plan_badges', filter: `uid=eq.${uid}` }, () => {
+          if (!cancelled) load();
+        })
+        .subscribe();
+    }
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      if (channel) channel.unsubscribe();
     };
   }
 

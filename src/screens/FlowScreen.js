@@ -3528,8 +3528,13 @@ const FlowScreen = ({ navigation, route }) => {
                     <ScaleDecorator>
                       <View style={styles.flowCardContainer}>
                         {flow.inactive ? (
-                          <View style={styles.flowCardLocked}>
-                            <LinearGradient colors={['#9ca3af', '#6b7280']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.flowCard, { opacity: 0.7 }]}>
+                          <View style={[styles.flowCardLocked, {
+                            ...Platform.select({
+                              ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20 },
+                              android: { elevation: 8 }
+                            })
+                          }]}>
+                            <LinearGradient colors={['#9ca3af', '#6b7280']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.flowCard, { opacity: 0.7, elevation: 0, shadowOpacity: 0 }]}>
                               <TouchableOpacity
                                 onPress={() => {
                                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -4921,13 +4926,21 @@ const styles = StyleSheet.create({
   flowCardContainer: {
     marginBottom: Spacing.lg,
     borderRadius: 32,
+    backgroundColor: 'transparent',
+  },
+  flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
+  flowCard: { 
+    paddingTop: 20, 
+    paddingHorizontal: Spacing.xl, 
+    paddingBottom: 22, 
+    borderRadius: 32, 
+    height: 220, 
+    flexDirection: 'column',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20 },
       android: { elevation: 8 }
     }),
   },
-  flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
-  flowCard: { paddingTop: 20, paddingHorizontal: Spacing.xl, paddingBottom: 22, borderRadius: 32, height: 220, flexDirection: 'column' },
   cardUnreadDotRing: { position: 'absolute', top: 13, right: 13, width: 14, height: 14, borderRadius: 7, backgroundColor: 'white', zIndex: 1, alignItems: 'center', justifyContent: 'center' },
   cardUnreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FF3B30' },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

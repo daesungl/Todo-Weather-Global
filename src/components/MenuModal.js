@@ -204,14 +204,14 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
           <View style={[styles.container, { paddingTop: Constants.statusBarHeight }]}>
             {activeSubMenu === 'settings' ? (
               <>
-                <View style={styles.header}>
-                  <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8, marginLeft: -8 }}>
+                <View style={[styles.header, { paddingHorizontal: Spacing.lg, justifyContent: 'flex-start', gap: 8 }]}>
+                  <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8 }}>
                     <ArrowLeft size={24} color={Colors.text} />
                   </TouchableOpacity>
+                  <Text style={Typography.h2}>{t('menu.pref_title')}</Text>
                 </View>
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-                  <Text style={[Typography.h2, { marginBottom: 8 }]}>{t('menu.pref_title')}</Text>
-                  <Text style={[Typography.body, { color: Colors.textSecondary, marginBottom: 24 }]}>{t('menu.pref_desc')}</Text>
+                  <Text style={[Typography.body, { color: Colors.textSecondary, marginBottom: 24, lineHeight: 22 }]}>{t('menu.pref_desc')}</Text>
 
                   <View style={styles.prefSection}>
                     <View style={styles.prefSectionHeader}>
@@ -230,7 +230,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                         >
                           <View style={{ flex: 1 }}>
                             <Text style={[Typography.body, { fontWeight: '700', color: tempUnit === opt.key ? Colors.primary : Colors.text }]}>{opt.label}</Text>
-                            <Text style={styles.subText}>{opt.desc}</Text>
+                            <Text style={[styles.subText, { lineHeight: 18 }]}>{opt.desc}</Text>
                           </View>
                           {tempUnit === opt.key && <CheckCircle2 size={20} color={Colors.primary} />}
                         </TouchableOpacity>
@@ -256,7 +256,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                         >
                           <View style={{ flex: 1 }}>
                             <Text style={[Typography.body, { fontWeight: '700', color: windUnit === opt.key ? Colors.primary : Colors.text }]}>{opt.label}</Text>
-                            <Text style={styles.subText}>{opt.desc}</Text>
+                            <Text style={[styles.subText, { lineHeight: 18 }]}>{opt.desc}</Text>
                           </View>
                           {windUnit === opt.key && <CheckCircle2 size={20} color={Colors.primary} />}
                         </TouchableOpacity>
@@ -267,14 +267,14 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
               </>
             ) : activeSubMenu === 'source' ? (
               <>
-                <View style={styles.header}>
-                  <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8, marginLeft: -8 }}>
+                <View style={[styles.header, { paddingHorizontal: Spacing.lg, justifyContent: 'flex-start', gap: 8 }]}>
+                  <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8 }}>
                     <ArrowLeft size={24} color={Colors.text} />
                   </TouchableOpacity>
+                  <Text style={Typography.h2}>{t('menu.source_title', 'Weather Source Settings')}</Text>
                 </View>
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-                  <Text style={[Typography.h2, { marginBottom: 8 }]}>{t('menu.source_title', 'Weather Source Settings')}</Text>
-                  <Text style={[Typography.body, { color: Colors.textSecondary, marginBottom: 24 }]}>
+                  <Text style={[Typography.body, { color: Colors.textSecondary, marginBottom: 24, lineHeight: 22 }]}>
                     {t('menu.source_desc')}
                   </Text>
 
@@ -282,20 +282,20 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                     <TouchableOpacity style={[styles.menuItem, { borderColor: Colors.primary, borderWidth: 1 }]}>
                       <View style={{ flex: 1 }}>
                         <Text style={[Typography.body, { fontWeight: '700', color: Colors.primary }]}>{t('menu.source_auto')}</Text>
-                        <Text style={styles.subText}>{t('menu.source_auto_desc')}</Text>
+                        <Text style={[styles.subText, { lineHeight: 18 }]}>{t('menu.source_auto_desc')}</Text>
                       </View>
                       <CheckCircle2 size={20} color={Colors.primary} />
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.menuItem, { opacity: 0.5 }]} disabled>
                       <View style={{ flex: 1 }}>
                         <Text style={[Typography.body, { fontWeight: '700' }]}>{t('menu.source_kma')}</Text>
-                        <Text style={styles.subText}>{t('menu.source_kma_desc')}</Text>
+                        <Text style={[styles.subText, { lineHeight: 18 }]}>{t('menu.source_kma_desc')}</Text>
                       </View>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.menuItem, { opacity: 0.5 }]} disabled>
                       <View style={{ flex: 1 }}>
                         <Text style={[Typography.body, { fontWeight: '700' }]}>{t('menu.source_global')}</Text>
-                        <Text style={styles.subText}>{t('menu.source_global_desc')}</Text>
+                        <Text style={[styles.subText, { lineHeight: 18 }]}>{t('menu.source_global_desc')}</Text>
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -698,6 +698,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255, 255, 255, 0.8)',
     marginTop: 2,
+  },
+  prefSection: {
+    marginBottom: 8,
+  },
+  prefSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  prefSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textSecondary,
   },
 });
 
