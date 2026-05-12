@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch, Platform, InteractionManager } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,7 +30,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const handleMenuItemPress = async (id) => {
     if (id === 'profile') {
       onClose();
-      setTimeout(() => navigation.navigate('Profile'), 300);
+      InteractionManager.runAfterInteractions(() => navigation.navigate('Profile'));
       return;
     }
     if (id === 'privacy') {

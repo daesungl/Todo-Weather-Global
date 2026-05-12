@@ -40,10 +40,10 @@ const ProfileScreen = ({ navigation }) => {
 
 
   React.useEffect(() => {
-    if (!user) {
+    if (!user && isLoggingOutRef.current) {
       navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
     }
-  }, [navigation, user]);
+  }, [user]);
 
   React.useEffect(() => {
     if (!isEditModalVisible) {

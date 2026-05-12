@@ -22,3 +22,4 @@ npm run build:prod:android
 
 - Prod Supabase도 동일하게 처리: npm run env:use:prod && supabase db push
 - Prod에서도 익명 로그인 활성화 필요 (Dashboard → Authentication → Providers → Anonymous)
+- 버전별 DB/Edge Function 변경사항 → Doc/Deployment.md 참고 및 업데이트

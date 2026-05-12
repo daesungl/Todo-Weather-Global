@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -36,6 +37,7 @@ const AppleIcon = () => (
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const { signInWithGoogle, signInWithApple, continueAsGuest } = useAuth();
+  const insets = useSafeAreaInsets();
   const [socialLoading, setSocialLoading] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState(null);
 
@@ -85,6 +87,17 @@ const LoginScreen = ({ navigation }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
+      {navigation.canGoBack() && (
+        <TouchableOpacity
+          style={[styles.backBtn, { top: insets.top + 12 }]}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" pointerEvents="none">
+            <Path d="M15 18l-6-6 6-6" stroke="#333" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </TouchableOpacity>
+      )}
       <View style={styles.card}>
         {/* Header */}
         <View style={styles.header}>
@@ -151,6 +164,22 @@ const LoginScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#b2ebf2', justifyContent: 'center', padding: 20 },
+  backBtn: {
+    position: 'absolute',
+    left: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 10,
+  },
   card: {
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 28,
