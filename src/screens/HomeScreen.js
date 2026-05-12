@@ -320,14 +320,21 @@ const HomeScreen = ({ navigation }) => {
       let lon = 126.9780;
 
       if (status === 'granted') {
-        const lastLocation = await Location.getLastKnownPositionAsync({});
-        if (lastLocation) {
-          lat = lastLocation.coords.latitude;
-          lon = lastLocation.coords.longitude;
-        } else {
-          const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          lat = location.coords.latitude;
-          lon = location.coords.longitude;
+        try {
+          const lastLocation = await Location.getLastKnownPositionAsync({ maxAge: 60000 });
+          if (lastLocation) {
+            lat = lastLocation.coords.latitude;
+            lon = lastLocation.coords.longitude;
+          } else {
+            const location = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+              timeoutInterval: 15000,
+            });
+            lat = location.coords.latitude;
+            lon = location.coords.longitude;
+          }
+        } catch (locErr) {
+          console.warn('[HomeScreen] Location fetch failed, using default:', locErr);
         }
       }
       const data = await getWeather(lat, lon);

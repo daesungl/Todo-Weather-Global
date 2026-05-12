@@ -30,7 +30,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const handleMenuItemPress = async (id) => {
     if (id === 'profile') {
       onClose();
-      navigation.navigate('Profile');
+      setTimeout(() => navigation.navigate('Profile'), 300);
       return;
     }
     if (id === 'privacy') {
