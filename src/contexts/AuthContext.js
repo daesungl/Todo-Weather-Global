@@ -86,17 +86,22 @@ export const AuthProvider = ({ children }) => {
           await supabase.from('profiles').insert(profile);
         } else if (profileData) {
            const metaName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name;
-           // Prioritize database display_name if it exists
-           const displayName = profileData.display_name || metaName || (isAnonymous ? 'Guest' : 'User');
            const profileImage = currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || profileData.photo_url;
-           
-           // Only update DB if profile is missing photo or name and we have it from metadata
-           if (!profileData.display_name && metaName) {
+
+           let displayName = profileData.display_name || metaName;
+           if (!displayName) {
+             if (isAnonymous) {
+               const guestName = i18n.t('auth.guest', 'Guest');
+               const randomId = Math.floor(1000 + Math.random() * 9000);
+               displayName = `${guestName} #${randomId}`;
+               await supabase.from('profiles').update({ display_name: displayName }).eq('uid', currentUser.id);
+             } else {
+               displayName = 'User';
+             }
+           } else if (!profileData.display_name && metaName) {
               await supabase.from('profiles').update({ display_name: metaName, photo_url: profileImage }).eq('uid', currentUser.id);
-              profile.display_name = metaName;
-           } else {
-              profile.display_name = displayName;
            }
+           profile.display_name = displayName;
            profile.photo_url = profileImage;
         }
 
