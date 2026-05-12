@@ -89,10 +89,19 @@ const _startMembershipPoll = (uid) => {
         if (ref.role !== 'owner' && !returnedIds.has(flowId)) toRevoke.push(flowId);
       }
       toRevoke.forEach(flowId => _dropInaccessibleFlow(flowId, 'membership revoked'));
+      const staleStepPlanIds = [];
       validPlans.forEach(plan => {
         // Skip overwriting order if user reordered cards recently (within 5 seconds)
         const userJustReordered = (Date.now() - _lastUserOrderChangeMs) < 5000;
         const existingRef = _flowRefs.get(plan.id);
+        const existingDoc = _flowDocs.get(plan.id);
+
+        // Detect remote step changes (another member added/edited steps)
+        if (plan.stepsUpdatedAt && existingDoc?.stepsUpdatedAt !== plan.stepsUpdatedAt) {
+          const lastOptMs = _lastOptimisticUpdateMs.get(plan.id) || 0;
+          if (Date.now() - lastOptMs > 3000) staleStepPlanIds.push(plan.id);
+        }
+
         const normalized = {
           ...plan,
           _ownerUid: plan.ownerUid && plan.ownerUid !== uid ? plan.ownerUid : undefined,
@@ -109,7 +118,6 @@ const _startMembershipPoll = (uid) => {
           lastReadStepsAt: normalized._lastReadStepsAt,
           lastReadCommentsAt: normalized._lastReadCommentsAt,
         });
-        const existingDoc = _flowDocs.get(plan.id);
         // Merge: prefer existing doc data for title/content if we just added this plan (within 15s)
         const mergedDoc = (userJustReordered && existingDoc && existingDoc.title)
           ? { ...plan, ...existingDoc, order: normalized.order, id: plan.id }
@@ -117,6 +125,18 @@ const _startMembershipPoll = (uid) => {
         _flowDocs.set(plan.id, mergedDoc);
       });
       _mergeAndNotify(true);
+
+      if (staleStepPlanIds.length > 0) {
+        await Promise.all(staleStepPlanIds.map(planId =>
+          getSupabasePlanSteps(planId)
+            .then(steps => {
+              const sorted = _sortSteps(_filterDeletedSteps(planId, steps));
+              _flowSteps.set(planId, sorted);
+            })
+            .catch(e => console.warn('[FlowSync] steps refresh error:', planId, e))
+        ));
+        _mergeAndNotify(true);
+      }
     } catch (e) {
       console.warn('[FlowSync] membership poll error:', e);
     }
@@ -464,7 +484,20 @@ export const subscribeToFlowSteps = (flowId, callback) => {
 export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
   if (!_userId || !flowId) return;
   _loadRemoteFlows(_userId)
-    .then(flows => _snapshotListeners.forEach(cb => cb(flows)))
+    .then(flows => {
+      if (order !== undefined && _flowRefs.has(flowId)) {
+        const ref = _flowRefs.get(flowId);
+        _flowRefs.set(flowId, { ...ref, order });
+        const doc = _flowDocs.get(flowId);
+        if (doc) _flowDocs.set(flowId, { ...doc, order });
+        const sorted = Array.from(_flowRefs.values()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        updateSupabasePlanOrders(sorted.map(r => ({ plan_id: r.flowId, sort_order: r.order })))
+          .catch(e => console.warn('[FlowSync] updatePlanOrders after join failed:', e));
+        _mergeAndNotify(true);
+      } else {
+        _snapshotListeners.forEach(cb => cb(flows));
+      }
+    })
     .catch(e => console.warn('[FlowSync] Supabase refresh flow failed:', e));
 };
 

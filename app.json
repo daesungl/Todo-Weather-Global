@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appswayd.TodoWeatherGlobal",
-      "buildNumber": "68",
+      "buildNumber": "70",
       "newArchEnabled": true,
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -45,7 +45,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.appswayd.TodoWeatherGlobal",
-      "versionCode": 32,
+      "versionCode": 34,
       "googleServicesFile": "./google-services.json",
       "notification": {
         "icon": "./assets/notification-icon.png",

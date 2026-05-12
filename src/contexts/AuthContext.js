@@ -1,12 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import appleAuth from '@invertase/react-native-apple-authentication';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from '../i18n';
 import { initFlowSync } from '../services/FlowSyncService';
 import { initRegionSync } from '../services/weather/RegionSyncService';
 import { initTaskSync } from '../services/task/TaskSyncService';
 import { supabase } from '../config/supabaseConfig';
 import { IS_SUPABASE_DEV } from '../constants/SupabaseEnv';
+
+const LAST_PROVIDER_KEY = '@last_login_provider';
 
 GoogleSignin.configure({
   webClientId: IS_SUPABASE_DEV
@@ -107,13 +110,14 @@ export const AuthProvider = ({ children }) => {
 
         setUser({
           uid: currentUser.id,
-          email: currentUser.email,
+          ...profile,
+          email: currentUser.email || profile.email || '',
           displayName: profile.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || '',
           emailVerified: !!currentUser.email_confirmed_at || currentUser.app_metadata?.provider !== 'email',
           photoURL: profile.photo_url || currentUser.user_metadata?.avatar_url || '',
           providerData: currentUser.app_metadata?.providers?.map(p => ({ providerId: p === 'email' ? 'password' : p })) || [],
+          currentProvider: (await AsyncStorage.getItem(LAST_PROVIDER_KEY)) || currentUser.app_metadata?.provider || null,
           isAnonymous,
-          ...profile,
         });
 
         setLoading(false);
@@ -223,7 +227,10 @@ export const AuthProvider = ({ children }) => {
           provider: 'google',
           token: idToken,
         });
-        if (!error) return data;
+        if (!error) {
+          await AsyncStorage.setItem(LAST_PROVIDER_KEY, 'google');
+          return data;
+        }
         // Identity already linked to another account — fall through to regular sign-in
       }
 
@@ -232,6 +239,7 @@ export const AuthProvider = ({ children }) => {
         token: idToken,
       });
       if (error) throw error;
+      await AsyncStorage.setItem(LAST_PROVIDER_KEY, 'google');
       return data;
     } catch (error) {
       const isCancelled =
@@ -268,7 +276,10 @@ export const AuthProvider = ({ children }) => {
           token: identityToken,
           nonce: rawNonce,
         });
-        if (!error) return data;
+        if (!error) {
+          await AsyncStorage.setItem(LAST_PROVIDER_KEY, 'apple');
+          return data;
+        }
         // Identity already linked — fall through to regular sign-in
       }
 
@@ -278,6 +289,7 @@ export const AuthProvider = ({ children }) => {
         nonce: rawNonce,
       });
       if (error) throw error;
+      await AsyncStorage.setItem(LAST_PROVIDER_KEY, 'apple');
       return data;
     } catch (error) {
       if (error.code !== '1001') {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable, RefreshControl } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView, ScrollView as GHScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS } from 'react-native-reanimated';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
@@ -140,6 +140,7 @@ const HomeScreen = ({ navigation }) => {
 
   const [currentWeather, setCurrentWeather] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const latestTasksRef = useRef([]);
   const latestFlowsRef = useRef([]);
@@ -346,6 +347,32 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      let lat = 37.5665, lon = 126.9780;
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        try {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+            timeoutInterval: 15000,
+          });
+          lat = location.coords.latitude;
+          lon = location.coords.longitude;
+        } catch (e) {
+          console.warn('[HomeScreen] Refresh location failed:', e);
+        }
+      }
+      const data = await getWeather(lat, lon);
+      setCurrentWeather(data);
+    } catch (e) {
+      console.error('[HomeScreen] Refresh error:', e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const fetchRegionWeather = async (region) => {
     try {
       const w = await getWeather(region.lat, region.lon, false, region.id, region.address);
@@ -525,7 +552,13 @@ const HomeScreen = ({ navigation }) => {
         onMenuPress={() => setMenuVisible(true)} 
       />
 
-      <GHScrollView ref={scrollViewRef} scrollEnabled={isScrollEnabled} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <GHScrollView
+        ref={scrollViewRef}
+        scrollEnabled={isScrollEnabled}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#fff" colors={['#fff']} />}
+      >
         {/* Hero Section */}
         <TouchableOpacity
           style={styles.heroSection}

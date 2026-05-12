@@ -246,8 +246,15 @@ const ProfileScreen = ({ navigation }) => {
             )}
           </View>
           <Text style={styles.name}>{user.displayName || (isGuest ? t('auth.guest') : 'User')}</Text>
+          {user?.currentProvider === 'google' || user?.currentProvider === 'apple' ? (
+            <View style={styles.providerBadge}>
+              <Text style={styles.providerBadgeText}>
+                {user.currentProvider === 'google' ? '🔵 Google' : '⚫ Apple'}
+              </Text>
+            </View>
+          ) : null}
           {user.email ? (
-            <View style={styles.emailContainer}>
+            <View style={[styles.emailContainer, { marginTop: 6 }]}>
               <LucideMail size={14} color={Colors.textSecondary} style={{ marginRight: 4 }} />
               <Text style={styles.emailText}>{user.email}</Text>
             </View>
@@ -465,6 +472,19 @@ const styles = StyleSheet.create({
     ...Typography.h2,
     color: Colors.text,
     marginBottom: 4,
+  },
+  providerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  providerBadgeText: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    fontWeight: '600',
   },
   emailContainer: {
     flexDirection: 'row',
