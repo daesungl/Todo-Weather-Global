@@ -20,7 +20,14 @@
       "Bash(pod update *)",
       "Bash(ln -sf '/Users/charles/Dev_App/Global-Todo-Weather/ios/Pods/Target Support Files/gRPC-Core/gRPC-Core.modulemap' /Users/charles/Dev_App/Global-Todo-Weather/ios/Pods/Headers/Private/grpc/gRPC-Core.modulemap)",
       "Bash(keytool -list -v -keystore /Users/charles/Dev_App/Global-Todo-Weather/android/app/release.keystore -alias release -storepass android)",
-      "Bash(npx react-native *)"
+      "Bash(npx react-native *)",
+      "Bash(supabase link *)",
+      "Bash(npx pod-install *)",
+      "Bash(supabase projects *)",
+      "Bash(supabase functions *)",
+      "Bash(supabase db *)",
+      "Bash(curl -s -X POST https://ghrhxxlhhohgkdummdaq.supabase.co/auth/v1/signup -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdocmh4eGxoaG9oZ2tkdW1tZGFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNTAxOTEsImV4cCI6MjA5MzkyNjE5MX0.OAD4_StstiaAOAvgOM8rpsEMBNiB_f8TKelWwN5KDWE' -H 'Content-Type: application/json' -d '{}')",
+      "Bash(npx supabase *)"
     ]
   }
 }

@@ -9,13 +9,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionSyncService';
 import { getWeather } from '../services/weather/WeatherService';
 import { useSubscription } from '../contexts/SubscriptionContext';
-import { Alert } from 'react-native';
+import ConfirmModal from '../components/ConfirmModal';
 
 const { width, height } = Dimensions.get('window');
 
 const RegionManagementScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const { isPremium, limits } = useSubscription();
+  const [confirmConfig, setConfirmConfig] = useState(null);
+
+  const showAlert = (title, message, options) => {
+    setConfirmConfig({ title, message: message || '', options: options || [{ text: t('common.confirm'), style: 'default' }] });
+  };
   const [regions, setRegions] = useState([]);
   const [weatherDataMap, setWeatherDataMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -60,7 +65,7 @@ const RegionManagementScreen = ({ navigation }) => {
 
   const handleAddRegion = async (place) => {
     if (displayRegions.filter(r => !r.inactive).length >= limits.regions) {
-      Alert.alert(
+      showAlert(
         t('common.info', '알림'),
         isPremium
           ? t('region.limit_premium', `최대 ${limits.regions}개 지역까지 추가할 수 있습니다.`)
@@ -243,6 +248,13 @@ const RegionManagementScreen = ({ navigation }) => {
       </ScrollView>
 
       <SearchModal />
+      <ConfirmModal
+        visible={!!confirmConfig}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        options={confirmConfig?.options || []}
+        onDismiss={() => setConfirmConfig(null)}
+      />
     </View>
   );
 };

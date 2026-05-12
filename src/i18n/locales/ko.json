@@ -48,9 +48,11 @@
   "auth": {
     "loginTitle": "로그인",
     "signupTitle": "회원가입",
-    "loginSubtitle": "데이터 동기화 및 플랜 공유를 위해 로그인해 주세요",
-    "signupSubtitle": "데이터 동기화 및 플랜 공유를 위해 가입해 보세요",
-    "guestSyncMsg": "데이터 동기화 및 플랜 공유",
+    "loginSubtitle": "데이터 안전 보관 및 동기화를 위해 로그인해 주세요",
+    "signupSubtitle": "데이터 안전 보관 및 동기화를 위해 가입해 보세요",
+    "guest": "게스트",
+    "guest_desc": "데이터 안전 보관 및 동기화를 위해 로그인하세요",
+    "guestSyncMsg": "데이터 동기화 및 안전한 보관",
     "email": "이메일",
     "password": "비밀번호",
     "confirmPassword": "비밀번호 확인",
@@ -95,7 +97,21 @@
       "tooManyRequests": "너무 많은 로그인 시도가 있었습니다. 나중에 다시 시도해 주세요.",
       "verificationRequired": "이메일 인증이 필요합니다. 전송된 메일의 링크를 클릭해 주세요.",
       "default": "인증에 실패했습니다."
-    }
+    },
+    "continueAsGuest": "게스트로 시작하기",
+    "haveTransferCode": "기기 이전 코드가 있나요?",
+    "transferCodePlaceholder": "XXXX-XXXX",
+    "applyTransferCode": "코드 적용",
+    "transferCode": "기기 이전",
+    "transferCodeInfo": "새 기기에 코드를 입력하면 현재 기기의 모든 데이터를 옮길 수 있어요. 코드는 30일간 유효해요.",
+    "generateTransferCode": "이전 코드 발급",
+    "transferCodeExpiry": "{{days}}일 후 만료",
+    "transferCodeUsed": "이미 사용된 코드입니다",
+    "transferCodeExpired": "만료된 코드입니다",
+    "transferCodeInvalid": "유효하지 않은 코드입니다",
+    "transferCodeSuccess": "데이터 이전이 완료되었습니다. 잠시 후 새로고침해 주세요.",
+    "logoutConfirm": "로그아웃 하시겠습니까?",
+    "logoutConfirmSocial": "로그아웃하면 새 게스트 세션이 시작됩니다.\n\n{{provider}} 계정 데이터는 유지되며, 다시 로그인하면 복원됩니다."
   },
   "months": [
     "1월",

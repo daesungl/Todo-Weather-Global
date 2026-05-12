@@ -1,10 +1,5 @@
-import axios from 'axios';
 import { getCache, saveCache } from '../StorageService';
-
-// API Keys from Environment
-// decodeURIComponent 필요: env에 이미 인코딩된 값이 들어있어 axios params로 넘기면 이중인코딩 → 401
-const SERVICE_KEY = decodeURIComponent(process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '');
-const VWORLD_API_KEY = process.env.EXPO_PUBLIC_VWORLD_API_KEY || '';
+import { weatherProxy } from './weatherProxyClient';
 
 // 인메모리 캐시: 같은 세션 내 중복 호출 즉시 차단 (AsyncStorage I/O 없이 빠르게)
 const _memCache = new Map();
@@ -18,18 +13,14 @@ export const getTMCoordinates = async (lat, lon, address = '') => {
   try {
     // Strategy A: 주소 기반 TM 좌표 변환 (가장 정확)
     if (address && address.trim()) {
-      const response = await axios.get('https://api.vworld.kr/req/address', {
-        params: {
-          service: 'address',
-          request: 'getcoord',
-          version: '2.0',
-          crs: 'epsg:5181',
-          address: address,
-          format: 'json',
-          type: 'parcel',
-          key: VWORLD_API_KEY,
-        },
-        timeout: 5000
+      const response = await weatherProxy('vworld', 'req/address', {
+        service: 'address',
+        request: 'getcoord',
+        version: '2.0',
+        crs: 'epsg:5181',
+        address,
+        format: 'json',
+        type: 'parcel',
       }).catch(() => null);
 
       if (response?.data?.response?.status === 'OK') {
@@ -77,15 +68,11 @@ export const getNearestStation = async (tmX, tmY) => {
   if (!tmX || !tmY) return null;
   try {
     console.log(`[AirService] Searching station near TM(${tmX}, ${tmY})`);
-    const response = await axios.get(`https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getNearbyMsrstnList`, {
-      params: {
-        serviceKey: SERVICE_KEY,
-        returnType: 'json',
-        tmX: tmX,
-        tmY: tmY,
-        ver: '1.1'
-      },
-      timeout: 5000
+    const response = await weatherProxy('kma', 'B552584/MsrstnInfoInqireSvc/getNearbyMsrstnList', {
+      returnType: 'json',
+      tmX,
+      tmY,
+      ver: '1.1',
     });
 
     const items = response.data?.response?.body?.items;
@@ -169,18 +156,16 @@ export const fetchAirQuality = async (lat, lon, address = '') => {
 
     console.log(`[AirService] Fetching realtime for station: ${station.stationName}`);
     const [realtimeRes, forecastRes] = await Promise.all([
-      axios.get('https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty', {
-        params: { serviceKey: SERVICE_KEY, returnType: 'json', stationName: station.stationName, dataTerm: 'DAILY', ver: '1.3', numOfRows: 1 },
-        timeout: 5000
+      weatherProxy('kma', 'B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty', {
+        returnType: 'json', stationName: station.stationName, dataTerm: 'DAILY', ver: '1.3', numOfRows: 1,
       }).catch(e => {
         console.error('[AirService] Realtime API error:', e?.response?.status, e?.message);
         if (e.response?.status === 429) return { _error: '429' };
         return null;
       }),
-      axios.get('https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth', {
-        params: { serviceKey: SERVICE_KEY, returnType: 'json', searchDate: new Date().toISOString().split('T')[0], informCode: 'PM10' },
-        timeout: 5000
-      }).catch(() => null)
+      weatherProxy('kma', 'B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth', {
+        returnType: 'json', searchDate: new Date().toISOString().split('T')[0], informCode: 'PM10',
+      }).catch(() => null),
     ]);
 
     if (realtimeRes?._error === '429') return { error: 'LIMIT_HIT', stationName: station.stationName };

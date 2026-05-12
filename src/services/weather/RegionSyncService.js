@@ -1,102 +1,112 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import firestore from '@react-native-firebase/firestore';
+import { supabase } from '../../config/supabaseConfig';
 
 const STORAGE_KEY = '@save_wBookmark';
-const MIGRATION_KEY_PREFIX = '@regions_migrated_';
 
 let _userId = null;
 let _snapshotListeners = new Set();
-let _unsubscribeFirestore = null;
+let _subscription = null;
 let _cachedRegions = null;
 
-// ─── Internal Firestore helpers ───────────────────────────────────────────────
-
-const _regionsCollection = (uid) =>
-  firestore().collection('users').doc(uid).collection('regions');
-
-const _docToRegion = (doc) => ({ id: doc.id, ...doc.data() });
-
-const _regionsFromSnapshot = (snapshot) =>
-  snapshot.docs
-    .map(_docToRegion)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-const _saveToFirestore = async (uid, regions) => {
-  const batch = firestore().batch();
-  const col = _regionsCollection(uid);
-
-  regions.forEach((region, index) => {
-    const { id, ...data } = region;
-    batch.set(col.doc(id), { ...data, order: index, ownerId: uid });
-  });
-
-  const newIds = new Set(regions.map((r) => r.id));
-  (_cachedRegions || [])
-    .filter((r) => !newIds.has(r.id))
-    .forEach((r) => batch.delete(col.doc(r.id)));
-
-  await batch.commit();
+const toCamelCase = (dbObj) => {
+  if (!dbObj) return null;
+  return {
+    id: dbObj.id,
+    name: dbObj.name,
+    address: dbObj.address,
+    lat: dbObj.lat,
+    lon: dbObj.lon,
+    pageIndex: dbObj.page_index,
+    order: dbObj.sort_order,
+    inactive: dbObj.inactive,
+    createdAt: dbObj.created_at,
+    updatedAt: dbObj.updated_at,
+    ownerId: dbObj.owner_uid,
+  };
 };
 
-// ─── One-time migration: AsyncStorage → Firestore ────────────────────────────
+const toDbObj = (appObj) => {
+  const dbObj = {};
+  if (appObj.id !== undefined) dbObj.id = appObj.id;
+  if (appObj.name !== undefined) dbObj.name = appObj.name;
+  if (appObj.address !== undefined) dbObj.address = appObj.address;
+  if (appObj.lat !== undefined) dbObj.lat = appObj.lat;
+  if (appObj.lon !== undefined) dbObj.lon = appObj.lon;
+  if (appObj.pageIndex !== undefined) dbObj.page_index = appObj.pageIndex;
+  if (appObj.order !== undefined) dbObj.sort_order = appObj.order;
+  if (appObj.inactive !== undefined) dbObj.inactive = appObj.inactive;
+  if (appObj.ownerId !== undefined) dbObj.owner_uid = appObj.ownerId;
+  return dbObj;
+};
 
-const _migrateIfNeeded = async (uid) => {
-  try {
-    const migrationKey = `${MIGRATION_KEY_PREFIX}${uid}`;
-    const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
-    if (alreadyMigrated) return;
+const _startSubscription = async (uid) => {
+  if (_subscription) {
+    supabase.removeChannel(_subscription);
+    _subscription = null;
+  }
 
-    const localJson = await AsyncStorage.getItem(STORAGE_KEY);
-    const localRegions = localJson ? JSON.parse(localJson) : [];
+  const fetchInitial = async () => {
+    const { data, error } = await supabase
+      .from('regions')
+      .select('*')
+      .eq('owner_uid', uid)
+      .order('sort_order', { ascending: true });
 
-    if (localRegions.length > 0) {
-      const snapshot = await _regionsCollection(uid).limit(1).get();
-      if (snapshot.empty) {
-        await _saveToFirestore(uid, localRegions);
+    if (error) {
+      console.warn('[RegionSync] fetch error:', error);
+      return;
+    }
+
+    let regions = (data || []).map(toCamelCase);
+
+    // Migrate AsyncStorage regions to Supabase on first sign-in with a uid
+    if (regions.length === 0) {
+      try {
+        const json = await AsyncStorage.getItem(STORAGE_KEY);
+        if (json) {
+          const local = JSON.parse(json);
+          if (Array.isArray(local) && local.length > 0) {
+            const dbArr = local.map((r, i) => toDbObj({ ...r, order: i, ownerId: uid }));
+            const { error: upsertErr } = await supabase.from('regions').upsert(dbArr, { onConflict: 'id' });
+            if (!upsertErr) {
+              await AsyncStorage.removeItem(STORAGE_KEY);
+              regions = local.map((r, i) => ({ ...r, order: i, ownerId: uid }));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[RegionSync] AsyncStorage migration error:', e);
       }
     }
 
-    await AsyncStorage.setItem(migrationKey, '1');
-  } catch (e) {
-    console.warn('[RegionSync] Migration error:', e);
-  }
+    _cachedRegions = regions;
+    _snapshotListeners.forEach((cb) => cb(regions));
+  };
+
+  await fetchInitial();
+
+  _subscription = supabase
+    .channel(`public:regions:owner_uid=eq.${uid}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'regions', filter: `owner_uid=eq.${uid}` }, async (payload) => {
+      await fetchInitial();
+    })
+    .subscribe();
 };
-
-// ─── Snapshot subscription ────────────────────────────────────────────────────
-
-const _startFirestoreSubscription = (uid) => {
-  if (_unsubscribeFirestore) {
-    _unsubscribeFirestore();
-    _unsubscribeFirestore = null;
-  }
-
-  _unsubscribeFirestore = _regionsCollection(uid)
-    .orderBy('order', 'asc')
-    .onSnapshot(
-      (snapshot) => {
-        const regions = _regionsFromSnapshot(snapshot);
-        _cachedRegions = regions;
-        _snapshotListeners.forEach((cb) => cb(regions));
-      },
-      (error) => {
-        console.warn('[RegionSync] Firestore snapshot error:', error);
-      }
-    );
-};
-
-// ─── Public lifecycle API ─────────────────────────────────────────────────────
 
 export const initRegionSync = async (uid) => {
+  if (_userId === uid && uid !== null) {
+    // Same user (e.g. token refresh re-triggering setupUser) — keep cache intact
+    return;
+  }
   _userId = uid;
   _cachedRegions = null;
 
   if (uid) {
-    await _migrateIfNeeded(uid);
-    _startFirestoreSubscription(uid);
+    _startSubscription(uid);
   } else {
-    if (_unsubscribeFirestore) {
-      _unsubscribeFirestore();
-      _unsubscribeFirestore = null;
+    if (_subscription) {
+      supabase.removeChannel(_subscription);
+      _subscription = null;
     }
     _cachedRegions = null;
     _snapshotListeners.forEach((cb) => cb(null));
@@ -109,27 +119,31 @@ export const subscribeToRegions = (callback) => {
   return () => _snapshotListeners.delete(callback);
 };
 
-// ─── RegionService-compatible API ────────────────────────────────────────────
-
 export const getBookmarkedRegions = async () => {
   if (_userId) {
+    if (_cachedRegions !== null) return _cachedRegions;
     try {
-      if (_cachedRegions !== null) return _cachedRegions;
-      const snapshot = await _regionsCollection(_userId).orderBy('order', 'asc').get();
-      const regions = _regionsFromSnapshot(snapshot);
-      _cachedRegions = regions;
-      return regions;
+      const { data, error } = await supabase
+        .from('regions')
+        .select('*')
+        .eq('owner_uid', _userId)
+        .order('sort_order', { ascending: true });
+      if (!error) {
+        const regions = (data || []).map(toCamelCase);
+        _cachedRegions = regions;
+        return regions;
+      }
     } catch (e) {
-      console.warn('[RegionSync] getBookmarkedRegions Firestore error, falling back:', e);
+      console.warn('[RegionSync] getBookmarkedRegions error:', e);
     }
   }
+  
   try {
     const json = await AsyncStorage.getItem(STORAGE_KEY);
     if (!json) return [];
     const regions = JSON.parse(json);
     return regions.map((r) => ({ ...r, name: r.name.replace(/^\[[A-Z]{2}\]\s*/, '') }));
   } catch (e) {
-    console.error('[RegionSync] getBookmarkedRegions AsyncStorage error:', e);
     return [];
   }
 };
@@ -138,17 +152,29 @@ export const saveBookmarkedRegions = async (regions) => {
   const arr = Array.isArray(regions) ? regions : [];
   if (_userId) {
     try {
-      await _saveToFirestore(_userId, arr);
+      const newIds = new Set(arr.map(r => r.id));
+      const toDelete = (_cachedRegions || []).filter(r => !newIds.has(r.id)).map(r => r.id);
+
+      // Optimistic cache update so useFocusEffect re-fetch sees new data immediately
+      _cachedRegions = arr;
+      _snapshotListeners.forEach(cb => cb(arr));
+
+      const dbArr = arr.map((r, i) => toDbObj({ ...r, order: i, ownerId: _userId }));
+      if (dbArr.length > 0) {
+        const { error } = await supabase.from('regions').upsert(dbArr, { onConflict: 'id' });
+        if (error) console.warn('[RegionSync] saveBookmarkedRegions upsert error:', error);
+      }
+      if (toDelete.length > 0) {
+        await supabase.from('regions').delete().in('id', toDelete);
+      }
       return;
     } catch (e) {
-      console.warn('[RegionSync] saveBookmarkedRegions Firestore error, falling back:', e);
+      console.warn('[RegionSync] saveBookmarkedRegions error:', e);
     }
   }
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-  } catch (e) {
-    console.error('[RegionSync] saveBookmarkedRegions AsyncStorage error:', e);
-  }
+  } catch (e) {}
 };
 
 export const addRegion = async (name, address, lat, lon, pageIndex = 0) => {

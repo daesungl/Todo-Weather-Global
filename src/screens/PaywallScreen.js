@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { TouchableOpacity } from 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
@@ -9,6 +9,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { Colors, Spacing } from '../theme';
 import { useTranslation } from 'react-i18next';
 import { Linking } from 'react-native';
+import ConfirmModal from '../components/ConfirmModal';
 
 const BENEFITS = [
   { label: '광고 완전 제거' },
@@ -22,6 +23,11 @@ const PaywallScreen = ({ navigation }) => {
   const { offerings, purchasePackage, restorePurchases, isPremium } = useSubscription();
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [confirmConfig, setConfirmConfig] = useState(null);
+
+  const showAlert = (title, message, options) => {
+    setConfirmConfig({ title, message: message || '', options: options || [{ text: t('common.confirm'), style: 'default' }] });
+  };
 
   const packages = offerings?.availablePackages || [];
 
@@ -32,11 +38,11 @@ const PaywallScreen = ({ navigation }) => {
     const result = await purchasePackage(pkg);
     setLoading(false);
     if (result.success) {
-      Alert.alert(t('common.info'), t('paywall.success_msg', 'Premium activated!'), [
+      showAlert(t('common.info'), t('paywall.success_msg', 'Premium activated!'), [
         { text: t('common.confirm'), onPress: () => navigation.goBack() },
       ]);
     } else if (!result.userCancelled) {
-      Alert.alert(t('common.error', 'Error'), t('paywall.error_msg', 'An error occurred during payment.'));
+      showAlert(t('common.error', 'Error'), t('paywall.error_msg', 'An error occurred during payment.'));
     }
   };
 
@@ -45,11 +51,11 @@ const PaywallScreen = ({ navigation }) => {
     const restored = await restorePurchases();
     setLoading(false);
     if (restored) {
-      Alert.alert(t('common.info'), t('paywall.restore_success', 'Subscription restored.'), [
+      showAlert(t('common.info'), t('paywall.restore_success', 'Subscription restored.'), [
         { text: t('common.confirm'), onPress: () => navigation.goBack() },
       ]);
     } else {
-      Alert.alert(t('common.info'), t('paywall.restore_fail', 'No subscription found to restore.'));
+      showAlert(t('common.info'), t('paywall.restore_fail', 'No subscription found to restore.'));
     }
   };
 
@@ -172,6 +178,13 @@ const PaywallScreen = ({ navigation }) => {
           </View>
         </ScrollView>
       </View>
+      <ConfirmModal
+        visible={!!confirmConfig}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        options={confirmConfig?.options || []}
+        onDismiss={() => setConfirmConfig(null)}
+      />
     </GestureHandlerRootView>
   );
 };

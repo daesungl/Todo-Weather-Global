@@ -39,6 +39,22 @@
           <string>com.appswayd.TodoWeatherGlobal</string>
         </array>
       </dict>
+      <dict>
+        <key>CFBundleURLName</key>
+        <string>Google Sign-In (dev)</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>com.googleusercontent.apps.135255276638-cqps0rnc7kg3ka5lvfpml6v030rk20nr</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLName</key>
+        <string>Google Sign-In (prod)</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>com.googleusercontent.apps.156613478220-7k0jed2lfpt8g13khlcavkv77qgcjuhb</string>
+        </array>
+      </dict>
     </array>
     <key>CFBundleVersion</key>
     <string>59</string>

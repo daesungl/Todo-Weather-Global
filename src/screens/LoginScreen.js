@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,18 +8,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
-  ScrollView,
-  TouchableWithoutFeedback,
-  Keyboard,
+  Animated,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { LucideMail, LucideLock } from 'lucide-react-native';
 import appleAuth from '@invertase/react-native-apple-authentication';
-import auth from '@react-native-firebase/auth';
-import { IS_FIREBASE_DEV } from '../constants/FirebaseEnv';
+import ConfirmModal from '../components/ConfirmModal';
 
 const GoogleIcon = () => (
   <Svg width={20} height={20} viewBox="0 0 48 48" pointerEvents="none">
@@ -42,104 +37,30 @@ const AppleIcon = () => (
 
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { login, signup, resetPassword, resendVerificationEmail, signInWithGoogle, signInWithApple, continueAsGuest } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isLogin, setIsLogin] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState(null); // 'google' | 'apple' | null
+  const { redeemTransferCode, signInWithGoogle, signInWithApple, continueAsGuest } = useAuth();
+  const [socialLoading, setSocialLoading] = useState(null);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferCode, setTransferCode] = useState('');
+  const [redeemLoading, setRedeemLoading] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState(null);
+  const transferAnim = useRef(new Animated.Value(0)).current;
 
-  const handleSubmit = async () => {
-    if (!email || !password) {
-      Alert.alert(t('common.error'), t('auth.emptyFields', { defaultValue: 'Please fill in all fields' }));
-      return;
-    }
-
-    if (!isLogin && password !== confirmPassword) {
-      Alert.alert(t('common.error'), t('auth.passwordMismatch'));
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (isLogin) {
-        try {
-          await login(email, password);
-          navigateAfterAuth();
-        } catch (error) {
-          // 이메일 미인증 에러인 경우 재발송 옵션 제공
-          if (error.code === 'auth/email-not-verified') {
-            Alert.alert(
-              t('auth.verificationRequired'),
-              t('auth.resendVerificationMsg'),
-              [
-                { text: t('common.cancel'), style: 'cancel' },
-                { 
-                  text: t('auth.resendEmail'), 
-                  onPress: async () => {
-                    try {
-                      // 개선된 재발송 함수 사용
-                      await resendVerificationEmail(email, password);
-                      Alert.alert(t('common.success'), t('auth.verificationSent'));
-                    } catch (resendError) {
-                      Alert.alert(t('common.error'), resendError.message);
-                    }
-                  }
-                }
-              ]
-            );
-            return;
-          }
-          throw error;
-        }
-      } else {
-        await signup(email, password);
-        Alert.alert(
-          t('common.success'), 
-          t('auth.verificationSent')
-        );
-        setIsLogin(true); // 가입 성공 후 로그인 모드로 전환
-        setConfirmPassword(''); // 필드 초기화
-      }
-    } catch (error) {
-      Alert.alert(t('common.error'), error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetPassword = async () => {
-    if (!email) {
-      Alert.alert(t('common.error'), t('auth.enterEmailReset'));
-      return;
-    }
-    try {
-      await resetPassword(email);
-      Alert.alert(t('common.success'), t('auth.resetEmailSent'));
-    } catch (error) {
-      Alert.alert(t('common.error'), error.message);
-    }
+  const showAlert = (title, message, options) => {
+    setConfirmConfig({ title, message: message || '', options: options || [{ text: t('common.confirm'), style: 'default' }] });
   };
 
   const navigateAfterAuth = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
-    }
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
   };
 
   const handleGoogleSignIn = async () => {
     setSocialLoading('google');
     try {
       const result = await signInWithGoogle();
-      if (result) {
-        navigateAfterAuth();
-      }
-      // null = 취소됨, 아무것도 하지 않음
+      if (result) navigateAfterAuth();
     } catch (error) {
-      Alert.alert(t('common.error'), error.message);
+      showAlert(t('common.error'), error.message);
     } finally {
       setSocialLoading(null);
     }
@@ -151,310 +72,223 @@ const LoginScreen = ({ navigation }) => {
       await signInWithApple();
       navigateAfterAuth();
     } catch (error) {
-      if (error.code !== '1001') { // 1001 = user cancelled
-        Alert.alert(t('common.error'), error.message);
-      }
+      if (error.code !== '1001') showAlert(t('common.error'), error.message);
     } finally {
       setSocialLoading(null);
     }
   };
 
+  const handleGuest = () => {
+    continueAsGuest();
+    navigateAfterAuth();
+  };
+
+  const toggleTransfer = () => {
+    const next = !showTransfer;
+    setShowTransfer(next);
+    Animated.spring(transferAnim, { toValue: next ? 1 : 0, useNativeDriver: false, bounciness: 0, speed: 20 }).start();
+  };
+
+  const formatCode = (text) => {
+    const clean = text.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
+    if (clean.length > 4) return `${clean.slice(0, 4)}-${clean.slice(4)}`;
+    return clean;
+  };
+
+  const handleRedeemCode = async () => {
+    const code = transferCode.replace(/-/g, '');
+    if (code.length < 8) {
+      showAlert(t('common.error'), t('auth.transferCodeInvalid'));
+      return;
+    }
+    setRedeemLoading(true);
+    try {
+      await redeemTransferCode(code);
+      showAlert(t('common.info'), t('auth.transferCodeSuccess'), [
+        { text: t('common.confirm'), style: 'default', onPress: navigateAfterAuth },
+      ]);
+    } catch (e) {
+      const msg = e.message === 'Code already used'
+        ? t('auth.transferCodeUsed')
+        : e.message === 'Code expired'
+        ? t('auth.transferCodeExpired')
+        : t('auth.transferCodeInvalid');
+      showAlert(t('common.error'), msg);
+    } finally {
+      setRedeemLoading(false);
+    }
+  };
+
   const isAppleSupported = Platform.OS === 'ios' && appleAuth.isSupported;
-  const showGoogleSignIn = !IS_FIREBASE_DEV;
+  const anyLoading = socialLoading !== null || redeemLoading;
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          <View style={styles.card}>
-            <Text style={styles.title}>
-              {isLogin ? t('auth.loginTitle') : t('auth.signupTitle')}
-            </Text>
-            <Text style={styles.subtitle}>
-              {isLogin ? t('auth.loginSubtitle') : t('auth.signupSubtitle')}
-            </Text>
+      <View style={styles.card}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.appName}>Todo Weather</Text>
+          <Text style={styles.subtitle}>{t('auth.loginSubtitle')}</Text>
+        </View>
 
-            <View style={styles.inputContainer}>
-              <LucideMail size={20} color="#666" style={styles.icon} />
-              <TextInput
-                style={styles.input}
-                placeholder={t('auth.email')}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <LucideLock size={20} color="#666" style={styles.icon} />
-              <TextInput
-                style={styles.input}
-                placeholder={t('auth.password')}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </View>
-
-            {isLogin && (
-              <TouchableOpacity 
-                style={styles.forgotButton}
-                onPress={handleResetPassword}
-              >
-                <Text style={styles.forgotText}>{t('auth.forgotPassword')}</Text>
-              </TouchableOpacity>
+        {/* Social Buttons */}
+        <View style={styles.socialButtons}>
+          <TouchableOpacity
+            style={[styles.socialBtn, styles.googleBtn]}
+            onPress={handleGoogleSignIn}
+            disabled={anyLoading}
+            activeOpacity={0.8}
+          >
+            {socialLoading === 'google' ? (
+              <ActivityIndicator color="#333" size="small" />
+            ) : (
+              <GoogleIcon />
             )}
+            <Text style={styles.googleBtnText}>{t('auth.continueWithGoogle')}</Text>
+          </TouchableOpacity>
 
-            {!isLogin && (
-              <View style={styles.inputContainer}>
-                <LucideLock size={20} color="#666" style={styles.icon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder={t('auth.confirmPassword')}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry
-                />
-              </View>
-            )}
-
+          {isAppleSupported && (
             <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleSubmit}
-              disabled={loading || socialLoading !== null}
+              style={[styles.socialBtn, styles.appleBtn]}
+              onPress={handleAppleSignIn}
+              disabled={anyLoading}
+              activeOpacity={0.8}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
+              {socialLoading === 'apple' ? (
+                <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.buttonText}>
-                  {isLogin ? t('auth.loginButton') : t('auth.signupButton')}
-                </Text>
+                <AppleIcon />
               )}
+              <Text style={styles.appleBtnText}>{t('auth.continueWithApple')}</Text>
             </TouchableOpacity>
+          )}
+        </View>
 
-            {/* 소셜 로그인 구분선 */}
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{t('auth.orContinueWith')}</Text>
-              <View style={styles.dividerLine} />
-            </View>
+        {/* Divider */}
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>{t('auth.orContinueWith')}</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
-            <View style={styles.socialRow}>
-              {/* Google 로그인 */}
-              {showGoogleSignIn && (
-                <TouchableOpacity
-                  style={[styles.socialIconButton, styles.googleIconButton]}
-                  onPress={handleGoogleSignIn}
-                  disabled={loading || socialLoading !== null}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  activeOpacity={0.7}
-                >
-                  {socialLoading === 'google' ? (
-                    <ActivityIndicator color="#333" size="small" />
-                  ) : (
-                    <GoogleIcon />
-                  )}
-                </TouchableOpacity>
-              )}
+        {/* Guest */}
+        <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} disabled={anyLoading} activeOpacity={0.7}>
+          <Text style={styles.guestBtnText}>{t('auth.continueAsGuest')}</Text>
+        </TouchableOpacity>
 
-              {/* Apple 로그인 */}
-              {isAppleSupported && (
-                <TouchableOpacity
-                  style={[styles.socialIconButton, styles.appleIconButton]}
-                  onPress={handleAppleSignIn}
-                  disabled={loading || socialLoading !== null}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  activeOpacity={0.7}
-                >
-                  {socialLoading === 'apple' ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <AppleIcon />
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
+        {/* Transfer Code Toggle */}
+        <TouchableOpacity style={styles.transferToggle} onPress={toggleTransfer} disabled={anyLoading}>
+          <Text style={styles.transferToggleText}>{t('auth.haveTransferCode')}</Text>
+        </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.switchButton}
-              onPress={() => setIsLogin(!isLogin)}
-            >
-              <Text style={styles.switchText}>
-                {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}
-              </Text>
-            </TouchableOpacity>
+        {/* Transfer Code Input */}
+        <Animated.View style={[styles.transferSection, {
+          maxHeight: transferAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] }),
+          opacity: transferAnim,
+          overflow: 'hidden',
+        }]}>
+          <TextInput
+            style={styles.transferInput}
+            placeholder={t('auth.transferCodePlaceholder')}
+            placeholderTextColor="#aaa"
+            value={transferCode}
+            onChangeText={(text) => setTransferCode(formatCode(text))}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={9}
+          />
+          <TouchableOpacity
+            style={[styles.transferBtn, redeemLoading && { opacity: 0.6 }]}
+            onPress={handleRedeemCode}
+            disabled={anyLoading}
+            activeOpacity={0.8}
+          >
+            {redeemLoading
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={styles.transferBtnText}>{t('auth.applyTransferCode')}</Text>
+            }
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
 
-            <TouchableOpacity
-              style={styles.guestButton}
-              onPress={() => {
-                continueAsGuest();
-                if (navigation.canGoBack()) {
-                  navigation.goBack();
-                } else {
-                  navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
-                }
-              }}
-            >
-              <Text style={styles.guestText}>{t('common.cancel', { defaultValue: '취소' })}</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
+      <ConfirmModal
+        visible={!!confirmConfig}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        options={confirmConfig?.options || []}
+        onDismiss={() => setConfirmConfig(null)}
+      />
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#b2ebf2',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
+  container: { flex: 1, backgroundColor: '#b2ebf2', justifyContent: 'center', padding: 20 },
   card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 24,
-    padding: 30,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 28,
+    padding: 32,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 30,
-    textAlign: 'center',
-  },
-  inputContainer: {
+  header: { alignItems: 'center', marginBottom: 32 },
+  appName: { fontSize: 28, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, color: '#888', marginTop: 6, textAlign: 'center' },
+  socialButtons: { gap: 12, marginBottom: 24 },
+  socialBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  icon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    height: 50,
-    fontSize: 16,
-    color: '#333',
-  },
-  forgotButton: {
-    alignSelf: 'flex-end',
-    marginBottom: 20,
-    marginTop: -8,
-  },
-  forgotText: {
-    color: '#469dd3',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  button: {
-    backgroundColor: '#469dd3',
-    height: 55,
-    borderRadius: 12,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#469dd3',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e0e0e0',
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    fontSize: 13,
-    color: '#999',
-  },
-  socialRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 20,
-    marginBottom: 10,
-  },
-  socialIconButton: {
-    width: 52,
     height: 52,
-    borderRadius: 26,
+    borderRadius: 14,
+    gap: 10,
+  },
+  googleBtn: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#e0e0e0' },
+  googleBtnText: { fontSize: 15, fontWeight: '600', color: '#333' },
+  appleBtn: { backgroundColor: '#000' },
+  appleBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#e8e8e8' },
+  dividerText: { marginHorizontal: 12, fontSize: 12, color: '#aaa' },
+  guestBtn: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 20,
+  },
+  guestBtnText: { fontSize: 15, fontWeight: '600', color: '#555' },
+  transferToggle: { alignItems: 'center', paddingVertical: 4 },
+  transferToggleText: { fontSize: 13, color: '#469dd3', fontWeight: '500', textDecorationLine: 'underline' },
+  transferSection: { marginTop: 16, gap: 10 },
+  transferInput: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#d0d0d0',
+    paddingHorizontal: 16,
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: '#333',
+    textAlign: 'center',
+    backgroundColor: '#fafafa',
+  },
+  transferBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#469dd3',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    justifyContent: 'center',
   },
-  googleIconButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  appleIconButton: {
-    backgroundColor: '#000',
-  },
-  switchButton: {
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  switchText: {
-    color: '#469dd3',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  guestButton: {
-    marginTop: 25,
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  guestText: {
-    color: '#888',
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
+  transferBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
 
 export default LoginScreen;

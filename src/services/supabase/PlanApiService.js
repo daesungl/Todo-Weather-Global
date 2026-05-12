@@ -1,16 +1,14 @@
-import auth from '@react-native-firebase/auth';
-import { SUPABASE_ANON_KEY, SUPABASE_URL, shouldUseSupabasePlans } from '../../config/supabaseConfig';
+import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL, shouldUseSupabasePlans } from '../../config/supabaseConfig';
 
 const planApiBaseUrl = () =>
   `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/plan-api`;
 
 const getAuthHeaders = async () => {
-  const user = auth().currentUser;
-  if (!user) throw new Error('LOGIN_REQUIRED');
-  const token = await user.getIdToken();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('LOGIN_REQUIRED');
   return {
     apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${session.access_token}`,
     'Content-Type': 'application/json',
   };
 };
@@ -64,6 +62,12 @@ export const savePlan = async (plan) =>
 export const deletePlan = async (planId) =>
   request(`/plans/${encodeURIComponent(planId)}`, {
     method: 'DELETE',
+  });
+
+export const updatePlanOrders = async (items) =>
+  request('/plans/order', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
   });
 
 export const replacePlanSteps = async (planId, steps = [], options = {}) =>

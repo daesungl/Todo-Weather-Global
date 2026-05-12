@@ -1,13 +1,10 @@
-import axios from 'axios';
 import { dfs_xy_conv } from './KMAUtils';
 import TempRegionCode from './data/Temp_RegionCityCode.json';
 import SkyRegionCode from './data/Sky_RegionCityCode.json';
 import SummaryRegionCode from './data/Summary_RegionCode.json';
 import WeatherWarnStationCode from './data/WeatherWarnStationCode.json';
 import { fetchAirQuality } from './AirService';
-
-// 보안을 위해 환경 변수(.env)에서 키를 불러옵니다.
-const KMA_SERVICE_KEY = decodeURIComponent(process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '');
+import { weatherProxy } from './weatherProxyClient';
 
 const pad = (n) => n.toString().padStart(2, '0');
 
@@ -34,10 +31,9 @@ export const fetchKMAWarning = async (region, city) => {
 
     const fromDate = getKSTDateString(new Date());
 
-    const url = 'https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrInfo';
-    const params = { serviceKey: KMA_SERVICE_KEY, pageNo: '1', numOfRows: '10', dataType: 'JSON', stnId, fromTmFc: fromDate };
-
-    const response = await axios.get(url, { params, timeout: 5000 });
+    const response = await weatherProxy('kma', '1360000/WthrWrnInfoService/getWthrInfo', {
+      pageNo: '1', numOfRows: '10', dataType: 'JSON', stnId, fromTmFc: fromDate,
+    });
     const rawItems = response?.data?.response?.body?.items?.item;
 
     const itemsArray = Array.isArray(rawItems) ? rawItems : (rawItems ? [rawItems] : []);
@@ -170,20 +166,17 @@ export const fetchKMAWeather = async (lat, lon, addressObj = {}) => {
   const vilageTime = getVilageBaseTime();
   const midTime = getMidBaseTime();
   const { taCode, landCode, stnId } = findMidRegionCodes(addressObj);
-  const baseUrl = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0';
-  const midUrl = 'https://apis.data.go.kr/1360000/MidFcstInfoService';
-  const serviceKey = process.env.EXPO_PUBLIC_KMA_SERVICE_KEY || '';
 
   const getValidatedData = async () => {
     const fetchData = async (attempt = 1) => {
       try {
         const [ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes] = await Promise.all([
-          axios.get(`${baseUrl}/getUltraSrtNcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y }, timeout: 5000 }).catch(() => null),
-          axios.get(`${baseUrl}/getUltraSrtFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 60, dataType: 'JSON', base_date: ultraTime.baseDate, base_time: ultraTime.baseTime, nx: x, ny: y }, timeout: 5000 }).catch(() => null),
-          axios.get(`${baseUrl}/getVilageFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 1000, dataType: 'JSON', base_date: vilageTime.baseDate, base_time: vilageTime.baseTime, nx: x, ny: y }, timeout: 5000 }).catch(() => null),
-          axios.get(`${midUrl}/getMidLandFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: landCode, tmFc: midTime.baseDate + midTime.baseTime }, timeout: 5000 }).catch(() => null),
-          axios.get(`${midUrl}/getMidTa?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime }, timeout: 5000 }).catch(() => null),
-          axios.get(`${midUrl}/getMidFcst?serviceKey=${serviceKey}`, { params: { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId: stnId, tmFc: midTime.baseDate + midTime.baseTime }, timeout: 5000 }).catch(() => null)
+          weatherProxy('kma', '1360000/VilageFcstInfoService_2.0/getUltraSrtNcst', { pageNo: 1, numOfRows: 10, dataType: 'JSON', base_date: ncstTime.baseDate, base_time: ncstTime.baseTime, nx: x, ny: y }).catch(() => null),
+          weatherProxy('kma', '1360000/VilageFcstInfoService_2.0/getUltraSrtFcst', { pageNo: 1, numOfRows: 60, dataType: 'JSON', base_date: ultraTime.baseDate, base_time: ultraTime.baseTime, nx: x, ny: y }).catch(() => null),
+          weatherProxy('kma', '1360000/VilageFcstInfoService_2.0/getVilageFcst', { pageNo: 1, numOfRows: 1000, dataType: 'JSON', base_date: vilageTime.baseDate, base_time: vilageTime.baseTime, nx: x, ny: y }).catch(() => null),
+          weatherProxy('kma', '1360000/MidFcstInfoService/getMidLandFcst', { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: landCode, tmFc: midTime.baseDate + midTime.baseTime }).catch(() => null),
+          weatherProxy('kma', '1360000/MidFcstInfoService/getMidTa', { pageNo: 1, numOfRows: 10, dataType: 'JSON', regId: taCode, tmFc: midTime.baseDate + midTime.baseTime }).catch(() => null),
+          weatherProxy('kma', '1360000/MidFcstInfoService/getMidFcst', { pageNo: 1, numOfRows: 10, dataType: 'JSON', stnId, tmFc: midTime.baseDate + midTime.baseTime }).catch(() => null),
         ]);
         return { ncstRes, ultraRes, vilageRes, midLandRes, midTaRes, midFcstRes };
       } catch (e) {

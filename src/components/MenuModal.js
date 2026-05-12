@@ -367,44 +367,35 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
 
                 {/* Fixed Bottom Profile & Footer */}
                 <View style={styles.fixedFooter}>
-                  {user ? (
-                    <TouchableOpacity 
-                      style={styles.profileSummary}
-                      onPress={() => handleMenuItemPress('profile')}
-                    >
-                      <View style={styles.profileAvatarContainer}>
-                        {user.profileImage ? (
-                          <Image source={{ uri: user.profileImage }} style={styles.profileAvatar} />
-                        ) : (
-                          <View style={styles.profileAvatarPlaceholder}>
-                            <UserIcon size={20} color={Colors.primary} />
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.profileInfo}>
-                        <Text style={styles.profileName} numberOfLines={1}>{user.displayName || 'User'}</Text>
-                        <Text style={styles.profileEmail} numberOfLines={1}>{user.email}</Text>
-                      </View>
+                  <TouchableOpacity
+                    style={styles.profileSummary}
+                    onPress={() => handleMenuItemPress('profile')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.profileAvatarContainer}>
+                      {(!isGuest && user?.profileImage) ? (
+                        <Image source={{ uri: user.profileImage }} style={styles.profileAvatar} />
+                      ) : (
+                        <View style={[styles.profileAvatarPlaceholder, isGuest && { backgroundColor: Colors.surfaceContainer }]}>
+                          <UserIcon size={20} color={isGuest ? Colors.outline : Colors.primary} />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.profileInfo}>
+                      <Text style={styles.profileName} numberOfLines={1}>
+                        {isGuest ? (user?.displayName || t('auth.guest')) : (user?.displayName || 'User')}
+                      </Text>
+                      <Text style={styles.profileEmail} numberOfLines={1}>
+                        {isGuest ? t('auth.guestSyncMsg', 'Safely sync & backup data') : user?.email}
+                      </Text>
+                    </View>
+                    <View style={styles.profileAction}>
+                      <Text style={styles.profileActionText}>
+                        {isGuest ? t('common.select') : ''}
+                      </Text>
                       <ChevronRight size={16} color={Colors.outlineVariant} />
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity 
-                      style={styles.loginCta}
-                      onPress={() => {
-                        onClose();
-                        navigation.navigate('Login');
-                      }}
-                    >
-                      <View style={styles.loginCtaIcon}>
-                        <UserIcon size={22} color="white" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.loginCtaTitle}>{t('auth.loginTitle')}</Text>
-                        <Text style={styles.loginCtaSub}>{t('auth.guestSyncMsg')}</Text>
-                      </View>
-                      <ChevronRight size={18} color="white" />
-                    </TouchableOpacity>
-                  )}
+                    </View>
+                  </TouchableOpacity>
 
                   {/* 사업자 등록 전까지 프리미엄 전환 버튼 숨김 */}
                   {false && (
@@ -667,37 +658,15 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  loginCta: {
+  profileAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary,
-    padding: 16,
-    borderRadius: 24,
-    gap: 12,
-    marginBottom: 24,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    gap: 4,
   },
-  loginCtaIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loginCtaTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: 'white',
-  },
-  loginCtaSub: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 2,
+  profileActionText: {
+    fontSize: 12,
+    color: Colors.outline,
+    fontWeight: '500',
   },
   prefSection: {
     marginBottom: 8,

@@ -8,7 +8,6 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-const firebaseWebApiKey = Deno.env.get('FIREBASE_WEB_API_KEY') || '';
 
 const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false },
@@ -34,41 +33,27 @@ const normalizeDisplayName = (name?: string | null, email?: string | null) => {
   return displayNameFromEmail(email) || trimmedName || null;
 };
 
-const requireFirebaseUser = async (req: Request) => {
+const requireUser = async (req: Request) => {
   const auth = req.headers.get('authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
   if (!token) throw new Response('Missing bearer token', { status: 401, headers: corsHeaders });
-  if (!firebaseWebApiKey) throw new Response('Missing FIREBASE_WEB_API_KEY', { status: 500, headers: corsHeaders });
 
-  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseWebApiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken: token }),
-  });
-  if (!res.ok) throw new Response('Invalid Firebase token', { status: 401, headers: corsHeaders });
+  const { data: { user }, error } = await admin.auth.getUser(token);
+  if (error || !user) throw new Response('Unauthorized', { status: 401, headers: corsHeaders });
 
-  const data = await res.json();
-  const user = data?.users?.[0];
-  if (!user?.localId) throw new Response('Invalid Firebase user', { status: 401, headers: corsHeaders });
-
-  const { data: existingProfile } = await admin
+  const { data: profile } = await admin
     .from('profiles')
     .select('display_name')
-    .eq('uid', user.localId)
+    .eq('uid', user.id)
     .maybeSingle();
-  const displayName = normalizeDisplayName(user.displayName, user.email)
-    || normalizeDisplayName(existingProfile?.display_name, user.email)
-    || 'Member';
 
-  await admin.from('profiles').upsert({
-    uid: user.localId,
-    email: user.email || null,
-    display_name: displayName,
-    photo_url: user.photoUrl || null,
-  });
+  const displayName = normalizeDisplayName(
+    user.user_metadata?.full_name || user.user_metadata?.name || profile?.display_name,
+    user.email
+  ) || 'Member';
 
   return {
-    uid: user.localId as string,
+    uid: user.id as string,
     email: user.email as string | undefined,
     displayName,
   };
@@ -174,6 +159,7 @@ const toAppPlan = (row: Record<string, unknown>) => ({
   commentsUpdatedAt: row.comments_updated_at,
   commentsLastUid: row.comments_last_uid,
   commentsCount: row.comments_count,
+  updatedAt: row.updated_at,
 });
 
 const generateInviteCode = () => {
@@ -353,7 +339,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const user = await requireFirebaseUser(req);
+    const user = await requireUser(req);
     const url = new URL(req.url);
     const path = url.pathname.replace(/^\/plan-api/, '').split('/').filter(Boolean);
 
@@ -432,7 +418,20 @@ Deno.serve(async (req) => {
       return json({ steps: (data || []).map(toAppStep) });
     }
 
-    if (req.method === 'PUT' && path[0] === 'plans' && path.length === 2) {
+    if (req.method === 'PUT' && path[0] === 'plans' && path[1] === 'order' && path.length === 2) {
+      const payload = await req.json();
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      if (items.length > 0) {
+        await Promise.all(items.map((item: any) => 
+          admin.from('plan_members').update({ sort_order: Number(item.sort_order) })
+            .eq('plan_id', item.plan_id)
+            .eq('uid', user.uid)
+        ));
+      }
+      return json({ ok: true });
+    }
+
+    if (req.method === 'PUT' && path[0] === 'plans' && path.length === 2 && path[1] !== 'order') {
       const planId = path[1];
       const payload = await req.json();
       const existingMember = await admin
@@ -546,7 +545,7 @@ Deno.serve(async (req) => {
 
       const body = await req.json().catch(() => ({}));
       const role = body.role === 'editor' ? 'editor' : 'viewer';
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       let code = generateInviteCode();
       let insertError = null;
       for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -763,6 +762,71 @@ Deno.serve(async (req) => {
       const { data: plan, error: planError } = await admin.from('plans').select('*').eq('id', invite.plan_id).single();
       if (planError) throw planError;
       return json({ flowId: invite.plan_id, ownerUid: invite.owner_uid, role, flowTitle: plan.title });
+    }
+
+    if (req.method === 'POST' && path[0] === 'transfer-code' && path[1] === 'generate') {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      // Invalidate previous unused codes for this user
+      await admin.from('transfer_codes').delete().eq('uid', user.uid).is('used_at', null);
+      await admin.from('transfer_codes').insert({ code, uid: user.uid, expires_at: expiresAt }).throwOnError();
+      return json({ code, expiresAt });
+    }
+
+    if (req.method === 'POST' && path[0] === 'transfer-code' && path[1] === 'redeem') {
+      const body = await req.json();
+      const code = String(body.code || '').replace(/-/g, '').toUpperCase().trim();
+      if (!code) throw new Response('Missing code', { status: 400, headers: corsHeaders });
+
+      const { data: record, error: codeError } = await admin
+        .from('transfer_codes')
+        .select('*')
+        .eq('code', code)
+        .maybeSingle();
+      if (codeError) throw codeError;
+      if (!record) throw new Response('Invalid code', { status: 404, headers: corsHeaders });
+      if (record.used_at) throw new Response('Code already used', { status: 410, headers: corsHeaders });
+      if (new Date(record.expires_at) < new Date()) throw new Response('Code expired', { status: 410, headers: corsHeaders });
+      if (record.uid === user.uid) throw new Response('Cannot redeem your own code', { status: 400, headers: corsHeaders });
+
+      const fromUid = record.uid as string;
+      const toUid = user.uid;
+
+      // Mark code as used first to prevent double redemption
+      await admin.from('transfer_codes').update({ used_at: new Date().toISOString() }).eq('code', code).throwOnError();
+
+      // Resolve plan_members conflicts (toUid already a member of a plan fromUid belongs to)
+      const { data: fromMemberships } = await admin.from('plan_members').select('plan_id').eq('uid', fromUid);
+      const { data: toMemberships } = await admin.from('plan_members').select('plan_id').eq('uid', toUid);
+      const toPlanIds = new Set((toMemberships || []).map((m: Record<string, unknown>) => m.plan_id));
+      for (const m of (fromMemberships || []) as Record<string, unknown>[]) {
+        if (toPlanIds.has(m.plan_id)) {
+          await admin.from('plan_members').delete().eq('uid', fromUid).eq('plan_id', m.plan_id);
+        }
+      }
+
+      // Migrate all data
+      await admin.from('tasks').update({ uid: toUid }).eq('uid', fromUid);
+      await admin.from('regions').update({ uid: toUid }).eq('uid', fromUid);
+      await admin.from('plans').update({ owner_uid: toUid }).eq('owner_uid', fromUid);
+      await admin.from('plan_invites').update({ owner_uid: toUid }).eq('owner_uid', fromUid);
+      await admin.from('plan_members').update({ uid: toUid }).eq('uid', fromUid);
+      await admin.from('plan_step_notification_prefs').update({ uid: toUid }).eq('uid', fromUid);
+      await admin.from('unread_plan_badges').update({ uid: toUid }).eq('uid', fromUid);
+      await admin.from('user_badge_state').update({ uid: toUid }).eq('uid', fromUid);
+      await admin.from('user_push_tokens').update({ uid: toUid }).eq('uid', fromUid);
+
+      // Migrate profile: copy display_name if toUid doesn't have a real name set
+      const { data: fromProfile } = await admin.from('profiles').select('*').eq('uid', fromUid).maybeSingle();
+      const { data: toProfile } = await admin.from('profiles').select('display_name').eq('uid', toUid).maybeSingle();
+      if (fromProfile?.display_name && (!toProfile?.display_name || /^Guest\s*#/.test(toProfile.display_name) || /^게스트\s*#/.test(toProfile.display_name))) {
+        await admin.from('profiles').upsert({ uid: toUid, display_name: fromProfile.display_name }, { onConflict: 'uid' });
+      }
+      await admin.from('profiles').delete().eq('uid', fromUid);
+
+      return json({ ok: true });
     }
 
     return json({ error: 'Not found' }, 404);

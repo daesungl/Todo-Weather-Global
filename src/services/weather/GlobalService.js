@@ -1,7 +1,5 @@
 import axios from 'axios';
-
-// 보안을 위해 환경 변수(.env)에서 키를 불러옵니다.
-const WEATHER_API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY || '';
+import { weatherProxy } from './weatherProxyClient';
 
 // Helper to map WeatherAPI condition text to app's icon keys
 const mapConditionToKey = (conditionText, isDay = 1) => {
@@ -56,14 +54,11 @@ export const fetchGlobalWeather = async (lat, lon) => {
   console.log(`[GlobalService] Fetching from WeatherAPI (HTTPS) for ${lat}, ${lon}`);
   
   try {
-    const response = await axios.get(`https://api.weatherapi.com/v1/forecast.json`, {
-      params: {
-        key: WEATHER_API_KEY,
-        q: `${lat},${lon}`,
-        days: 7,
-        aqi: 'yes',
-        alerts: 'yes'
-      }
+    const response = await weatherProxy('weatherapi', 'v1/forecast.json', {
+      q: `${lat},${lon}`,
+      days: 7,
+      aqi: 'yes',
+      alerts: 'yes',
     });
 
     const data = response.data;
@@ -200,8 +195,9 @@ export const fetchGlobalWeather = async (lat, lon) => {
 export const fetchExtraMetrics = async (lat, lon) => {
   // Utility for KMA regions to grab missing extra elements natively asynchronously
   try {
-    const response = await axios.get(`https://api.weatherapi.com/v1/current.json/`, {
-      params: { key: WEATHER_API_KEY, q: `${lat},${lon}`, aqi: 'yes' }
+    const response = await weatherProxy('weatherapi', 'v1/current.json', {
+      q: `${lat},${lon}`,
+      aqi: 'yes',
     });
     
     const current = response.data.current;

@@ -1,22 +1,47 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import firestore from '@react-native-firebase/firestore';
+import { supabase } from '../../config/supabaseConfig';
 
 const TASKS_STORAGE_KEY = '@tasks_v1';
-const MIGRATION_KEY_PREFIX = '@tasks_migrated_';
 
 let _userId = null;
 let _snapshotListeners = new Set();
-let _unsubscribeFirestore = null;
+let _subscription = null;
 let _cachedTasks = null;
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+const toCamelCase = (dbObj) => {
+  if (!dbObj) return null;
+  return {
+    id: dbObj.id,
+    ownerId: dbObj.owner_uid,
+    title: dbObj.title,
+    memo: dbObj.memo,
+    date: dbObj.date,
+    endDate: dbObj.end_date,
+    repeat: dbObj.repeat,
+    repeatEndDate: dbObj.repeat_end_date,
+    repeatGroupId: dbObj.repeat_group_id,
+    isRepeatMaster: dbObj.is_repeat_master,
+    isCompleted: dbObj.is_completed,
+    createdAt: dbObj.created_at,
+    updatedAt: dbObj.updated_at,
+  };
+};
 
-const _tasksCollection = (uid) =>
-  firestore().collection('users').doc(uid).collection('tasks');
-
-const _docToTask = (doc) => ({ id: doc.id, ...doc.data() });
-
-const _tasksFromSnapshot = (snapshot) => snapshot.docs.map(_docToTask);
+const toDbObj = (appObj) => {
+  const dbObj = {};
+  if (appObj.id !== undefined) dbObj.id = appObj.id;
+  if (appObj.ownerId !== undefined) dbObj.owner_uid = appObj.ownerId;
+  if (appObj.title !== undefined) dbObj.title = appObj.title || 'Untitled Task';
+  if (appObj.memo !== undefined) dbObj.memo = appObj.memo;
+  if (appObj.date !== undefined) dbObj.date = appObj.date;
+  if (appObj.endDate !== undefined) dbObj.end_date = appObj.endDate;
+  if (appObj.repeat !== undefined) dbObj.repeat = appObj.repeat;
+  if (appObj.repeatEndDate !== undefined) dbObj.repeat_end_date = appObj.repeatEndDate;
+  if (appObj.repeatGroupId !== undefined) dbObj.repeat_group_id = appObj.repeatGroupId;
+  if (appObj.isRepeatMaster !== undefined) dbObj.is_repeat_master = appObj.isRepeatMaster;
+  if (appObj.isCompleted !== undefined) dbObj.is_completed = appObj.isCompleted;
+  return dbObj;
+};
 
 const _loadLocalTasks = async () => {
   try {
@@ -30,20 +55,20 @@ const _loadLocalTasks = async () => {
 };
 
 const _batchWrite = async (uid, toSet = [], toDelete = []) => {
-  const col = _tasksCollection(uid);
-  const allOps = [
-    ...toSet.map(({ id, ...data }) => ({ type: 'set', id, data: { ...data, ownerId: uid } })),
-    ...toDelete.map((id) => ({ type: 'delete', id })),
-  ];
-  for (let i = 0; i < allOps.length; i += 499) {
-    const chunk = allOps.slice(i, i + 499);
-    const batch = firestore().batch();
-    chunk.forEach((op) =>
-      op.type === 'set'
-        ? batch.set(col.doc(op.id), op.data)
-        : batch.delete(col.doc(op.id))
-    );
-    await batch.commit();
+  if (!uid) return;
+  
+  if (toDelete.length > 0) {
+    for (let i = 0; i < toDelete.length; i += 100) {
+      const chunk = toDelete.slice(i, i + 100);
+      await supabase.from('tasks').delete().in('id', chunk);
+    }
+  }
+
+  if (toSet.length > 0) {
+    for (let i = 0; i < toSet.length; i += 100) {
+      const chunk = toSet.slice(i, i + 100).map(t => toDbObj({ ...t, ownerId: uid }));
+      await supabase.from('tasks').upsert(chunk, { onConflict: 'id' });
+    }
   }
 };
 
@@ -65,54 +90,37 @@ const _advanceByRepeat = (date, repeat) => {
   return d;
 };
 
-// ─── One-time migration ───────────────────────────────────────────────────────
-
-const _migrateIfNeeded = async (uid) => {
-  try {
-    const migrationKey = `${MIGRATION_KEY_PREFIX}${uid}`;
-    const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
-    if (alreadyMigrated) {
-      const remoteSnapshot = await _tasksCollection(uid).limit(1).get();
-      if (!remoteSnapshot.empty) return;
-    }
-
-    const localJson = await AsyncStorage.getItem(TASKS_STORAGE_KEY);
-    const localTasks = localJson ? JSON.parse(localJson) : [];
-
-    if (localTasks.length > 0) {
-      const snapshot = await _tasksCollection(uid).limit(1).get();
-      if (snapshot.empty) {
-        await _batchWrite(uid, localTasks, []);
-      }
-    }
-
-    await AsyncStorage.setItem(migrationKey, '1');
-  } catch (e) {
-    console.warn('[TaskSync] Migration error:', e);
-  }
-};
-
-// ─── Snapshot subscription ────────────────────────────────────────────────────
-
-const _startFirestoreSubscription = (uid) => {
-  if (_unsubscribeFirestore) {
-    _unsubscribeFirestore();
-    _unsubscribeFirestore = null;
+const _startSubscription = async (uid) => {
+  if (_subscription) {
+    supabase.removeChannel(_subscription);
+    _subscription = null;
   }
 
-  _unsubscribeFirestore = _tasksCollection(uid).onSnapshot(
-    (snapshot) => {
-      const tasks = _tasksFromSnapshot(snapshot);
-      _cachedTasks = tasks;
-      _snapshotListeners.forEach((cb) => cb(tasks));
-    },
-    (error) => {
-      console.warn('[TaskSync] Firestore snapshot error:', error);
+  const fetchInitial = async () => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('owner_uid', uid);
+    
+    if (error) {
+      console.warn('[TaskSync] fetch error:', error);
+      return;
     }
-  );
-};
+    
+    const tasks = (data || []).map(toCamelCase);
+    _cachedTasks = tasks;
+    _snapshotListeners.forEach((cb) => cb(tasks));
+  };
 
-// ─── Public lifecycle API ─────────────────────────────────────────────────────
+  await fetchInitial();
+
+  _subscription = supabase
+    .channel(`public:tasks:owner_uid=eq.${uid}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `owner_uid=eq.${uid}` }, async (payload) => {
+      await fetchInitial();
+    })
+    .subscribe();
+};
 
 export const initTaskSync = async (uid) => {
   _userId = uid;
@@ -122,12 +130,11 @@ export const initTaskSync = async (uid) => {
     const localTasks = await _loadLocalTasks();
     _cachedTasks = localTasks;
     _snapshotListeners.forEach((cb) => cb(localTasks));
-    _migrateIfNeeded(uid).catch(e => console.warn('[TaskSync] Migration error:', e));
-    _startFirestoreSubscription(uid);
+    _startSubscription(uid);
   } else {
-    if (_unsubscribeFirestore) {
-      _unsubscribeFirestore();
-      _unsubscribeFirestore = null;
+    if (_subscription) {
+      supabase.removeChannel(_subscription);
+      _subscription = null;
     }
     _cachedTasks = null;
     _snapshotListeners.forEach((cb) => cb(null));
@@ -140,25 +147,27 @@ export const subscribeToTasks = (callback) => {
   return () => _snapshotListeners.delete(callback);
 };
 
-// ─── Read ─────────────────────────────────────────────────────────────────────
-
 export const getTasks = async () => {
   if (_cachedTasks !== null) return _cachedTasks;
 
   if (_userId) {
     try {
-      const snapshot = await _tasksCollection(_userId).get();
-      const tasks = _tasksFromSnapshot(snapshot);
-      _cachedTasks = tasks;
-      return tasks;
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('owner_uid', _userId);
+        
+      if (!error) {
+        const tasks = (data || []).map(toCamelCase);
+        _cachedTasks = tasks;
+        return tasks;
+      }
     } catch (e) {
-      console.warn('[TaskSync] getTasks Firestore error, falling back:', e);
+      console.warn('[TaskSync] getTasks error:', e);
     }
   }
   return _loadLocalTasks();
 };
-
-// ─── saveTasks: full rewrite (migration & internal bulk use only) ─────────────
 
 export const saveTasks = async (tasks) => {
   const arr = Array.isArray(tasks) ? tasks : [];
@@ -171,19 +180,16 @@ export const saveTasks = async (tasks) => {
       _cachedTasks = arr;
       return true;
     } catch (e) {
-      console.warn('[TaskSync] saveTasks Firestore error, falling back:', e);
+      console.warn('[TaskSync] saveTasks error:', e);
     }
   }
   try {
     await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(arr));
     return true;
   } catch (e) {
-    console.error('[TaskSync] saveTasks AsyncStorage error:', e);
     return false;
   }
 };
-
-// ─── Single-task operations → 1 Firestore op each ────────────────────────────
 
 export const addTask = async (taskData) => {
   const tasks = await getTasks();
@@ -199,12 +205,12 @@ export const addTask = async (taskData) => {
 
   if (_userId) {
     try {
-      const { id, ...data } = newTask;
-      await _tasksCollection(_userId).doc(id).set({ ...data, ownerId: _userId });
+      const dbObj = toDbObj({ ...newTask, ownerId: _userId });
+      await supabase.from('tasks').insert(dbObj);
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] addTask Firestore error, falling back:', e);
+      console.warn('[TaskSync] addTask error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
@@ -222,14 +228,13 @@ export const toggleTaskCompletion = async (taskId) => {
 
   if (_userId) {
     try {
-      await _tasksCollection(_userId).doc(taskId).update({
-        isCompleted: !task.isCompleted,
-        updatedAt: now,
-      });
+      await supabase.from('tasks')
+        .update({ is_completed: !task.isCompleted })
+        .eq('id', taskId);
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] toggleTaskCompletion Firestore error, falling back:', e);
+      console.warn('[TaskSync] toggleTaskCompletion error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
@@ -242,11 +247,11 @@ export const deleteTask = async (taskId) => {
 
   if (_userId) {
     try {
-      await _tasksCollection(_userId).doc(taskId).delete();
+      await supabase.from('tasks').delete().eq('id', taskId);
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] deleteTask Firestore error, falling back:', e);
+      console.warn('[TaskSync] deleteTask error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
@@ -262,18 +267,17 @@ export const updateTask = async (taskId, updates) => {
 
   if (_userId) {
     try {
-      await _tasksCollection(_userId).doc(taskId).update({ ...updates, updatedAt: now });
+      const dbObj = toDbObj(updates);
+      await supabase.from('tasks').update(dbObj).eq('id', taskId);
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] updateTask Firestore error, falling back:', e);
+      console.warn('[TaskSync] updateTask error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
   return updated;
 };
-
-// ─── Repeat-series operations → batch (N ops, unavoidable) ───────────────────
 
 export const addRepeatTasks = async (taskData, repeat, repeatEndDate) => {
   const tasks = await getTasks();
@@ -315,7 +319,7 @@ export const addRepeatTasks = async (taskData, repeat, repeatEndDate) => {
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] addRepeatTasks Firestore error, falling back:', e);
+      console.warn('[TaskSync] addRepeatTasks error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
@@ -346,7 +350,7 @@ export const deleteRepeatTasks = async (taskId, scope) => {
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] deleteRepeatTasks Firestore error, falling back:', e);
+      console.warn('[TaskSync] deleteRepeatTasks error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
@@ -408,7 +412,7 @@ export const updateRepeatSeriesEndDate = async (taskId, newRepeatEndDate) => {
       const toDelete = tasks
         .filter((t) => t.repeatGroupId === groupId && !updatedIds.has(t.id))
         .map((t) => t.id);
-      // updated group tasks + new occurrences to set
+      
       const toSet = [
         ...remaining.filter((t) => t.repeatGroupId === groupId),
         ...newOccurrences,
@@ -417,7 +421,7 @@ export const updateRepeatSeriesEndDate = async (taskId, newRepeatEndDate) => {
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] updateRepeatSeriesEndDate Firestore error, falling back:', e);
+      console.warn('[TaskSync] updateRepeatSeriesEndDate error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
@@ -453,7 +457,7 @@ export const convertRepeatTaskToSingle = async (taskId, updates) => {
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] convertRepeatTaskToSingle Firestore error, falling back:', e);
+      console.warn('[TaskSync] convertRepeatTaskToSingle error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
@@ -500,7 +504,6 @@ export const updateRepeatTasks = async (taskId, updates, scope) => {
 
   if (_userId) {
     try {
-      // Only write tasks that actually changed
       const changedTasks = updated.filter((t) => {
         const orig = tasks.find((o) => o.id === t.id);
         return orig && orig.updatedAt !== t.updatedAt;
@@ -509,7 +512,7 @@ export const updateRepeatTasks = async (taskId, updates, scope) => {
       _cachedTasks = updated;
       return updated;
     } catch (e) {
-      console.warn('[TaskSync] updateRepeatTasks Firestore error, falling back:', e);
+      console.warn('[TaskSync] updateRepeatTasks error:', e);
     }
   }
   await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));

@@ -2,11 +2,9 @@ import * as Notifications from 'expo-notifications';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import firestore from '@react-native-firebase/firestore';
 import Constants from 'expo-constants';
 import i18n from '../i18n';
 import { dateStr, expandFlowStepsForRange } from '../utils/flowRecurrence';
-import { shouldUseSupabasePlans } from '../config/supabaseConfig';
 import { registerPlanPushToken } from './supabase/PlanApiService';
 
 const MAX_PER_SERIES = 10;
@@ -14,12 +12,6 @@ const PERM_ASKED_KEY = '@notification_perm_asked';
 const CHANNEL_ID = 'schedule_alerts';
 const NOTIF_PREFS_PREFIX = '@notif_prefs_';
 const PUSH_TOKEN_PREFIX = '@push_token_';
-
-const flowStepNotifPrefsCollection = (uid) =>
-  firestore().collection('users').doc(uid).collection('flowStepNotifications');
-
-const prefDocId = (flowId, stepId) =>
-  flowId && stepId ? `${flowId}_${stepId}` : null;
 
 const getLocalUserNotifPrefs = async (uid) => {
   if (!uid) return {};
@@ -38,27 +30,7 @@ const saveLocalUserNotifPrefs = async (uid, prefs) => {
 // Firestore stores the account-level on/off state; notificationId stays local because OS ids are device-specific.
 export const getUserNotifPrefs = async (uid) => {
   if (!uid) return {};
-  const localPrefs = await getLocalUserNotifPrefs(uid);
-  try {
-    const snap = await flowStepNotifPrefsCollection(uid).get();
-    if (snap.empty) return localPrefs;
-
-    const merged = { ...localPrefs };
-    snap.forEach(doc => {
-      const data = doc.data() || {};
-      if (!data.stepId) return;
-      merged[data.stepId] = {
-        notify: !!data.notify,
-        notificationId: localPrefs[data.stepId]?.notificationId ?? null,
-        flowId: data.flowId || localPrefs[data.stepId]?.flowId || null,
-        scheduleKey: localPrefs[data.stepId]?.scheduleKey || null,
-      };
-    });
-    await saveLocalUserNotifPrefs(uid, merged).catch(() => {});
-    return merged;
-  } catch {
-    return localPrefs;
-  }
+  return getLocalUserNotifPrefs(uid);
 };
 
 export const setUserNotifPref = async (uid, stepId, notify, notificationId, flowId = null, meta = {}) => {
@@ -72,16 +44,6 @@ export const setUserNotifPref = async (uid, stepId, notify, notificationId, flow
       scheduleKey: notify ? (meta.scheduleKey ?? prefs[stepId]?.scheduleKey ?? null) : null,
     };
     await saveLocalUserNotifPrefs(uid, prefs);
-
-    const docId = prefDocId(flowId, stepId);
-    if (docId) {
-      await flowStepNotifPrefsCollection(uid).doc(docId).set({
-        flowId,
-        stepId,
-        notify: !!notify,
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
   } catch {}
 };
 
@@ -89,24 +51,22 @@ export const deleteUserNotifPref = async (uid, stepId, flowId = null) => {
   if (!uid || !stepId) return;
   try {
     const prefs = await getLocalUserNotifPrefs(uid);
-    const resolvedFlowId = flowId || prefs[stepId]?.flowId || null;
     delete prefs[stepId];
     await saveLocalUserNotifPrefs(uid, prefs);
-
-    const docId = prefDocId(resolvedFlowId, stepId);
-    if (docId) {
-      await flowStepNotifPrefsCollection(uid).doc(docId).delete();
-    }
   } catch {}
 };
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const type = notification.request.content.data?.type;
+    // plan_unread: shared plan comment/step notifications from other members.
+    // Realtime already shows an in-app toast, so suppress OS banner/sound/haptic
+    // in the foreground to avoid the duplicate "a beat late" vibration.
+    if (type === 'plan_unread') {
+      return { shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false };
+    }
+    return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false };
+  },
 });
 
 // Android 8+ 필수: 알림 채널 생성 (앱 시작 시 1회)
@@ -179,21 +139,7 @@ export const registerPushToken = async (uid) => {
     if (!docId) return null;
 
     const localKey = `${PUSH_TOKEN_PREFIX}${uid}`;
-    const cached = await AsyncStorage.getItem(localKey).catch(() => null);
-    if (shouldUseSupabasePlans()) {
-      await registerPlanPushToken({ token, tokenType: 'expo', platform: Platform.OS });
-    } else {
-      const now = firestore.FieldValue.serverTimestamp();
-      const tokenRef = firestore().collection('users').doc(uid).collection('pushTokens').doc(docId);
-      await tokenRef.set({
-        token,
-        tokenType: 'expo',
-        platform: Platform.OS,
-        enabled: true,
-        updatedAt: now,
-        ...(cached === token ? {} : { createdAt: now }),
-      }, { merge: true });
-    }
+    await registerPlanPushToken({ token, tokenType: 'expo', platform: Platform.OS });
     await AsyncStorage.setItem(localKey, token).catch(() => {});
     return token;
   } catch (error) {

@@ -48,9 +48,11 @@
   "auth": {
     "loginTitle": "Login",
     "signupTitle": "Sign Up",
-    "loginSubtitle": "Login to sync your data and share plans",
-    "signupSubtitle": "Sign up to sync your data and share plans",
-    "guestSyncMsg": "Sync your data and share plans",
+    "loginSubtitle": "Login to safely sync and backup your data",
+    "signupSubtitle": "Sign up to safely sync and backup your data",
+    "guest": "Guest",
+    "guest_desc": "Log in to safely sync your data",
+    "guestSyncMsg": "Safely sync and backup your data",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm Password",
@@ -95,7 +97,21 @@
       "tooManyRequests": "Too many requests. Please try again later.",
       "verificationRequired": "Email verification required. Please check your inbox.",
       "default": "Authentication failed."
-    }
+    },
+    "continueAsGuest": "Continue as Guest",
+    "haveTransferCode": "Have a transfer code?",
+    "transferCodePlaceholder": "XXXX-XXXX",
+    "applyTransferCode": "Apply Code",
+    "transferCode": "Device Transfer",
+    "transferCodeInfo": "Enter this code on your new device to transfer all your data. Valid for 30 days.",
+    "generateTransferCode": "Generate Transfer Code",
+    "transferCodeExpiry": "Expires in {{days}} days",
+    "transferCodeUsed": "This code has already been used",
+    "transferCodeExpired": "This code has expired",
+    "transferCodeInvalid": "Invalid transfer code",
+    "transferCodeSuccess": "Data transferred successfully. Please refresh.",
+    "logoutConfirm": "Are you sure you want to log out?",
+    "logoutConfirmSocial": "Logging out will start a new guest session.\n\nYour {{provider}} account data is safe and will be restored when you sign in again."
   },
   "months": [
     "Jan",

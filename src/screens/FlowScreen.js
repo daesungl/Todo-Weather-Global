@@ -71,7 +71,7 @@ import MainHeader from '../components/MainHeader';
 import WeatherService from '../services/weather/WeatherService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
-import { getFlows, getLocalCachedFlows, saveFlows, addFlow, deleteFlow, subscribeToFlows, subscribeToFlowSteps, updateFlowDoc, deleteFlowStepDocs, removeSharedFlowOptimistic, refreshSharedFlowListener, markFlowRead, isRemoteFlowUpdate } from '../services/FlowSyncService';
+import { getFlows, getLocalCachedFlows, saveFlows, reorderFlows, addFlow, deleteFlow, subscribeToFlows, subscribeToFlowSteps, updateFlowDoc, deleteFlowStepDocs, removeSharedFlowOptimistic, refreshSharedFlowListener, markFlowRead, isRemoteFlowUpdate } from '../services/FlowSyncService';
 import { 
   generateInviteCode, 
   invalidateInviteCode, 
@@ -85,8 +85,8 @@ import {
   syncMemberCount,
 } from '../services/InviteService';
 import { requestPermission, requestSharedPlanNotificationPermission, getNotificationPermissionStatus, scheduleNotification, cancelNotification, refillStepNotifications, getUserNotifPrefs, setUserNotifPref, deleteUserNotifPref } from '../services/NotificationService';
-import { markFlowBadgeRead, subscribeToUnreadFlowBadges } from '../services/FlowBadgeService';
-import * as CommentService from '../services/CommentService';
+import { markFlowBadgeRead, subscribeToUnreadFlowBadges, subscribeToFlowBadgeState } from '../services/FlowBadgeService';
+import CommentService, { markCommentAdding } from '../services/CommentService';
 import { getFlowUnreadInfo as getSharedFlowUnreadInfo } from '../utils/flowUnread';
 
 
@@ -188,6 +188,24 @@ const FlowScreen = ({ navigation, route }) => {
   const selectedFlowRef = useRef(null);
   const [detailReadBaseline, setDetailReadBaseline] = useState(null);
   const [stepSortOrder, setStepSortOrder] = useState('asc');
+
+  useEffect(() => {
+    import('@react-native-async-storage/async-storage').then(({ default: AsyncStorage }) => {
+      AsyncStorage.getItem('@todo_weather_step_sort_order').then(val => {
+        if (val === 'asc' || val === 'desc') setStepSortOrder(val);
+      }).catch(() => {});
+    });
+  }, []);
+
+  const toggleStepSortOrder = () => {
+    setStepSortOrder(prev => {
+      const next = prev === 'asc' ? 'desc' : 'asc';
+      import('@react-native-async-storage/async-storage').then(({ default: AsyncStorage }) => {
+        AsyncStorage.setItem('@todo_weather_step_sort_order', next).catch(() => {});
+      });
+      return next;
+    });
+  };
   const [isSharingImage, setIsSharingImage] = useState(false);
   const viewShotRef = useRef();
   
@@ -278,7 +296,7 @@ const FlowScreen = ({ navigation, route }) => {
   // Invite / Join state
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
-  const [inviteRole, setInviteRole] = useState('viewer');
+  const [inviteRole, setInviteRole] = useState('editor');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [flowMembers, setFlowMembers] = useState([]);
   const [pendingPermissions, setPendingPermissions] = useState({});  // { [uid]: permissions }
@@ -361,6 +379,16 @@ const FlowScreen = ({ navigation, route }) => {
     return subscribeToUnreadFlowBadges(user.uid, setUnreadFlowBadges);
   }, [user?.uid]);
 
+  useEffect(() => {
+    if (!user?.uid) {
+      navigation.setOptions({ tabBarBadge: null });
+      return () => {};
+    }
+    return subscribeToFlowBadgeState(user.uid, ({ count }) => {
+      navigation.setOptions({ tabBarBadge: count > 0 ? count : null });
+    });
+  }, [user?.uid]);
+
   // 타임라인 스크롤 위치 추적 (댓글 입력 포커스 시 scrollTo 계산용)
   useEffect(() => {
     const listenerId = scrollY.addListener(({ value }) => {
@@ -412,7 +440,8 @@ const FlowScreen = ({ navigation, route }) => {
         // steps, updatedAt, 권한 중 하나라도 바뀌면 selectedFlow 갱신 (댓글/스텝 실시간 반영)
         const stepsChanged = JSON.stringify(latest.steps) !== JSON.stringify(selectedFlow.steps);
         const updatedAtChanged = latest.updatedAt !== selectedFlow.updatedAt;
-        if (stepsChanged || updatedAtChanged || roleChanged || permChanged) {
+        const titleChanged = latest.title !== selectedFlow.title;
+        if (stepsChanged || updatedAtChanged || titleChanged || roleChanged || permChanged) {
           if (__DEV__) console.log('[FlowScreen] Syncing selectedFlow with latest from subscription');
           setSelectedFlow(latest);
         }
@@ -593,7 +622,12 @@ const FlowScreen = ({ navigation, route }) => {
         prevCommentsRef.current = data;
         prevCommentsFlowIdRef.current = selectedFlow.id;
       }
-      setComments(data);
+      // 폴링 결과가 와도 아직 서버에 저장 중인 temp_ 댓글은 보존
+      setComments(prev => {
+        const serverIds = new Set(data.map(c => c.id));
+        const tempComments = prev.filter(c => String(c.id).startsWith('temp_') && !serverIds.has(c.id));
+        return [...data, ...tempComments];
+      });
     });
 
     return unsub;
@@ -635,30 +669,35 @@ const FlowScreen = ({ navigation, route }) => {
   const handlePostComment = async (stepId) => {
     const text = commentInputs[stepId];
     if (!text || !text.trim() || isPostingComment) return;
-    if (!user?.uid) {
-      showConfirm(
-        t('common.login_required'),
-        t('common.login_required_msg'),
-        () => navigation.navigate('Login'),
-        true
-      );
-      return;
-    }
 
-    setIsPostingComment(true);
     const ownerUid = selectedFlow._ownerUid || user?.uid;
+    const tempId = `temp_${Date.now()}`;
+    const optimisticComment = {
+      id: tempId,
+      stepId,
+      uid: user.uid,
+      displayName: user.displayName || 'Guest',
+      text: text.trim(),
+      createdAt: new Date(),
+    };
+
+    // 폴링 보호 타임스탬프 설정 (4초간 폴링 결과 무시)
+    markCommentAdding(selectedFlow.id);
+
+    // Optimistic UI updates
+    setComments(prev => [...prev, optimisticComment]);
+    setCommentInputs(prev => ({ ...prev, [stepId]: '' }));
+    setIsPostingComment(true);
+
     try {
       const createdComment = await CommentService.addComment(ownerUid, selectedFlow.id, stepId, user, text);
       if (createdComment) {
-        setComments(prev => (
-          prev.some(comment => comment.id === createdComment.id)
-            ? prev
-            : [...prev, createdComment]
-        ));
+        setComments(prev => prev.map(c => c.id === tempId ? createdComment : c));
+      } else {
+        setComments(prev => prev.filter(c => c.id !== tempId));
       }
-      setCommentInputs(prev => ({ ...prev, [stepId]: '' }));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
+      setComments(prev => prev.filter(c => c.id !== tempId));
       showConfirm(t('common.error'), t('flow.comment_error', 'Failed to post comment.'), null, false);
     } finally {
       setIsPostingComment(false);
@@ -670,11 +709,11 @@ const FlowScreen = ({ navigation, route }) => {
     const foundComment = comments.find(c => c.id === commentId);
     if (!foundComment) return;
     
-    // 권한 체크: 본인 댓글이거나, 관리 권한이 있거나
+    // 본인 댓글이거나 owner만 삭제 가능
     const isAuthor = foundComment.uid === user?.uid;
-    const hasPermission = isAuthor || canManageComments(selectedFlow);
+    const isOwner = isFlowOwner(selectedFlow);
 
-    if (!hasPermission) {
+    if (!isAuthor && !isOwner) {
       showConfirm(t('common.info'), t('flow.no_permission_comment'), null, false);
       return;
     }
@@ -686,14 +725,22 @@ const FlowScreen = ({ navigation, route }) => {
       t('flow.alert.delete_comment'),
       t('flow.alert.delete_comment_msg'),
       async () => {
+        // optimistic: 즉시 UI에서 제거
+        setComments(prev => prev.filter(c => c.id !== commentId));
         try {
           await CommentService.deleteComment(ownerUid, selectedFlow.id, targetStepId, commentId);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (e) {
+          // 실패 시 복원
+          setComments(prev => {
+            if (prev.find(c => c.id === commentId)) return prev;
+            return [...prev, foundComment].sort((a, b) =>
+              new Date(a.createdAt) - new Date(b.createdAt)
+            );
+          });
           showConfirm(t('common.error'), t('flow.delete_comment_error', 'Failed to delete comment.'), null, false);
         }
       },
-      true // 취소 버튼 포함
+      true
     );
   };
 
@@ -913,22 +960,8 @@ const FlowScreen = ({ navigation, route }) => {
     return !!flow._permissions.edit;
   };
 
-  const canManageComments = (flow) => {
-    if (isFlowOwner(flow)) return true;
-    if (!flow?._permissions) return flow?._role === 'editor';
-    return !!flow._permissions.manageComments;
-  };
 
   const handleJoinPress = () => {
-    if (!user) {
-      showConfirm(
-        t('common.login_required'),
-        t('common.login_required_msg'),
-        () => navigation.navigate('Login'),
-        true
-      );
-      return;
-    }
     openJoinModal();
   };
 
@@ -1155,25 +1188,20 @@ const FlowScreen = ({ navigation, route }) => {
 
   const handleOpenInvite = async () => {
     setFlowMenuVisible(false);
-    
-    if (!user) {
-      showConfirm(
-        t('common.login_required'),
-        t('common.login_required_msg'),
-        () => navigation.navigate('Login'),
-        true
-      );
-      return;
-    }
 
+    const role = selectedFlow.inviteRole || 'editor';
     setInviteCode(selectedFlow.inviteCode || '');
-    setInviteRole(selectedFlow.inviteRole || 'viewer');
+    setInviteRole(role);
     setFlowMembers([]);
     setPendingPermissions({});
     setApplyingPermissions({});
     invitePanY.setValue(height);
     setInviteModalVisible(true);
     Animated.spring(invitePanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+
+    if (!selectedFlow.inviteCode) {
+      handleGenerateCode(role);
+    }
   };
 
   const closeInviteModal = () => {
@@ -3281,9 +3309,8 @@ const FlowScreen = ({ navigation, route }) => {
                                             <Pressable
                                               onLongPress={() => {
                                                 const isOwner = isFlowOwner(selectedFlow);
-                                                const isEditor = selectedFlow._role === 'editor';
                                                 const isAuthor = comment.uid === user?.uid;
-                                                if (isOwner || isEditor || isAuthor) {
+                                                if (isOwner || isAuthor) {
                                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                                                   handleDeleteComment(comment.id);
                                                 }
@@ -3401,7 +3428,7 @@ const FlowScreen = ({ navigation, route }) => {
                     onPress={() => {
                       setDetailActionMenuVisible(false);
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setStepSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                      toggleStepSortOrder();
                     }}
                   >
                     <View style={styles.detailActionMenuIcon}><ArrowUpDown size={18} color={Colors.primary} /></View>
@@ -3511,7 +3538,7 @@ const FlowScreen = ({ navigation, route }) => {
                   ref={flatListRef}
                   data={displayFlows || []}
                   keyExtractor={(item) => item.id}
-                  onDragEnd={({ data }) => { setFlows(data); saveFlows(data); }}
+                  onDragEnd={({ data }) => { setFlows(data); reorderFlows(data); }}
                   activationDistance={20}
                   ListEmptyComponent={(
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: 32 }}>
@@ -3749,15 +3776,6 @@ const FlowScreen = ({ navigation, route }) => {
                     style={({ pressed }) => [styles.flowCreateMenuItem, pressed && styles.flowCreateMenuItemPressed]}
                     onPress={() => {
                       setFlowCreateMenuVisible(false);
-                      if (!user) {
-                        showConfirm(
-                          t('common.login_required'),
-                          t('common.login_required_msg'),
-                          () => navigation.navigate('Login'),
-                          true
-                        );
-                        return;
-                      }
                       openJoinModal();
                     }}
                   >
@@ -4674,12 +4692,11 @@ const FlowScreen = ({ navigation, route }) => {
 
                             {/* 권한 체크박스 섹션 (오너만 조절 가능) */}
                             {isFlowOwner(selectedFlow) && member.uid !== user?.uid && (() => {
-                              const perms = pendingPermissions[member.uid] ?? member.permissions ?? { edit: member.role === 'editor', manageComments: true };
+                              const perms = pendingPermissions[member.uid] ?? member.permissions ?? { edit: member.role === 'editor' };
                               return (
                                 <View style={{ marginTop: 16, pt: 16, borderTopWidth: 1, borderTopColor: Colors.outlineVariant + '20', flexDirection: 'row', gap: 16 }}>
                                   {[
                                     { key: 'edit', label: t('flow.perm_edit') },
-                                    { key: 'manageComments', label: t('flow.perm_comments') }
                                   ].map(perm => (
                                     <Pressable
                                       key={perm.key}
@@ -4820,7 +4837,7 @@ const FlowScreen = ({ navigation, route }) => {
                 onPress={() => {
                   setFlowMenuVisible(false);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setStepSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                  toggleStepSortOrder();
                 }}
               >
                 <View pointerEvents="none"><ArrowUpDown size={18} color={Colors.primary} /></View>

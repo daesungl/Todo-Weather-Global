@@ -1,7 +1,4 @@
-import axios from 'axios';
-
-// 보안을 위해 환경 변수(.env)에서 키를 불러옵니다.
-const VWORLD_API_KEY = process.env.EXPO_PUBLIC_VWORLD_API_KEY || '';
+import { weatherProxy } from './weatherProxyClient';
 
 /**
  * VWorld Service
@@ -10,19 +7,15 @@ const VWORLD_API_KEY = process.env.EXPO_PUBLIC_VWORLD_API_KEY || '';
 export const checkIsKorea = async (lat, lon) => {
   try {
     // VWorld Reverse Geocoding API
-    const response = await axios.get('https://api.vworld.kr/req/address', {
-      params: {
-        service: 'address',
-        request: 'getAddress',
-        version: '2.0',
-        crs: 'epsg:4326',
-        point: `${lon},${lat}`,
-        format: 'json',
-        type: 'both',
-        key: VWORLD_API_KEY,
-      },
-      timeout: 4000
-    });
+    const response = await weatherProxy('vworld', 'req/address', {
+      service: 'address',
+      request: 'getAddress',
+      version: '2.0',
+      crs: 'epsg:4326',
+      point: `${lon},${lat}`,
+      format: 'json',
+      type: 'both',
+    }, 6000);
 
     if (response.data?.response?.status === 'OK') {
       const result = response.data.response.result?.[0];
@@ -65,11 +58,10 @@ export const searchPlaces = async (query) => {
         type: searchType, 
         format: 'json',
         errorformat: 'json',
-        key: VWORLD_API_KEY,
       };
       if (category) params.category = category;
 
-      const response = await axios.get('https://api.vworld.kr/req/search', { params, timeout: 5000 });
+      const response = await weatherProxy('vworld', 'req/search', params);
       if (response.data?.response?.status === 'OK') {
         return response.data.response.result.items || [];
       }

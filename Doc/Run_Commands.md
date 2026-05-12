@@ -17,3 +17,8 @@ npm run build:test:ios
 npm run build:test:android
 npm run build:prod:ios
 npm run build:prod:android
+
+# 추가 필요 작업 (프로덕션 배포 전):
+
+- Prod Supabase도 동일하게 처리: npm run env:use:prod && supabase db push
+- Prod에서도 익명 로그인 활성화 필요 (Dashboard → Authentication → Providers → Anonymous)

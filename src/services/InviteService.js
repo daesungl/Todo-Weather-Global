@@ -1,8 +1,6 @@
-import firestore from '@react-native-firebase/firestore';
 import {
   generatePlanInviteCode,
   invalidatePlanInviteCode,
-  isSupabasePlanBackendEnabled,
   joinPlanByCode,
   leavePlan,
   listPlanMembers,
@@ -10,301 +8,77 @@ import {
   syncPlanMemberDisplayName,
   updatePlanMemberPermissions,
 } from './supabase/PlanApiService';
-
-const _generateCode = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-};
-
-const _membersCollection = (flowId) =>
-  firestore().collection('flows').doc(flowId).collection('members');
-
-const _flowRefsCollection = (uid) =>
-  firestore().collection('users').doc(uid).collection('flowRefs');
-
-const _flowDoc = (flowId) =>
-  firestore().collection('flows').doc(flowId);
-
-const _docExists = (doc) =>
-  typeof doc.exists === 'function' ? doc.exists() : !!doc.exists;
-
-const _isPermissionDenied = (error) =>
-  error?.code === 'firestore/permission-denied'
-  || String(error?.message || '').includes('permission-denied');
-
-const _cleanFlowData = (flowData = {}) => {
-  const { id, steps, _role, _ownerUid, _permissions, order, ...cleanFlowData } = flowData;
-  return Object.fromEntries(Object.entries(cleanFlowData).filter(([, v]) => v !== undefined));
-};
+import { supabase } from '../config/supabaseConfig';
 
 export const generateInviteCode = async (uid, flowId, role = 'viewer', flowData = null) => {
-  if (isSupabasePlanBackendEnabled()) {
-    const result = await generatePlanInviteCode(flowId, role);
-    return result.code;
-  }
-
-  const code = _generateCode();
-  const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 24);
-  const expiresTs = firestore.Timestamp.fromDate(expiresAt);
-
-  const batch = firestore().batch();
-  batch.set(firestore().collection('inviteCodes').doc(code), {
-    ownerUid: uid,
-    flowId,
-    role,
-    createdAt: firestore.FieldValue.serverTimestamp(),
-    expiresAt: expiresTs,
-  });
-
-  // 플로우 실제 데이터가 있으면 함께 씀 (오너 구버전 대응: Firestore에 title/steps 동기화)
-  // 초대 코드 관련 필드는 항상 새로 생성된 값이 우선 적용되도록 spread 순서를 지킴
-  const flowDocUpdate = {
-    ...(flowData ? _cleanFlowData(flowData) : {}),
-    inviteCode: code,
-    inviteRole: role,
-    inviteCodeExpiresAt: expiresTs,
-    ownerUid: uid,
-  };
-
-  batch.set(
-    firestore().collection('flows').doc(flowId),
-    flowDocUpdate,
-    { merge: true }
-  );
-  batch.set(_membersCollection(flowId).doc(uid), {
-    role: 'owner',
-    joinedAt: firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
-  batch.set(_flowRefsCollection(uid).doc(flowId), {
-    ownerUid: uid,
-    flowId,
-    role: 'owner',
-    updatedAt: firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
-  await batch.commit();
-  return code;
+  const result = await generatePlanInviteCode(flowId, role);
+  return result.code;
 };
 
 export const invalidateInviteCode = async (uid, flowId, code) => {
-  if (isSupabasePlanBackendEnabled()) {
-    try {
-      await invalidatePlanInviteCode(flowId, code);
-    } catch (_) {}
-    return;
-  }
-
-  // inviteCodes 도큐먼트만 삭제 — flow 문서의 inviteCode 필드는 건드리지 않는다.
-  // generateInviteCode가 set+merge로 새 코드를 덮어쓰기 때문에 flow 문서를 수정할 필요가 없고,
-  // 수정할 경우 FlowSyncService의 onSnapshot이 트리거되어 무한 업데이트 루프가 발생한다.
   try {
-    await firestore().collection('inviteCodes').doc(code).delete();
+    await invalidatePlanInviteCode(flowId, code);
   } catch (_) {}
 };
 
 export const joinFlowByCode = async (uid, code, displayName = '') => {
-  if (isSupabasePlanBackendEnabled()) {
-    return joinPlanByCode(code, displayName);
-  }
-
-  const inviteRef = firestore().collection('inviteCodes').doc(code.toUpperCase().trim());
-  // 서버에서 직접 읽어 오프라인 캐시 지연으로 인한 INVALID_CODE 오류 방지
-  const inviteDoc = await inviteRef.get({ source: 'server' });
-  const invite = inviteDoc.data();
-  if (!invite || !invite.expiresAt) throw new Error('INVALID_CODE');
-  if (invite.expiresAt.toDate() < new Date()) throw new Error('EXPIRED_CODE');
-  if (invite.ownerUid === uid) throw new Error('OWN_FLOW');
-
-  const memberRef = _membersCollection(invite.flowId).doc(uid);
-  const flowRef = _flowRefsCollection(uid).doc(invite.flowId);
-
-  let existingMemberData = null;
-  try {
-    const existingMemberSnap = await memberRef.get();
-    existingMemberData = _docExists(existingMemberSnap) ? existingMemberSnap.data() : null;
-  } catch (e) {
-    if (!_isPermissionDenied(e)) throw e;
-    // 아직 멤버가 아닌 사용자는 rules상 members read가 거부된다. join은 create로 진행한다.
-  }
-  const effectiveRole = existingMemberData ? existingMemberData.role : invite.role;
-
-  const batch = firestore().batch();
-  if (!existingMemberData) {
-    batch.set(memberRef, {
-      role: invite.role,
-      displayName: displayName || `User ${uid.slice(0, 5)}`,
-      joinedAt: firestore.FieldValue.serverTimestamp(),
-      lastReadStepsAt: firestore.FieldValue.serverTimestamp(),
-      lastReadCommentsAt: firestore.FieldValue.serverTimestamp(),
-    });
-  }
-  batch.set(flowRef, {
-    ownerUid: invite.ownerUid,
-    flowId: invite.flowId,
-    role: effectiveRole,
-    joinedAt: firestore.FieldValue.serverTimestamp(),
-    lastReadStepsAt: firestore.FieldValue.serverTimestamp(),
-    lastReadCommentsAt: firestore.FieldValue.serverTimestamp(),
-  });
-  await batch.commit();
-
-  // memberCount는 배치 커밋 후 별도로 업데이트: Firestore rules는 pre-state로 평가하므로
-  // 배치 내에서 참여자는 아직 멤버가 아니라 flows 문서 업데이트 권한이 없음
-  if (!existingMemberData) {
-    try {
-      await _flowDoc(invite.flowId).update({
-        memberCount: firestore.FieldValue.increment(1),
-      });
-    } catch (e) {
-      console.warn('[InviteService] memberCount update failed (non-critical):', e);
-    }
-  }
-
-  // member doc이 Firestore rules에 반영되도록 짧게 대기 후 flow title 읽기
-  let flowTitle = '';
-  const readFlowTitle = async () => {
-    const flowDoc = await firestore()
-      .collection('flows').doc(invite.flowId)
-      .get();
-    const flowData = flowDoc.data();
-    if (flowData) flowTitle = flowData.title || '';
-  };
-  try {
-    await readFlowTitle();
-  } catch (_) {
-    try {
-      await new Promise(r => setTimeout(r, 1500));
-      await readFlowTitle();
-    } catch (_2) {}
-  }
-
-  return { flowId: invite.flowId, ownerUid: invite.ownerUid, role: effectiveRole, flowTitle };
+  return joinPlanByCode(code, displayName);
 };
 
 export const leaveFlow = async (uid, ownerUid, flowId) => {
-  if (isSupabasePlanBackendEnabled()) {
-    await leavePlan(flowId);
-    return;
-  }
-
-  const batch = firestore().batch();
-  batch.delete(_membersCollection(flowId).doc(uid));
-  batch.delete(_flowRefsCollection(uid).doc(flowId));
-  await batch.commit();
+  await leavePlan(flowId);
 };
 
 export const syncMemberCount = async (flowId, count) => {
-  if (isSupabasePlanBackendEnabled()) return;
-  if (!flowId || count == null) return;
-  try {
-    await _flowDoc(flowId).update({ memberCount: count });
-  } catch {}
+  // Supabase handles member count via RPC on the server
 };
 
 export const removeMember = async (ownerUid, flowId, memberUid) => {
-  if (isSupabasePlanBackendEnabled()) {
-    await removePlanMember(flowId, memberUid);
-    return;
-  }
-
-  const batch = firestore().batch();
-  batch.delete(_membersCollection(flowId).doc(memberUid));
-  batch.delete(_flowRefsCollection(memberUid).doc(flowId));
-  batch.update(_flowDoc(flowId), { memberCount: firestore.FieldValue.increment(-1) });
-  await batch.commit();
+  await removePlanMember(flowId, memberUid);
 };
 
 export const getFlowMembers = async (ownerUid, flowId) => {
-  if (isSupabasePlanBackendEnabled()) {
-    return listPlanMembers(flowId);
-  }
-
-  const snapshot = await _membersCollection(flowId).get();
-  return snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      uid: doc.id,
-      role: data.role,
-      displayName: data.displayName || `User ${doc.id.slice(0, 5)}`,
-      permissions: data.permissions || {
-        edit: data.role === 'editor',
-        manageComments: data.role === 'editor',
-      },
-    };
-  });
+  return listPlanMembers(flowId);
 };
 
 export const subscribeToFlowMembers = (ownerUid, flowId, onUpdate) => {
   if (!ownerUid || !flowId) return () => {};
-  if (isSupabasePlanBackendEnabled()) {
-    let cancelled = false;
-    const load = () => {
-      listPlanMembers(flowId)
-        .then(members => { if (!cancelled) onUpdate(members); })
-        .catch(err => {
-          if (!cancelled && err?.status === 403) {
-            onUpdate([]);
-            return;
-          }
-          console.warn('[InviteService] Supabase members load error:', err);
-        });
-    };
-    load();
-    const interval = setInterval(load, 7000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+  let cancelled = false;
+
+  const load = () => {
+    listPlanMembers(flowId)
+      .then(members => { if (!cancelled) onUpdate(members); })
+      .catch(err => {
+        if (!cancelled && err?.status === 403) { onUpdate([]); return; }
+        console.warn('[InviteService] members load error:', err);
+      });
+  };
+
+  load();
+
+  let channel;
+  if (supabase) {
+    channel = supabase
+      .channel(`public:plan_members:plan_id=eq.${flowId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'plan_members', filter: `plan_id=eq.${flowId}` },
+        () => load()
+      )
+      .subscribe();
   }
 
-  return _membersCollection(flowId).onSnapshot(snapshot => {
-    const members = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        uid: doc.id,
-        role: data.role,
-        displayName: data.displayName || `User ${doc.id.slice(0, 5)}`,
-        permissions: data.permissions || {
-          edit: data.role === 'editor',
-          manageComments: data.role === 'editor',
-        },
-      };
-    });
-    onUpdate(members);
-  }, err => {
-    console.warn('[InviteService] subscribe members error:', err);
-  });
+  return () => {
+    cancelled = true;
+    if (channel) supabase.removeChannel(channel);
+  };
 };
 
 export const syncMemberDisplayName = async (flowId, uid, displayName) => {
-  if (isSupabasePlanBackendEnabled()) {
-    await syncPlanMemberDisplayName(flowId, displayName);
-    return;
-  }
-
   if (!flowId || !uid || !displayName) return;
-  try {
-    await _membersCollection(flowId).doc(uid).set({ displayName }, { merge: true });
-  } catch {}
+  await syncPlanMemberDisplayName(flowId, displayName);
 };
 
 export const updateMemberPermissions = async (ownerUid, flowId, memberUid, permissions) => {
-  if (isSupabasePlanBackendEnabled()) {
-    await updatePlanMemberPermissions(flowId, memberUid, permissions);
-    return;
-  }
-
-  const batch = firestore().batch();
-  const memberRef = _membersCollection(flowId).doc(memberUid);
-  const flowRef = _flowRefsCollection(memberUid).doc(flowId);
-
-  const updateData = { permissions };
-  if (permissions.edit) updateData.role = 'editor';
-  else updateData.role = 'viewer';
-
-  batch.set(memberRef, updateData, { merge: true });
-  batch.set(flowRef, updateData, { merge: true });
-  await batch.commit();
+  await updatePlanMemberPermissions(flowId, memberUid, permissions);
 };

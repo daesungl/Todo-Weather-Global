@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
-  Alert,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -45,6 +44,7 @@ import { searchLocations } from '../services/weather/GlobalService';
 import { getFlows, subscribeToFlows } from '../services/FlowSyncService';
 import { expandFlowStepsForRange } from '../utils/flowRecurrence';
 import MenuModal from '../components/MenuModal';
+import ConfirmModal from '../components/ConfirmModal';
 import MainHeader from '../components/MainHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RangeCalendarModal from '../components/RangeCalendarModal';
@@ -580,6 +580,11 @@ const TasksScreen = ({ navigation }) => {
   const TOAST_SPACING = 42;
   const isAlertActiveRef = useRef(false);
   const isTaskSavingRef = useRef(false);
+  const [confirmConfig, setConfirmConfig] = useState(null);
+
+  const showAlert = (title, message, options) => {
+    setConfirmConfig({ title, message: message || '', options: options || [] });
+  };
 
   const showToast = (message) => {
     const id = toastIdCounter.current++;
@@ -1369,7 +1374,7 @@ const TasksScreen = ({ navigation }) => {
           }
         };
 
-        Alert.alert(
+        showAlert(
           t('tasks.edit_repeat_title', '반복 일정 편집'),
           '',
           [
@@ -1446,7 +1451,7 @@ const TasksScreen = ({ navigation }) => {
 
       const isSharingAvailable = await Sharing.isAvailableAsync();
       if (!isSharingAvailable) {
-        Alert.alert(t('common.error'), t('tasks.share_unavailable', 'Sharing is not available on this device.'));
+        showAlert(t('common.error'), t('tasks.share_unavailable', 'Sharing is not available on this device.'), [{ text: t('common.confirm'), style: 'default' }]);
         return;
       }
 
@@ -1457,7 +1462,7 @@ const TasksScreen = ({ navigation }) => {
       });
     } catch (error) {
       console.error('[TasksScreen] share task image failed:', error);
-      Alert.alert(t('common.error'), t('tasks.share_failed', 'Failed to share this task as an image.'));
+      showAlert(t('common.error'), t('tasks.share_failed', 'Failed to share this task as an image.'), [{ text: t('common.confirm'), style: 'default' }]);
     } finally {
       setIsSharingTaskImage(false);
     }
@@ -1467,7 +1472,7 @@ const TasksScreen = ({ navigation }) => {
     const task = tasks.find(t => t.id === id);
     if (task?.repeatGroupId) {
       isAlertActiveRef.current = true;
-      Alert.alert(
+      showAlert(
         t('tasks.delete_repeat_title', '반복 일정 삭제'),
         '',
         [
@@ -1500,13 +1505,12 @@ const TasksScreen = ({ navigation }) => {
               onComplete?.();
             }
           },
-          { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } }
-        ],
-        { cancelable: false }
+          { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
+        ]
       );
     } else {
       isAlertActiveRef.current = true;
-      Alert.alert(t('common.delete'), t('tasks.delete_confirm'), [
+      showAlert(t('common.delete'), t('tasks.delete_confirm'), [
         { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
         { text: t('common.delete'), style: 'destructive', onPress: async () => {
             isAlertActiveRef.current = false;
@@ -1516,8 +1520,8 @@ const TasksScreen = ({ navigation }) => {
             showToast(t('tasks.delete_success'));
             onComplete?.();
           }
-        }
-      ], { cancelable: false });
+        },
+      ]);
     }
   };
 
@@ -2254,7 +2258,9 @@ const TasksScreen = ({ navigation }) => {
                               <Text style={{ fontSize: 14, color: repeatType ? Colors.primary : Colors.outline, fontWeight: '500' }}>
                                 {repeatType ? t(`tasks.repeat_${repeatType}`) : t('tasks.repeat_none', '없음')}
                               </Text>
-                              <ChevronDown size={16} color={Colors.outline} />
+                              <View pointerEvents="none">
+                                <ChevronDown size={16} color={Colors.outline} />
+                              </View>
                             </View>
                           </TouchableOpacity>
                           {showRepeatPicker && (
@@ -2791,7 +2797,9 @@ const TasksScreen = ({ navigation }) => {
                           <Text style={{ fontSize: 14, color: repeatType ? Colors.primary : Colors.outline, fontWeight: '500' }}>
                             {repeatType ? t(`tasks.repeat_${repeatType}`) : t('tasks.repeat_none', '없음')}
                           </Text>
-                          <ChevronDown size={16} color={Colors.outline} />
+                          <View pointerEvents="none">
+                            <ChevronDown size={16} color={Colors.outline} />
+                          </View>
                         </View>
                       </TouchableOpacity>
                       {showRepeatPicker && (
@@ -3370,6 +3378,13 @@ const TasksScreen = ({ navigation }) => {
           onClose={() => setMenuVisible(false)}
           onReset={() => loadData()}
           navigation={navigation}
+        />
+        <ConfirmModal
+          visible={!!confirmConfig}
+          title={confirmConfig?.title}
+          message={confirmConfig?.message}
+          options={confirmConfig?.options || []}
+          onDismiss={() => setConfirmConfig(null)}
         />
 
       </View>

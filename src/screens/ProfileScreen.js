@@ -7,7 +7,6 @@ import {
   ScrollView,
   Modal,
   TextInput,
-  Alert,
   ActivityIndicator,
   Platform,
   TouchableOpacity,
@@ -17,15 +16,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { LucideLogOut, LucideUser, LucideArrowLeft, LucideX, LucideCheck, LucideChevronRight, LucideLock, LucideMail } from 'lucide-react-native';
-import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
+import { LucideLogOut, LucideUser, LucideArrowLeft, LucideX, LucideCheck, LucideChevronRight, LucideLock, LucideMail, Info } from 'lucide-react-native';
+import { supabase } from '../config/supabaseConfig';
 import { Colors, Spacing, Typography } from '../theme';
 import { deleteCurrentUserAccount, isRecentLoginRequired } from '../services/AccountDeletionService';
+import ConfirmModal from '../components/ConfirmModal';
 
 const ProfileScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { user, logout, resetPassword, updateUserProfile } = useAuth();
+  const { user, logout, resetPassword, updateUserProfile, isGuest, generateTransferCode } = useAuth();
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [newName, setNewName] = useState(user?.displayName || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -33,6 +32,25 @@ const ProfileScreen = ({ navigation }) => {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const isLoggingOutRef = React.useRef(false);
+  const [confirmConfig, setConfirmConfig] = useState(null);
+  const [transferCodeData, setTransferCodeData] = useState(null);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+
+  const showAlert = (title, message, options) => {
+    setConfirmConfig({ title, message: message || '', options: options || [{ text: t('common.confirm'), style: 'default' }] });
+  };
+
+  const handleGenerateTransferCode = async () => {
+    setIsGeneratingCode(true);
+    try {
+      const result = await generateTransferCode();
+      setTransferCodeData(result);
+    } catch (e) {
+      showAlert(t('common.error'), e.message);
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  };
 
   React.useEffect(() => {
     if (!user) {
@@ -61,26 +79,45 @@ const ProfileScreen = ({ navigation }) => {
 
   if (!user) return null;
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     if (isLoggingOutRef.current) return;
-    isLoggingOutRef.current = true;
-    setIsLoggingOut(true);
-    try {
-      await logout();
-      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
-    } catch (_) {
-      isLoggingOutRef.current = false;
-      setIsLoggingOut(false);
-    }
+    const provider = user?.providerData?.find(p => p.providerId === 'google' || p.providerId === 'apple');
+    const providerName = provider?.providerId === 'google' ? 'Google' : provider?.providerId === 'apple' ? 'Apple' : null;
+    const message = providerName
+      ? t('auth.logoutConfirmSocial', { provider: providerName })
+      : t('auth.logoutConfirm', { defaultValue: '로그아웃 하시겠습니까?' });
+    showAlert(
+      t('auth.logout'),
+      message,
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('auth.logout'),
+          style: 'destructive',
+          onPress: async () => {
+            isLoggingOutRef.current = true;
+            setIsLoggingOut(true);
+            try {
+              await logout();
+              navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+            } catch (_) {
+              isLoggingOutRef.current = false;
+              setIsLoggingOut(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleUpdateProfile = async () => {
     if (!newName.trim()) {
-      Alert.alert(t('common.error'), t('auth.nameRequired', { defaultValue: 'Name is required' }));
+      showAlert(t('common.error'), t('auth.nameRequired', { defaultValue: 'Name is required' }));
       return;
     }
 
-    if (auth().currentUser?.uid !== user.uid) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session || session.user.id !== user.uid) {
       setEditModalVisible(false);
       navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
       return;
@@ -89,19 +126,27 @@ const ProfileScreen = ({ navigation }) => {
     setIsSaving(true);
     try {
       const trimmedName = newName.trim();
-      await Promise.all([
-        auth().currentUser.updateProfile({ displayName: trimmedName }),
-        firestore().collection('users').doc(user.uid).set({
-          displayName: trimmedName,
-          updatedAt: firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }),
-      ]);
-      updateUserProfile({ displayName: trimmedName });
+      
+      // Use upsert instead of update to handle cases where the profile row doesn't exist yet (common for guests)
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({ 
+          uid: user.uid, 
+          display_name: trimmedName,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'uid' });
+
+      if (error) {
+        console.error('[ProfileScreen] Database update error:', error);
+        // Even if DB fails, update local state for the current session to show the chosen name
+      }
+      
+      updateUserProfile({ display_name: trimmedName, displayName: trimmedName });
       setEditModalVisible(false);
-      Alert.alert(t('common.success'), t('auth.profileUpdated'));
+      showAlert(t('common.success'), t('auth.profileUpdated'));
     } catch (error) {
-      console.error('[ProfileScreen] Update error details:', error);
-      Alert.alert(t('common.error'), t('auth.updateFailed', { defaultValue: 'Failed to update profile' }));
+      console.error('[ProfileScreen] Update error:', error);
+      showAlert(t('common.error'), t('auth.updateFailed', { defaultValue: 'Failed to update profile' }));
     } finally {
       setIsSaving(false);
     }
@@ -110,22 +155,22 @@ const ProfileScreen = ({ navigation }) => {
   const handleChangePassword = async () => {
     if (!user.email) return;
 
-    Alert.alert(
+    showAlert(
       t('auth.changePassword'),
       t('auth.changePasswordConfirm'),
       [
         { text: t('common.cancel', '취소'), style: 'cancel' },
-        { 
-          text: t('common.confirm', '발송'), 
+        {
+          text: t('common.confirm', '발송'),
           onPress: async () => {
             try {
               await resetPassword(user.email);
-              Alert.alert(t('common.success'), t('auth.resetEmailSent'));
+              showAlert(t('common.success'), t('auth.resetEmailSent'));
             } catch (error) {
-              Alert.alert(t('common.error'), error.message);
+              showAlert(t('common.error'), error.message);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
@@ -133,7 +178,7 @@ const ProfileScreen = ({ navigation }) => {
   const handleDeleteAccount = async () => {
     if (isDeletingAccount) return;
 
-    Alert.alert(
+    showAlert(
       t('auth.deleteAccount'),
       t('auth.deleteAccountConfirmDetailed', {
         defaultValue: t('auth.deleteAccountConfirm'),
@@ -147,12 +192,12 @@ const ProfileScreen = ({ navigation }) => {
             setIsDeletingAccount(true);
             try {
               await deleteCurrentUserAccount();
-              Alert.alert(t('common.success'), t('auth.deleteAccountSuccess'));
+              showAlert(t('common.success'), t('auth.deleteAccountSuccess'));
               navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
             } catch (error) {
               if (isRecentLoginRequired(error)) {
                 console.warn('[ProfileScreen] Delete account requires recent login');
-                Alert.alert(
+                showAlert(
                   t('auth.deleteAccount'),
                   t('auth.deleteAccountRecentLoginRequired', {
                     defaultValue: 'For security, please log in again and then delete your account.',
@@ -173,7 +218,7 @@ const ProfileScreen = ({ navigation }) => {
                 );
               } else {
                 console.error('[ProfileScreen] Delete account error:', error);
-                Alert.alert(
+                showAlert(
                   t('common.error'),
                   t('auth.deleteAccountFailed', {
                     defaultValue: 'Failed to delete account. Please try again.',
@@ -183,8 +228,8 @@ const ProfileScreen = ({ navigation }) => {
             } finally {
               setIsDeletingAccount(false);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
@@ -213,11 +258,17 @@ const ProfileScreen = ({ navigation }) => {
               </View>
             )}
           </View>
-          <Text style={styles.name}>{user.displayName || 'User'}</Text>
-          <View style={styles.emailContainer}>
-            <LucideMail size={14} color={Colors.textSecondary} style={{ marginRight: 4 }} />
-            <Text style={styles.emailText}>{user.email}</Text>
-          </View>
+          <Text style={styles.name}>{user.displayName || (isGuest ? t('auth.guest') : 'User')}</Text>
+          {user.email ? (
+            <View style={styles.emailContainer}>
+              <LucideMail size={14} color={Colors.textSecondary} style={{ marginRight: 4 }} />
+              <Text style={styles.emailText}>{user.email}</Text>
+            </View>
+          ) : isGuest ? (
+            <View style={styles.guestBadge}>
+              <Text style={styles.guestBadgeText}>{t('auth.guest')}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Account Settings Section */}
@@ -233,6 +284,36 @@ const ProfileScreen = ({ navigation }) => {
               <LucideChevronRight size={20} color={Colors.outline} />
             </TouchableOpacity>
           )}
+
+          {isGuest && (
+            <View style={styles.transferCard}>
+              <Text style={styles.transferCardTitle}>{t('auth.transferCode')}</Text>
+              <Text style={styles.transferCardDesc}>{t('auth.transferCodeInfo')}</Text>
+              {transferCodeData ? (
+                <View style={styles.transferCodeBox}>
+                  <Text style={styles.transferCodeValue}>
+                    {transferCodeData.code.slice(0, 4)}-{transferCodeData.code.slice(4)}
+                  </Text>
+                  <Text style={styles.transferCodeExpiry}>
+                    {t('auth.transferCodeExpiry', {
+                      days: Math.ceil((new Date(transferCodeData.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)),
+                    })}
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.transferCodeBtn, isGeneratingCode && { opacity: 0.6 }]}
+                  onPress={handleGenerateTransferCode}
+                  disabled={isGeneratingCode}
+                >
+                  {isGeneratingCode
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.transferCodeBtnText}>{t('auth.generateTransferCode')}</Text>
+                  }
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Informative Stats or Info can go here in future */}
@@ -243,7 +324,7 @@ const ProfileScreen = ({ navigation }) => {
         <TouchableOpacity 
           style={[styles.editButton, isDeletingAccount && { opacity: 0.5 }]}
           onPress={() => {
-            setNewName(user.displayName || '');
+            setNewName(user.displayName || (isGuest ? t('auth.guest') : ''));
             setEditModalVisible(true);
           }}
           disabled={isDeletingAccount}
@@ -252,29 +333,41 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.editButtonText}>{t('auth.editProfile', { defaultValue: 'Edit Profile' })}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.logoutButton, isLoggingOut && { opacity: 0.5 }]}
-          onPress={handleLogout}
-          disabled={isLoggingOut || isDeletingAccount}
-        >
-          {isLoggingOut
-            ? <ActivityIndicator size="small" color={Colors.error} />
-            : <LucideLogOut size={20} color={Colors.error} />
-          }
-          <Text style={styles.logoutText}>{t('auth.logout', { defaultValue: 'Logout' })}</Text>
-        </TouchableOpacity>
+        {isGuest ? (
+          <TouchableOpacity
+            style={styles.primaryLoginButton}
+            onPress={() => navigation.navigate('Login')}
+          >
+            <LucideLogOut size={20} color="white" />
+            <Text style={styles.primaryLoginButtonText}>{t('auth.loginTitle')}</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.logoutButton, isLoggingOut && { opacity: 0.5 }]}
+              onPress={handleLogout}
+              disabled={isLoggingOut || isDeletingAccount}
+            >
+              {isLoggingOut
+                ? <ActivityIndicator size="small" color={Colors.error} />
+                : <LucideLogOut size={20} color={Colors.error} />
+              }
+              <Text style={styles.logoutText}>{t('auth.logout', { defaultValue: 'Logout' })}</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.deleteAccountBtn, isDeletingAccount && { opacity: 0.6 }]}
-          onPress={handleDeleteAccount}
-          disabled={isDeletingAccount}
-        >
-          {isDeletingAccount ? (
-            <ActivityIndicator size="small" color={Colors.error} />
-          ) : (
-            <Text style={styles.deleteAccountBtnText}>{t('auth.deleteAccount')}</Text>
-          )}
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.deleteAccountBtn, isDeletingAccount && { opacity: 0.6 }]}
+              onPress={handleDeleteAccount}
+              disabled={isDeletingAccount}
+            >
+              {isDeletingAccount ? (
+                <ActivityIndicator size="small" color={Colors.error} />
+              ) : (
+                <Text style={styles.deleteAccountBtnText}>{t('auth.deleteAccount')}</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       {/* Edit Profile Modal */}
@@ -333,6 +426,13 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+      <ConfirmModal
+        visible={!!confirmConfig}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        options={confirmConfig?.options || []}
+        onDismiss={() => setConfirmConfig(null)}
+      />
     </SafeAreaView>
   );
 };
@@ -558,6 +658,87 @@ const styles = StyleSheet.create({
     color: Colors.text,
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
+  },
+  guestBadge: {
+    backgroundColor: Colors.surfaceContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  guestBadgeText: {
+    ...Typography.label,
+    color: Colors.outline,
+    fontWeight: '600',
+  },
+  primaryLoginButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 18,
+    borderRadius: 20,
+    gap: 10,
+    marginTop: 8,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  primaryLoginButtonText: {
+    ...Typography.body,
+    color: 'white',
+    fontWeight: '700',
+  },
+  transferCard: {
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: 20,
+    padding: 20,
+    marginTop: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    gap: 8,
+  },
+  transferCardTitle: {
+    ...Typography.body,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  transferCardDesc: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  transferCodeBox: {
+    backgroundColor: 'white',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    gap: 4,
+  },
+  transferCodeValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: 4,
+  },
+  transferCodeExpiry: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  transferCodeBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  transferCodeBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'white',
   },
 });
 

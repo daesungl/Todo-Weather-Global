@@ -1,234 +1,181 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
-import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import appleAuth from '@invertase/react-native-apple-authentication';
 import i18n from '../i18n';
 import { initFlowSync } from '../services/FlowSyncService';
 import { initRegionSync } from '../services/weather/RegionSyncService';
 import { initTaskSync } from '../services/task/TaskSyncService';
+import { supabase } from '../config/supabaseConfig';
+import { IS_SUPABASE_DEV } from '../constants/SupabaseEnv';
 
-// Firebase Console > Authentication > Sign-in method > Google > Web SDK configuration > Web client ID
-// Google 로그인 활성화 후 Firebase Console에서 확인 가능
 GoogleSignin.configure({
-  webClientId: '156613478220-3jfcb8hp1mhbpvs1196gc0s6356u13fp.apps.googleusercontent.com',
-  offlineAccess: true,
+  webClientId: IS_SUPABASE_DEV
+    ? '135255276638-cqps0rnc7kg3ka5lvfpml6v030rk20nr.apps.googleusercontent.com'
+    : '156613478220-3jfcb8hp1mhbpvs1196gc0s6356u13fp.apps.googleusercontent.com',
+  iosClientId: IS_SUPABASE_DEV
+    ? '135255276638-cqps0rnc7kg3ka5lvfpml6v030rk20nr.apps.googleusercontent.com'
+    : '156613478220-7k0jed2lfpt8g13khlcavkv77qgcjuhb.apps.googleusercontent.com',
+  offlineAccess: false,
 });
 
 const AuthContext = createContext();
-
-const docExists = (doc) =>
-  typeof doc.exists === 'function' ? doc.exists() : !!doc.exists;
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncLoading, setSyncLoading] = useState(false);
-  const unsubscribeSnapshot = useRef(null);
-  const isLoggingOutRef = useRef(false);
   const activeAuthUidRef = useRef(null);
-  const isVerificationAuthFlowRef = useRef(false);
 
   useEffect(() => {
-    const subscriber = auth().onAuthStateChanged(async (currentUser) => {
-      // 새로운 상태가 오면 기존 감시자부터 종료
-      if (unsubscribeSnapshot.current) {
-        unsubscribeSnapshot.current();
-        unsubscribeSnapshot.current = null;
-      }
+    let profileSubscription = null;
+    let isCreatingAnon = false;
 
-      if (currentUser && isLoggingOutRef.current) {
-        // 로그아웃 진행 중 토큰 갱신 등으로 재발화된 경우 무시
-        return;
-      }
-
-      if (currentUser) {
-        activeAuthUidRef.current = currentUser.uid;
-        const isCurrentAuthUser = () =>
-          !isLoggingOutRef.current
-          && activeAuthUidRef.current === currentUser.uid
-          && auth().currentUser?.uid === currentUser.uid;
-
-        // 이메일 비밀번호 가입자 중 인증을 안 한 사용자는 데이터 로드 및 UI 진입을 완벽히 차단
-        const isPasswordAuth = currentUser.providerData.some(p => p.providerId === 'password');
-        if (isPasswordAuth && !currentUser.emailVerified) {
+    const setupUser = async (session) => {
+      if (!session?.user) {
+        if (profileSubscription) {
+          supabase?.removeChannel(profileSubscription);
+          profileSubscription = null;
+        }
+        if (isCreatingAnon) return;
+        isCreatingAnon = true;
+        const { error } = await supabase.auth.signInAnonymously();
+        isCreatingAnon = false;
+        if (error) {
+          // Network offline or Supabase unavailable — fall back to offline mode
           activeAuthUidRef.current = null;
-          setUser(null);
-          setIsGuest(false);
           initFlowSync(null);
           initRegionSync(null);
           initTaskSync(null);
-          if (isVerificationAuthFlowRef.current) {
-            setLoading(false);
-            setSyncLoading(false);
-            return;
-          }
-          auth().signOut().catch((error) => {
-            if (error.code !== 'auth/no-current-user') {
-              console.warn('[AuthContext] signOut unverified user error:', error);
-            }
-          });
-          setLoading(false);
+          setUser(null);
+          setIsGuest(true);
           setSyncLoading(false);
-          return;
+          setLoading(false);
         }
+        // On success, onAuthStateChange fires setupUser with the new anon session
+        return;
+      }
 
-        setIsGuest(false); // 실제 사용자가 생기면 게스트 모드 해제
-        try {
-          const userRef = firestore().collection('users').doc(currentUser.uid);
-          
-          const doc = await userRef.get();
-          if (!isCurrentAuthUser()) return;
+      const currentUser = session.user;
+      activeAuthUidRef.current = currentUser.id;
+      const isAnonymous = currentUser.is_anonymous === true;
+      setIsGuest(isAnonymous);
 
-          const displayName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
-          const profileImage = currentUser.photoURL || '';
+      try {
+        const { data: profileData, error: fetchError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('uid', currentUser.id)
+          .single();
 
-          const userData = {
-            uid: currentUser.uid,
+        let profile = profileData || {};
+
+        if (fetchError && fetchError.code === 'PGRST116') { // not found
+          const guestName = i18n.t('auth.guest', 'Guest');
+          const randomId = Math.floor(1000 + Math.random() * 9000);
+          const displayName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || (isAnonymous ? `${guestName} #${randomId}` : 'User');
+          const profileImage = currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '';
+
+          profile = {
+            uid: currentUser.id,
             email: currentUser.email || '',
-            displayName,
-            profileImage,
-            updatedAt: firestore.FieldValue.serverTimestamp(),
+            display_name: displayName,
+            photo_url: profileImage,
           };
-
-          const userDocExists = docExists(doc);
-          if (!userDocExists) {
-            userData.createdAt = firestore.FieldValue.serverTimestamp();
-            await userRef.set(userData);
-          } else {
-            // 정보가 바뀌었을 때만 업데이트
-            const existing = doc.data() || {};
-            if (existing.displayName !== displayName || existing.profileImage !== profileImage) {
-              await userRef.update({ displayName, profileImage, updatedAt: firestore.FieldValue.serverTimestamp() });
-            }
-          }
-          if (!isCurrentAuthUser()) return;
-
-          setUser({
-            uid: currentUser.uid,
-            email: currentUser.email,
-            emailVerified: currentUser.emailVerified,
-            providerData: currentUser.providerData,
-            photoURL: currentUser.photoURL,
-            ...(userDocExists ? (doc.data() || {}) : { displayName, profileImage }),
-          });
-          setLoading(false);
-
-          setSyncLoading(true);
-          Promise.all([
-            initFlowSync(currentUser.uid),
-            initRegionSync(currentUser.uid),
-            initTaskSync(currentUser.uid),
-          ]).catch(error => {
-            if (isCurrentAuthUser()) {
-              console.warn('[AuthContext] Background sync init error:', error);
-            }
-          }).finally(() => {
-            if (isCurrentAuthUser()) setSyncLoading(false);
-          });
-
-          // 비동기 작업 대기 중 로그아웃이 완료됐으면 snapshot 등록 자체를 건너뜀
-          if (!isCurrentAuthUser()) return;
-
-          unsubscribeSnapshot.current = userRef.onSnapshot((snapshot) => {
-            if (!isCurrentAuthUser()) return;
-            if (docExists(snapshot)) {
-              const data = snapshot.data() || {};
-              // 클래스 인스턴스 대신 명시적으로 필드를 병합하여 데이터 유실 방지
-              setUser({
-                uid: currentUser.uid,
-                email: currentUser.email,
-                emailVerified: currentUser.emailVerified,
-                providerData: currentUser.providerData,
-                photoURL: currentUser.photoURL,
-                ...data
-              });
-            } else {
-              setUser({
-                uid: currentUser.uid,
-                email: currentUser.email,
-                emailVerified: currentUser.emailVerified,
-                providerData: currentUser.providerData,
-              });
-            }
-          }, (error) => {
-            if (!isCurrentAuthUser()) return;
-            if (error.code === 'firestore/permission-denied') {
-              // 권한 에러 시에도 기본 정보는 유지
-              setUser({
-                uid: currentUser.uid,
-                email: currentUser.email,
-                emailVerified: currentUser.emailVerified,
-                providerData: currentUser.providerData,
-              });
-              return;
-            }
-            console.error('[AuthContext] Snapshot error:', error);
-          });
-        } catch (error) {
-          if (!isCurrentAuthUser()) return;
-          console.error('[AuthContext] Error in onAuthStateChanged:', error);
-          setUser({
-            uid: currentUser.uid,
-            email: currentUser.email,
-            emailVerified: currentUser.emailVerified,
-            providerData: currentUser.providerData,
-          });
-        } finally {
-          setLoading(false);
+          
+          await supabase.from('profiles').insert(profile);
+        } else if (profileData) {
+           const metaName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name;
+           // Prioritize database display_name if it exists
+           const displayName = profileData.display_name || metaName || (isAnonymous ? 'Guest' : 'User');
+           const profileImage = currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || profileData.photo_url;
+           
+           // Only update DB if profile is missing photo or name and we have it from metadata
+           if (!profileData.display_name && metaName) {
+              await supabase.from('profiles').update({ display_name: metaName, photo_url: profileImage }).eq('uid', currentUser.id);
+              profile.display_name = metaName;
+           } else {
+              profile.display_name = displayName;
+           }
+           profile.photo_url = profileImage;
         }
-      } else {
-        activeAuthUidRef.current = null;
-        isLoggingOutRef.current = false;
-        initFlowSync(null);
-        initRegionSync(null);
-        initTaskSync(null);
-        setUser(null);
-        setSyncLoading(false);
+
+        setUser({
+          uid: currentUser.id,
+          email: currentUser.email,
+          displayName: profile.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || '',
+          emailVerified: !!currentUser.email_confirmed_at || currentUser.app_metadata?.provider !== 'email',
+          photoURL: profile.photo_url || currentUser.user_metadata?.avatar_url || '',
+          providerData: currentUser.app_metadata?.providers?.map(p => ({ providerId: p === 'email' ? 'password' : p })) || [],
+          isAnonymous,
+          ...profile,
+        });
+
+        setLoading(false);
+        setSyncLoading(true);
+
+        Promise.all([
+          initFlowSync(currentUser.id),
+          initRegionSync(currentUser.id),
+          initTaskSync(currentUser.id),
+        ]).catch(error => {
+          console.warn('[AuthContext] Background sync init error:', error);
+        }).finally(() => {
+          setSyncLoading(false);
+        });
+
+        if (profileSubscription) {
+          supabase.removeChannel(profileSubscription);
+        }
+
+        profileSubscription = supabase
+          .channel('public:users:profile')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'profiles', filter: `uid=eq.${currentUser.id}` },
+            (payload) => {
+              if (payload.new) {
+                setUser((prev) => ({
+                  ...prev,
+                  ...payload.new,
+                }));
+              }
+            }
+          )
+          .subscribe();
+
+      } catch (error) {
+        console.error('[AuthContext] Error setting up user:', error);
         setLoading(false);
       }
+    };
+
+    supabase?.auth.getSession().then(({ data: { session } }) => {
+      setupUser(session);
     });
 
+    const { data: { subscription } } = supabase?.auth.onAuthStateChange((_event, session) => {
+      setupUser(session);
+    }) || { data: { subscription: { unsubscribe: () => {} } } };
+
     return () => {
-      if (unsubscribeSnapshot.current) unsubscribeSnapshot.current();
-      subscriber();
+      if (profileSubscription) supabase?.removeChannel(profileSubscription);
+      subscription.unsubscribe();
     };
   }, []);
 
-  const safeSignOut = async () => {
-    try {
-      if (auth().currentUser) {
-        await auth().signOut();
-      }
-    } catch (error) {
-      if (error.code !== 'auth/no-current-user') throw error;
-    }
-  };
-
   const getAuthErrorMessage = (error) => {
-    switch (error.code) {
-      case 'auth/email-already-in-use':
+    switch (error.message) {
+      case 'User already registered':
         return i18n.t('auth.errors.emailInUse');
-      case 'auth/invalid-email':
+      case 'Invalid email':
         return i18n.t('auth.errors.invalidEmail');
-      case 'auth/operation-not-allowed':
-        return i18n.t('auth.errors.default');
-      case 'auth/weak-password':
+      case 'Password should be at least 6 characters':
         return i18n.t('auth.errors.weakPassword');
-      case 'auth/user-disabled':
-        return i18n.t('auth.errors.userDisabled');
-      case 'auth/user-not-found':
-      case 'auth/wrong-password':
-      case 'auth/invalid-credential':
+      case 'Invalid login credentials':
         return i18n.t('auth.errors.invalidCredential');
-      case 'auth/too-many-requests':
-        return i18n.t('auth.errors.tooManyRequests');
-      case 'auth/email-not-verified':
+      case 'Email not confirmed':
         return i18n.t('auth.errors.verificationRequired');
-      case 'auth/no-current-user':
-        return i18n.t('auth.errors.default');
       default:
         return error.message || i18n.t('auth.errors.default');
     }
@@ -236,126 +183,92 @@ export const AuthProvider = ({ children }) => {
 
   const throwAuthError = (error) => {
     const wrapped = new Error(getAuthErrorMessage(error));
-    wrapped.code = error.code;
+    wrapped.code = error.code || error.status;
     throw wrapped;
   };
 
-  const login = async (email, password) => {
-    isLoggingOutRef.current = false;
-    isVerificationAuthFlowRef.current = true;
-    try {
-      const userCredential = await auth().signInWithEmailAndPassword(email, password);
-      // 이메일 인증 여부 확인 (소셜 로그인은 이미 인증된 것으로 간주됨)
-      if (userCredential.user && !userCredential.user.emailVerified && userCredential.user.providerData.some(p => p.providerId === 'password')) {
-        // 인증되지 않은 이메일 계정인 경우, 세션을 종료하고 에러 발생
-        await safeSignOut();
-        throw { code: 'auth/email-not-verified' };
+  const generateTransferCode = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No session');
+    const { SUPABASE_URL, SUPABASE_ANON_KEY } = require('../config/supabaseConfig');
+    const res = await fetch(
+      `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/plan-api/transfer-code/generate`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
       }
-      return userCredential;
-    } catch (error) {
-      throwAuthError(error);
-    } finally {
-      isVerificationAuthFlowRef.current = false;
-    }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Failed to generate transfer code');
+    return data; // { code, expiresAt }
   };
 
-  const signup = async (email, password) => {
-    isVerificationAuthFlowRef.current = true;
-    try {
-      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
-      // 가입 성공 후 인증 메일 발송
-      if (userCredential.user) {
-        await userCredential.user.sendEmailVerification();
-        // 가입 직후 자동 로그인이 되므로, 인증 전 접근을 막기 위해 즉시 로그아웃 처리
-        await safeSignOut();
+  const redeemTransferCode = async (code) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No session');
+    const { SUPABASE_URL, SUPABASE_ANON_KEY } = require('../config/supabaseConfig');
+    const res = await fetch(
+      `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/plan-api/transfer-code/redeem`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
       }
-      return userCredential;
-    } catch (error) {
-      throwAuthError(error);
-    } finally {
-      isVerificationAuthFlowRef.current = false;
-    }
-  };
-
-  const resetPassword = async (email) => {
-    try {
-      await auth().sendPasswordResetEmail(email);
-    } catch (error) {
-      throw new Error(getAuthErrorMessage(error));
-    }
-  };
-
-  const resendVerificationEmail = async (email, password) => {
-    isVerificationAuthFlowRef.current = true;
-    try {
-      // 재발송을 위해 임시로 로그인
-      const userCredential = await auth().signInWithEmailAndPassword(email, password);
-      if (userCredential.user) {
-        await userCredential.user.sendEmailVerification();
-        await safeSignOut(); // 즉시 로그아웃
-      }
-    } catch (error) {
-      throwAuthError(error);
-    } finally {
-      isVerificationAuthFlowRef.current = false;
-    }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Failed to redeem transfer code');
+    return data;
   };
 
   const continueAsGuest = () => {
-    activeAuthUidRef.current = null;
-    setIsGuest(true);
-    setUser(null);
-    setSyncLoading(false);
-    initFlowSync(null);
-    initRegionSync(null);
-    initTaskSync(null);
+    // No-op: anonymous Supabase session is created automatically on app start.
+    // Navigation back to the main screen is handled by the caller.
   };
 
   const logout = async () => {
-    isLoggingOutRef.current = true;
-    activeAuthUidRef.current = null;
-
-    if (unsubscribeSnapshot.current) {
-      unsubscribeSnapshot.current();
-      unsubscribeSnapshot.current = null;
-    }
-
-    setUser(null);
-    setIsGuest(true);
-    setSyncLoading(false);
-    initFlowSync(null);
-    initRegionSync(null);
-    initTaskSync(null);
-
     try {
       const isSignedIn = await GoogleSignin.isSignedIn();
       if (isSignedIn) await GoogleSignin.signOut();
     } catch (_) { }
 
-    try {
-      if (auth().currentUser) {
-        await auth().signOut();
-      }
-    } catch (e) {
-      if (e.code !== 'auth/no-current-user') {
-        console.warn('[AuthContext] signOut error:', e);
-        isLoggingOutRef.current = false;
-        throw e;
-      }
-    }
+    const { error } = await supabase.auth.signOut();
+    if (error) console.warn('[AuthContext] signOut error:', error);
+    // onAuthStateChange fires with null session → setupUser creates new anonymous session
   };
 
   const signInWithGoogle = async () => {
-    isLoggingOutRef.current = false;
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
-      if (response.type !== 'success') {
-        return null; // 취소됨
-      }
+      if (response.type !== 'success') return null;
       const { idToken } = response.data;
-      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
-      return auth().signInWithCredential(googleCredential);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentUserIsAnon = sessionData?.session?.user?.is_anonymous === true;
+
+      if (currentUserIsAnon) {
+        const { data, error } = await supabase.auth.linkIdentityIdToken({
+          provider: 'google',
+          token: idToken,
+        });
+        if (!error) return data;
+        // Identity already linked to another account — fall through to regular sign-in
+      }
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+      if (error) throw error;
+      return data;
     } catch (error) {
       const isCancelled =
         error.code === 'SIGN_IN_CANCELLED' ||
@@ -367,18 +280,36 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signInWithApple = async () => {
-    isLoggingOutRef.current = false;
     try {
       const appleAuthResponse = await appleAuth.performRequest({
         requestedOperation: appleAuth.Operation.LOGIN,
         requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
       });
-      const { identityToken, nonce } = appleAuthResponse;
+      const { identityToken } = appleAuthResponse;
       if (!identityToken) throw new Error('Apple Sign-In failed - no identity token');
-      const appleCredential = auth.AppleAuthProvider.credential(identityToken, nonce);
-      return auth().signInWithCredential(appleCredential);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentUserIsAnon = sessionData?.session?.user?.is_anonymous === true;
+
+      if (currentUserIsAnon) {
+        const { data, error } = await supabase.auth.linkIdentityIdToken({
+          provider: 'apple',
+          token: identityToken,
+        });
+        if (!error) return data;
+        // Identity already linked — fall through to regular sign-in
+      }
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: identityToken,
+      });
+      if (error) throw error;
+      return data;
     } catch (error) {
-      throw new Error(getAuthErrorMessage(error));
+      if (error.code !== '1001') {
+        throw new Error(getAuthErrorMessage(error));
+      }
     }
   };
 
@@ -388,14 +319,12 @@ export const AuthProvider = ({ children }) => {
       isGuest,
       loading,
       syncLoading,
-      login,
-      signup,
-      resetPassword,
-      resendVerificationEmail,
       logout,
       continueAsGuest,
       signInWithGoogle,
       signInWithApple,
+      generateTransferCode,
+      redeemTransferCode,
       updateUserProfile: (patch) => setUser(prev => prev ? { ...prev, ...patch } : prev),
     }}>
       {children}
