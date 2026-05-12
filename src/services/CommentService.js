@@ -14,7 +14,7 @@ export const markCommentAdding = (flowId) => {
 export const subscribeToComments = (ownerUid, flowId, onUpdate) => {
   if (!ownerUid || !flowId) return () => {};
   let cancelled = false;
-  const channelId = `plan_comments_${flowId}_${Date.now()}`;
+  const channelId = `plan_comments_${flowId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const load = () => {
     const lastAdd = _lastAddMsByFlow.get(flowId) || 0;

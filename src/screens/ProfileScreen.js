@@ -24,7 +24,7 @@ import ConfirmModal from '../components/ConfirmModal';
 
 const ProfileScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { user, logout, resetPassword, updateUserProfile, isGuest, generateTransferCode } = useAuth();
+  const { user, logout, resetPassword, updateUserProfile, isGuest } = useAuth();
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [newName, setNewName] = useState(user?.displayName || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -33,24 +33,11 @@ const ProfileScreen = ({ navigation }) => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const isLoggingOutRef = React.useRef(false);
   const [confirmConfig, setConfirmConfig] = useState(null);
-  const [transferCodeData, setTransferCodeData] = useState(null);
-  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
 
   const showAlert = (title, message, options) => {
     setConfirmConfig({ title, message: message || '', options: options || [{ text: t('common.confirm'), style: 'default' }] });
   };
 
-  const handleGenerateTransferCode = async () => {
-    setIsGeneratingCode(true);
-    try {
-      const result = await generateTransferCode();
-      setTransferCodeData(result);
-    } catch (e) {
-      showAlert(t('common.error'), e.message);
-    } finally {
-      setIsGeneratingCode(false);
-    }
-  };
 
   React.useEffect(() => {
     if (!user) {
@@ -285,35 +272,6 @@ const ProfileScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
 
-          {isGuest && (
-            <View style={styles.transferCard}>
-              <Text style={styles.transferCardTitle}>{t('auth.transferCode')}</Text>
-              <Text style={styles.transferCardDesc}>{t('auth.transferCodeInfo')}</Text>
-              {transferCodeData ? (
-                <View style={styles.transferCodeBox}>
-                  <Text style={styles.transferCodeValue}>
-                    {transferCodeData.code.slice(0, 4)}-{transferCodeData.code.slice(4)}
-                  </Text>
-                  <Text style={styles.transferCodeExpiry}>
-                    {t('auth.transferCodeExpiry', {
-                      days: Math.ceil((new Date(transferCodeData.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)),
-                    })}
-                  </Text>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.transferCodeBtn, isGeneratingCode && { opacity: 0.6 }]}
-                  onPress={handleGenerateTransferCode}
-                  disabled={isGeneratingCode}
-                >
-                  {isGeneratingCode
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={styles.transferCodeBtnText}>{t('auth.generateTransferCode')}</Text>
-                  }
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
         </View>
 
         {/* Informative Stats or Info can go here in future */}
@@ -689,56 +647,6 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: 'white',
     fontWeight: '700',
-  },
-  transferCard: {
-    backgroundColor: Colors.surfaceContainerLow,
-    borderRadius: 20,
-    padding: 20,
-    marginTop: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-    gap: 8,
-  },
-  transferCardTitle: {
-    ...Typography.body,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  transferCardDesc: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  transferCodeBox: {
-    backgroundColor: 'white',
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-    gap: 4,
-  },
-  transferCodeValue: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: Colors.primary,
-    letterSpacing: 4,
-  },
-  transferCodeExpiry: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  transferCodeBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  transferCodeBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: 'white',
   },
 });
 

@@ -187,47 +187,6 @@ export const AuthProvider = ({ children }) => {
     throw wrapped;
   };
 
-  const generateTransferCode = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('No session');
-    const { SUPABASE_URL, SUPABASE_ANON_KEY } = require('../config/supabaseConfig');
-    const res = await fetch(
-      `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/plan-api/transfer-code/generate`,
-      {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || 'Failed to generate transfer code');
-    return data; // { code, expiresAt }
-  };
-
-  const redeemTransferCode = async (code) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('No session');
-    const { SUPABASE_URL, SUPABASE_ANON_KEY } = require('../config/supabaseConfig');
-    const res = await fetch(
-      `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/plan-api/transfer-code/redeem`,
-      {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code }),
-      }
-    );
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || 'Failed to redeem transfer code');
-    return data;
-  };
-
   const continueAsGuest = () => {
     // No-op: anonymous Supabase session is created automatically on app start.
     // Navigation back to the main screen is handled by the caller.
@@ -281,9 +240,16 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithApple = async () => {
     try {
+      const rawNonce = Array.from({ length: 32 }, () =>
+        Math.floor(Math.random() * 36).toString(36)
+      ).join('');
+
+      // Apple hashes the nonce internally before embedding in id_token.
+      // Pass raw nonce to Apple and to Supabase — Supabase hashes it for comparison.
       const appleAuthResponse = await appleAuth.performRequest({
         requestedOperation: appleAuth.Operation.LOGIN,
         requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+        nonce: rawNonce,
       });
       const { identityToken } = appleAuthResponse;
       if (!identityToken) throw new Error('Apple Sign-In failed - no identity token');
@@ -295,6 +261,7 @@ export const AuthProvider = ({ children }) => {
         const { data, error } = await supabase.auth.linkIdentityIdToken({
           provider: 'apple',
           token: identityToken,
+          nonce: rawNonce,
         });
         if (!error) return data;
         // Identity already linked — fall through to regular sign-in
@@ -303,6 +270,7 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: identityToken,
+        nonce: rawNonce,
       });
       if (error) throw error;
       return data;
@@ -323,8 +291,6 @@ export const AuthProvider = ({ children }) => {
       continueAsGuest,
       signInWithGoogle,
       signInWithApple,
-      generateTransferCode,
-      redeemTransferCode,
       updateUserProfile: (patch) => setUser(prev => prev ? { ...prev, ...patch } : prev),
     }}>
       {children}

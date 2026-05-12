@@ -1,14 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Animated,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,13 +35,9 @@ const AppleIcon = () => (
 
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { redeemTransferCode, signInWithGoogle, signInWithApple, continueAsGuest } = useAuth();
+  const { signInWithGoogle, signInWithApple, continueAsGuest } = useAuth();
   const [socialLoading, setSocialLoading] = useState(null);
-  const [showTransfer, setShowTransfer] = useState(false);
-  const [transferCode, setTransferCode] = useState('');
-  const [redeemLoading, setRedeemLoading] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState(null);
-  const transferAnim = useRef(new Animated.Value(0)).current;
 
   const showAlert = (title, message, options) => {
     setConfirmConfig({ title, message: message || '', options: options || [{ text: t('common.confirm'), style: 'default' }] });
@@ -83,44 +77,8 @@ const LoginScreen = ({ navigation }) => {
     navigateAfterAuth();
   };
 
-  const toggleTransfer = () => {
-    const next = !showTransfer;
-    setShowTransfer(next);
-    Animated.spring(transferAnim, { toValue: next ? 1 : 0, useNativeDriver: false, bounciness: 0, speed: 20 }).start();
-  };
-
-  const formatCode = (text) => {
-    const clean = text.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
-    if (clean.length > 4) return `${clean.slice(0, 4)}-${clean.slice(4)}`;
-    return clean;
-  };
-
-  const handleRedeemCode = async () => {
-    const code = transferCode.replace(/-/g, '');
-    if (code.length < 8) {
-      showAlert(t('common.error'), t('auth.transferCodeInvalid'));
-      return;
-    }
-    setRedeemLoading(true);
-    try {
-      await redeemTransferCode(code);
-      showAlert(t('common.info'), t('auth.transferCodeSuccess'), [
-        { text: t('common.confirm'), style: 'default', onPress: navigateAfterAuth },
-      ]);
-    } catch (e) {
-      const msg = e.message === 'Code already used'
-        ? t('auth.transferCodeUsed')
-        : e.message === 'Code expired'
-        ? t('auth.transferCodeExpired')
-        : t('auth.transferCodeInvalid');
-      showAlert(t('common.error'), msg);
-    } finally {
-      setRedeemLoading(false);
-    }
-  };
-
   const isAppleSupported = Platform.OS === 'ios' && appleAuth.isSupported;
-  const anyLoading = socialLoading !== null || redeemLoading;
+  const anyLoading = socialLoading !== null;
 
   return (
     <KeyboardAvoidingView
@@ -178,40 +136,6 @@ const LoginScreen = ({ navigation }) => {
         <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} disabled={anyLoading} activeOpacity={0.7}>
           <Text style={styles.guestBtnText}>{t('auth.continueAsGuest')}</Text>
         </TouchableOpacity>
-
-        {/* Transfer Code Toggle */}
-        <TouchableOpacity style={styles.transferToggle} onPress={toggleTransfer} disabled={anyLoading}>
-          <Text style={styles.transferToggleText}>{t('auth.haveTransferCode')}</Text>
-        </TouchableOpacity>
-
-        {/* Transfer Code Input */}
-        <Animated.View style={[styles.transferSection, {
-          maxHeight: transferAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] }),
-          opacity: transferAnim,
-          overflow: 'hidden',
-        }]}>
-          <TextInput
-            style={styles.transferInput}
-            placeholder={t('auth.transferCodePlaceholder')}
-            placeholderTextColor="#aaa"
-            value={transferCode}
-            onChangeText={(text) => setTransferCode(formatCode(text))}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            maxLength={9}
-          />
-          <TouchableOpacity
-            style={[styles.transferBtn, redeemLoading && { opacity: 0.6 }]}
-            onPress={handleRedeemCode}
-            disabled={anyLoading}
-            activeOpacity={0.8}
-          >
-            {redeemLoading
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={styles.transferBtnText}>{t('auth.applyTransferCode')}</Text>
-            }
-          </TouchableOpacity>
-        </Animated.View>
       </View>
 
       <ConfirmModal
@@ -262,33 +186,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
   },
   guestBtnText: { fontSize: 15, fontWeight: '600', color: '#555' },
-  transferToggle: { alignItems: 'center', paddingVertical: 4 },
-  transferToggleText: { fontSize: 13, color: '#469dd3', fontWeight: '500', textDecorationLine: 'underline' },
-  transferSection: { marginTop: 16, gap: 10 },
-  transferInput: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#d0d0d0',
-    paddingHorizontal: 16,
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 2,
-    color: '#333',
-    textAlign: 'center',
-    backgroundColor: '#fafafa',
-  },
-  transferBtn: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#469dd3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  transferBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
 
 export default LoginScreen;

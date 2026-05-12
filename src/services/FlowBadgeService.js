@@ -8,7 +8,7 @@ import { supabase } from '../config/supabaseConfig';
 export const subscribeToFlowBadgeState = (uid, callback) => {
   if (!uid || typeof callback !== 'function') return () => {};
   let cancelled = false;
-  const channelId = `badges_state_${uid}_${Date.now()}`;
+  const channelId = `badges_state_${uid}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const load = async () => {
     try {
@@ -39,7 +39,7 @@ export const subscribeToFlowBadgeState = (uid, callback) => {
 export const subscribeToUnreadFlowBadges = (uid, callback) => {
   if (!uid || typeof callback !== 'function') return () => {};
   let cancelled = false;
-  const channelId = `badges_unread_${uid}_${Date.now()}`;
+  const channelId = `badges_unread_${uid}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const load = async () => {
     try {
