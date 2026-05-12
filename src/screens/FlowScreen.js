@@ -332,6 +332,7 @@ const FlowScreen = ({ navigation, route }) => {
     if (__DEV__) console.log('[FlowScreen]', ...args);
   };
   const flatListRef = useRef(null);
+  const deleteAnimRefs = useRef(new Map());
   const stepScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);  // 타임라인 전체 스크롤뷰 ref (댓글 입력 시 키보드 대응)
   const commentInputRefs = useRef({}); // { stepId: ref } 댓글 입력창 위치 파악용
@@ -2648,17 +2649,35 @@ const FlowScreen = ({ navigation, route }) => {
     openEditModal();
   };
 
+  const _animateCardOut = (id, onDone) => {
+    if (!deleteAnimRefs.current.has(id)) {
+      deleteAnimRefs.current.set(id, new Animated.Value(0));
+    }
+    const anim = deleteAnimRefs.current.get(id);
+    Animated.timing(anim, {
+      toValue: -width,
+      duration: 280,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      deleteAnimRefs.current.delete(id);
+      onDone();
+    });
+  };
+
   const handleDeleteFlow = (id) => {
     const flow = flows.find(f => f.id === id);
     if (!flow || isFlowOwner(flow)) {
       showConfirm(
         t('flow.alert.delete_flow'),
         t('flow.alert.delete_flow_msg'),
-        async () => {
-          const updated = flows.filter(f => f.id !== id);
-          setFlows(updated);
-          if (selectedFlow?.id === id) setSelectedFlow(null);
-          await deleteFlow(id);
+        () => {
+          _animateCardOut(id, async () => {
+            const updated = flows.filter(f => f.id !== id);
+            setFlows(updated);
+            if (selectedFlow?.id === id) setSelectedFlow(null);
+            await deleteFlow(id);
+          });
         },
         true,
         t('common.delete')
@@ -2667,7 +2686,8 @@ const FlowScreen = ({ navigation, route }) => {
       showConfirm(
         t('flow.alert.leave_flow'),
         t('flow.alert.leave_flow_msg'),
-        async () => {
+        () => {
+          _animateCardOut(flow.id, async () => {
           setIsLeaving(true);
           isLeavingRef.current = true;
           try {
@@ -2683,6 +2703,7 @@ const FlowScreen = ({ navigation, route }) => {
               isLeavingRef.current = false;
             }, 1000);
           }
+          });
         },
         true,
         t('common.leave')
@@ -3551,7 +3572,12 @@ const FlowScreen = ({ navigation, route }) => {
                       </Text>
                     </View>
                   )}
-                  renderItem={({ item: flow, drag, isActive }) => (
+                  renderItem={({ item: flow, drag, isActive }) => {
+                    if (!deleteAnimRefs.current.has(flow.id)) {
+                      deleteAnimRefs.current.set(flow.id, new Animated.Value(0));
+                    }
+                    const cardSlideAnim = deleteAnimRefs.current.get(flow.id);
+                    return (
                     <ScaleDecorator>
                       <View style={styles.flowCardContainer}>
                         {flow.inactive ? (
@@ -3587,6 +3613,7 @@ const FlowScreen = ({ navigation, route }) => {
                             </LinearGradient>
                           </View>
                         ) : (
+                        <Animated.View style={{ transform: [{ translateX: cardSlideAnim }] }}>
                         <Swipeable
                           enabled={!isActive}
                           overshootRight={false}
@@ -3722,10 +3749,12 @@ const FlowScreen = ({ navigation, route }) => {
                           </LinearGradient>
                           </TouchableOpacity>
                         </Swipeable>
+                        </Animated.View>
                         )}
                       </View>
                     </ScaleDecorator>
-                  )}
+                    );
+                  }}
                   ListHeaderComponent={
                     <View>
                       <View style={styles.listHeader}>

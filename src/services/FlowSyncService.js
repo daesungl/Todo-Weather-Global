@@ -27,6 +27,7 @@ let _isRemoteUpdate = false;
 let _initPromise = null;
 let _initUid = null;
 let _lastUserOrderChangeMs = 0;
+let _pendingDeletes = new Set();
 
 export const isRemoteFlowUpdate = () => _isRemoteUpdate;
 
@@ -91,6 +92,7 @@ const _startMembershipPoll = (uid) => {
       toRevoke.forEach(flowId => _dropInaccessibleFlow(flowId, 'membership revoked'));
       const staleStepPlanIds = [];
       validPlans.forEach(plan => {
+        if (_pendingDeletes.has(plan.id)) return;
         // Skip overwriting order if user reordered cards recently (within 5 seconds)
         const userJustReordered = (Date.now() - _lastUserOrderChangeMs) < 5000;
         const existingRef = _flowRefs.get(plan.id);
@@ -796,6 +798,7 @@ export const addFlow = async (flow) => {
 };
 
 export const deleteFlow = async (id) => {
+  _pendingDeletes.add(id);
   const role = _flowRefs.get(id)?.role || _flowDocs.get(id)?._role || 'owner';
   _flowRefs.delete(id);
   _flowDocs.delete(id);
@@ -813,6 +816,7 @@ export const deleteFlow = async (id) => {
       if (__DEV__) console.warn('[FlowSync] deleteFlow Supabase error:', e);
     }
   }
+  _pendingDeletes.delete(id);
 
   try {
     const json = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
