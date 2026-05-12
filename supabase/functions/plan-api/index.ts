@@ -445,6 +445,12 @@ Deno.serve(async (req) => {
         throw new Response('No edit permission', { status: 403, headers: corsHeaders });
       }
 
+      await admin.from('profiles').upsert({
+        uid: user.uid,
+        display_name: user.displayName || null,
+        email: user.email || null,
+      }, { onConflict: 'uid', ignoreDuplicates: true });
+
       const plan = cleanPlanPayload({ ...payload, id: planId }, user.uid);
       const { error: planError } = await admin.from('plans').upsert(plan);
       if (planError) throw planError;

@@ -742,6 +742,11 @@ export const addFlow = async (flow) => {
       await replaceSupabasePlanSteps(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
     } catch (e) {
       console.warn('[FlowSync] addFlow backend save error:', e);
+      _flowRefs.delete(flow.id);
+      _flowDocs.delete(flow.id);
+      _flowSteps.delete(flow.id);
+      _mergeAndNotify();
+      throw e;
     }
 
     try {

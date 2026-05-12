@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch, Platform, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch, Platform } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,13 +24,14 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const [isShowing, setIsShowing] = useState(visible);
   const [activeSubMenu, setActiveSubMenu] = useState(null);
+  const pendingNavRef = useRef(null);
 
   const currentLang = i18n.language;
 
   const handleMenuItemPress = async (id) => {
     if (id === 'profile') {
+      pendingNavRef.current = () => navigation.navigate('Profile');
       onClose();
-      InteractionManager.runAfterInteractions(() => navigation.navigate('Profile'));
       return;
     }
     if (id === 'privacy') {
@@ -148,6 +149,10 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
         }),
       ]).start(() => {
         setIsShowing(false);
+        if (pendingNavRef.current) {
+          pendingNavRef.current();
+          pendingNavRef.current = null;
+        }
       });
     }
   }, [visible]);
