@@ -207,6 +207,7 @@ export const AuthProvider = ({ children }) => {
       if (isSignedIn) await GoogleSignin.signOut();
     } catch (_) { }
 
+    await AsyncStorage.removeItem(LAST_PROVIDER_KEY).catch(() => {});
     const { error } = await supabase.auth.signOut();
     if (error) console.warn('[AuthContext] signOut error:', error);
     // onAuthStateChange fires with null session → setupUser creates new anonymous session
