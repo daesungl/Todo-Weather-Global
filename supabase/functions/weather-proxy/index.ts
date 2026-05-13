@@ -40,8 +40,10 @@ const BASE_URLS: Record<string, string> = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+  let reqType = '?', reqPath = '?';
   try {
     const { type, path, params } = await req.json();
+    reqType = type; reqPath = path;
 
     if (!type || !path) {
       return new Response('Missing required fields', { status: 400, headers: corsHeaders });
@@ -74,9 +76,18 @@ Deno.serve(async (req) => {
       url.searchParams.set('key', VWORLD_API_KEY);
     }
 
-    const apiRes = await fetch(url.toString(), {
-      headers: { Accept: 'application/json, */*' },
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+
+    let apiRes: Response;
+    try {
+      apiRes = await fetch(url.toString(), {
+        headers: { Accept: 'application/json, */*' },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     const body = await apiRes.text();
     const contentType = apiRes.headers.get('Content-Type') || 'application/json';
@@ -86,9 +97,10 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': contentType },
     });
   } catch (error) {
-    console.error('[weather-proxy]', error);
+    const msg = (error as Error)?.message || 'Internal error';
+    console.error(`[weather-proxy] type=${reqType} path=${reqPath} error=${msg}`);
     return new Response(
-      JSON.stringify({ error: (error as Error)?.message || 'Internal error' }),
+      JSON.stringify({ error: msg }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }

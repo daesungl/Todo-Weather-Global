@@ -16,12 +16,20 @@ const toCamelCase = (dbObj) => {
     title: dbObj.title,
     memo: dbObj.memo,
     date: dbObj.date,
+    time: dbObj.time,
     endDate: dbObj.end_date,
+    endTime: dbObj.end_time,
+    isAllDay: dbObj.is_all_day,
     repeat: dbObj.repeat,
     repeatEndDate: dbObj.repeat_end_date,
     repeatGroupId: dbObj.repeat_group_id,
     isRepeatMaster: dbObj.is_repeat_master,
     isCompleted: dbObj.is_completed,
+    color: dbObj.color,
+    notify: dbObj.notify,
+    notificationId: dbObj.notification_id,
+    locationName: dbObj.location_name,
+    weatherRegion: dbObj.weather_region,
     createdAt: dbObj.created_at,
     updatedAt: dbObj.updated_at,
   };
@@ -34,12 +42,20 @@ const toDbObj = (appObj) => {
   if (appObj.title !== undefined) dbObj.title = appObj.title || 'Untitled Task';
   if (appObj.memo !== undefined) dbObj.memo = appObj.memo;
   if (appObj.date !== undefined) dbObj.date = appObj.date;
+  if (appObj.time !== undefined) dbObj.time = appObj.time;
   if (appObj.endDate !== undefined) dbObj.end_date = appObj.endDate;
+  if (appObj.endTime !== undefined) dbObj.end_time = appObj.endTime;
+  if (appObj.isAllDay !== undefined) dbObj.is_all_day = appObj.isAllDay;
   if (appObj.repeat !== undefined) dbObj.repeat = appObj.repeat;
   if (appObj.repeatEndDate !== undefined) dbObj.repeat_end_date = appObj.repeatEndDate;
   if (appObj.repeatGroupId !== undefined) dbObj.repeat_group_id = appObj.repeatGroupId;
   if (appObj.isRepeatMaster !== undefined) dbObj.is_repeat_master = appObj.isRepeatMaster;
   if (appObj.isCompleted !== undefined) dbObj.is_completed = appObj.isCompleted;
+  if (appObj.color !== undefined) dbObj.color = appObj.color;
+  if (appObj.notify !== undefined) dbObj.notify = appObj.notify;
+  if (appObj.notificationId !== undefined) dbObj.notification_id = appObj.notificationId;
+  if (appObj.locationName !== undefined) dbObj.location_name = appObj.locationName;
+  if (appObj.weatherRegion !== undefined) dbObj.weather_region = appObj.weatherRegion;
   return dbObj;
 };
 
@@ -56,18 +72,20 @@ const _loadLocalTasks = async () => {
 
 const _batchWrite = async (uid, toSet = [], toDelete = []) => {
   if (!uid) return;
-  
+
   if (toDelete.length > 0) {
     for (let i = 0; i < toDelete.length; i += 100) {
       const chunk = toDelete.slice(i, i + 100);
-      await supabase.from('tasks').delete().in('id', chunk);
+      const { error } = await supabase.from('tasks').delete().in('id', chunk);
+      if (error) throw error;
     }
   }
 
   if (toSet.length > 0) {
     for (let i = 0; i < toSet.length; i += 100) {
       const chunk = toSet.slice(i, i + 100).map(t => toDbObj({ ...t, ownerId: uid }));
-      await supabase.from('tasks').upsert(chunk, { onConflict: 'id' });
+      const { error } = await supabase.from('tasks').upsert(chunk, { onConflict: 'id' });
+      if (error) throw error;
     }
   }
 };
@@ -204,16 +222,13 @@ export const addTask = async (taskData) => {
   const updated = [...tasks, newTask];
 
   if (_userId) {
-    try {
-      const dbObj = toDbObj({ ...newTask, ownerId: _userId });
-      await supabase.from('tasks').insert(dbObj);
-      _cachedTasks = updated;
-      return updated;
-    } catch (e) {
-      console.warn('[TaskSync] addTask error:', e);
-    }
+    const dbObj = toDbObj({ ...newTask, ownerId: _userId });
+    const { error } = await supabase.from('tasks').insert(dbObj);
+    if (error) console.warn('[TaskSync] addTask DB error:', error.message);
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -227,17 +242,14 @@ export const toggleTaskCompletion = async (taskId) => {
   );
 
   if (_userId) {
-    try {
-      await supabase.from('tasks')
-        .update({ is_completed: !task.isCompleted })
-        .eq('id', taskId);
-      _cachedTasks = updated;
-      return updated;
-    } catch (e) {
-      console.warn('[TaskSync] toggleTaskCompletion error:', e);
-    }
+    const { error } = await supabase.from('tasks')
+      .update({ is_completed: !task.isCompleted, updated_at: now })
+      .eq('id', taskId);
+    if (error) console.warn('[TaskSync] toggleTaskCompletion DB error:', error.message);
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -246,15 +258,12 @@ export const deleteTask = async (taskId) => {
   const updated = tasks.filter((t) => t.id !== taskId);
 
   if (_userId) {
-    try {
-      await supabase.from('tasks').delete().eq('id', taskId);
-      _cachedTasks = updated;
-      return updated;
-    } catch (e) {
-      console.warn('[TaskSync] deleteTask error:', e);
-    }
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (error) console.warn('[TaskSync] deleteTask DB error:', error.message);
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -266,16 +275,13 @@ export const updateTask = async (taskId, updates) => {
   );
 
   if (_userId) {
-    try {
-      const dbObj = toDbObj(updates);
-      await supabase.from('tasks').update(dbObj).eq('id', taskId);
-      _cachedTasks = updated;
-      return updated;
-    } catch (e) {
-      console.warn('[TaskSync] updateTask error:', e);
-    }
+    const dbObj = toDbObj(updates);
+    const { error } = await supabase.from('tasks').update(dbObj).eq('id', taskId);
+    if (error) console.warn('[TaskSync] updateTask DB error:', error.message);
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -316,13 +322,13 @@ export const addRepeatTasks = async (taskData, repeat, repeatEndDate) => {
   if (_userId) {
     try {
       await _batchWrite(_userId, newTasks, []);
-      _cachedTasks = updated;
-      return updated;
     } catch (e) {
-      console.warn('[TaskSync] addRepeatTasks error:', e);
+      console.warn('[TaskSync] addRepeatTasks DB error:', e.message);
     }
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -347,13 +353,13 @@ export const deleteRepeatTasks = async (taskId, scope) => {
       const updatedIds = new Set(updated.map((t) => t.id));
       const toDelete = tasks.filter((t) => !updatedIds.has(t.id)).map((t) => t.id);
       await _batchWrite(_userId, [], toDelete);
-      _cachedTasks = updated;
-      return updated;
     } catch (e) {
-      console.warn('[TaskSync] deleteRepeatTasks error:', e);
+      console.warn('[TaskSync] deleteRepeatTasks DB error:', e.message);
     }
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -412,19 +418,18 @@ export const updateRepeatSeriesEndDate = async (taskId, newRepeatEndDate) => {
       const toDelete = tasks
         .filter((t) => t.repeatGroupId === groupId && !updatedIds.has(t.id))
         .map((t) => t.id);
-      
       const toSet = [
         ...remaining.filter((t) => t.repeatGroupId === groupId),
         ...newOccurrences,
       ];
       await _batchWrite(_userId, toSet, toDelete);
-      _cachedTasks = updated;
-      return updated;
     } catch (e) {
-      console.warn('[TaskSync] updateRepeatSeriesEndDate error:', e);
+      console.warn('[TaskSync] updateRepeatSeriesEndDate DB error:', e.message);
     }
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -454,13 +459,13 @@ export const convertRepeatTaskToSingle = async (taskId, updates) => {
         .filter((t) => t.repeatGroupId === groupId && t.id !== taskId)
         .map((t) => t.id);
       await _batchWrite(_userId, [keptTask], toDelete);
-      _cachedTasks = updated;
-      return updated;
     } catch (e) {
-      console.warn('[TaskSync] convertRepeatTaskToSingle error:', e);
+      console.warn('[TaskSync] convertRepeatTaskToSingle DB error:', e.message);
     }
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -509,12 +514,12 @@ export const updateRepeatTasks = async (taskId, updates, scope) => {
         return orig && orig.updatedAt !== t.updatedAt;
       });
       await _batchWrite(_userId, changedTasks, []);
-      _cachedTasks = updated;
-      return updated;
     } catch (e) {
-      console.warn('[TaskSync] updateRepeatTasks error:', e);
+      console.warn('[TaskSync] updateRepeatTasks DB error:', e.message);
     }
   }
-  await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated));
+
+  _cachedTasks = updated;
+  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };

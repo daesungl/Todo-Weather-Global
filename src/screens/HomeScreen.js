@@ -26,7 +26,9 @@ import SmartBriefing from '../components/SmartBriefing';
 import { getTasks, subscribeToTasks } from '../services/task/TaskSyncService';
 import { getFlows, subscribeToFlows } from '../services/FlowSyncService';
 import { expandFlowStepsForRange } from '../utils/flowRecurrence';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const CURRENT_WEATHER_CACHE_KEY = '@home_current_weather';
 const { width, height } = Dimensions.get('window');
 
 const dateStr = (date) => {
@@ -314,7 +316,16 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const fetchMainWeather = async () => {
-    setLoading(true);
+    // 캐시된 날씨 즉시 표시 → skeleton 없이 바로 보여줌
+    try {
+      const cached = await AsyncStorage.getItem(CURRENT_WEATHER_CACHE_KEY);
+      if (cached) {
+        setCurrentWeather(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch (_) {}
+
+    // GPS + 신선한 날씨 백그라운드 fetch
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       let lat = 37.5665;
@@ -340,6 +351,7 @@ const HomeScreen = ({ navigation }) => {
       }
       const data = await getWeather(lat, lon);
       setCurrentWeather(data);
+      AsyncStorage.setItem(CURRENT_WEATHER_CACHE_KEY, JSON.stringify(data)).catch(() => {});
     } catch (err) {
       console.error('Initial Weather Fetch Error:', err);
     } finally {

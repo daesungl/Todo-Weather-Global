@@ -1603,7 +1603,7 @@ const TasksScreen = ({ navigation }) => {
     }
   };
   const getTaskTimeDisplay = (task, targetDate) => {
-    if (task.isAllDay) return t('tasks.allDay', '종일');
+    if (task.isAllDay || !task.time) return t('tasks.allDay', '종일');
 
     const curStr = dateStr(targetDate);
     const startStr = task.date;
@@ -1618,7 +1618,7 @@ const TasksScreen = ({ navigation }) => {
     if (isStart) return `${task.time} - 24:00`;
     if (isEnd) return `00:00 - ${task.endTime || task.time}`;
 
-    return task.time || t('tasks.allDay', '종일');
+    return task.time;
   };
 
 
