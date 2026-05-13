@@ -1,4 +1,7 @@
 {
+  "ad": {
+    "placeholder": "투두웨더로 일정을 공유하세요"
+  },
   "common": {
     "appName": "Todo Weather",
     "edit": "편집",

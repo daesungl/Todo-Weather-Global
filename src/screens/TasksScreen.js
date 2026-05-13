@@ -1687,15 +1687,12 @@ const TasksScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Ad/Premium Banner space if needed */}
-          <View style={{ height: 8 }} />
-
           {!isPremium && !topAdHidden ? (
             <View style={{ marginVertical: 10 }}>
               <AdBanner onFail={() => setTopAdHidden(true)} />
             </View>
           ) : (
-            <View style={{ height: 8 }} />
+            <View style={{ height: 16 }} />
           )}
 
           {isCalendarSyncing && (

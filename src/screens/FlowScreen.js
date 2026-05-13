@@ -6,6 +6,7 @@ import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton 
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import AdBanner from '../components/AdBanner';
@@ -387,6 +388,7 @@ const FlowScreen = ({ navigation, route }) => {
     }
     return subscribeToFlowBadgeState(user.uid, ({ count }) => {
       navigation.setOptions({ tabBarBadge: count > 0 ? count : null });
+      Notifications.setBadgeCountAsync(count).catch(() => {});
     });
   }, [user?.uid]);
 

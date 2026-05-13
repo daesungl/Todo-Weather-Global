@@ -1,4 +1,7 @@
 {
+  "ad": {
+    "placeholder": "Share your plans with TodoWeather"
+  },
   "common": {
     "appName": "Todo Weather",
     "edit": "Edit",
