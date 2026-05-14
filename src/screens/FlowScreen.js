@@ -820,9 +820,8 @@ const FlowScreen = ({ navigation, route }) => {
   const joinModalScrollY = useRef(0);
   const flowSheetGestureRef = useRef(null);
   const stepSheetGestureRef = useRef(null);
+  const inviteSheetGestureRef = useRef(null);
   const joinSheetGestureRef = useRef(null);
-
-  const invitePanResponder = useRef(_makeModalPanResponder(invitePanY, () => closeInviteModal(), inviteModalScrollY)).current;
 
   const closeSheetAfterDrag = (panValue, closeCallback) => {
     Animated.timing(panValue, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
@@ -870,6 +869,14 @@ const FlowScreen = ({ navigation, route }) => {
   const stepHandleGestureHandlers = useMemo(
     () => _makeModalGestureHandlers(panY, () => closeEditModal(), null),
     [panY]
+  );
+  const inviteSheetGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(invitePanY, () => closeInviteModal(), inviteModalScrollY),
+    [invitePanY]
+  );
+  const inviteHandleGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(invitePanY, () => closeInviteModal(), null),
+    [invitePanY]
   );
   const joinSheetGestureHandlers = useMemo(
     () => _makeModalGestureHandlers(joinPanY, () => closeJoinModal(), joinModalScrollY),
@@ -1228,6 +1235,7 @@ const FlowScreen = ({ navigation, route }) => {
     setPendingPermissions({});
     setApplyingPermissions({});
     invitePanY.setValue(height);
+    inviteModalScrollY.current = 0;
     setInviteModalVisible(true);
     Animated.spring(invitePanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
 
@@ -1236,15 +1244,24 @@ const FlowScreen = ({ navigation, route }) => {
     }
   };
 
-  const closeInviteModal = () => {
+  const closeInviteModal = ({ skipAnimation = false } = {}) => {
+    const finish = () => {
+      setInviteModalVisible(false);
+      setPendingPermissions({});
+      invitePanY.setValue(height);
+      inviteModalScrollY.current = 0;
+    };
+
+    if (skipAnimation) {
+      finish();
+      return;
+    }
+
     Animated.timing(invitePanY, {
       toValue: height,
       duration: 250,
       useNativeDriver: true,
-    }).start(() => {
-      setInviteModalVisible(false);
-      setPendingPermissions({});
-    });
+    }).start(finish);
   };
 
   const openJoinModal = () => {
@@ -4568,6 +4585,12 @@ const FlowScreen = ({ navigation, route }) => {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeInviteModal} />
             <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
+              <PanGestureHandler
+                ref={inviteSheetGestureRef}
+                activeOffsetY={8}
+                failOffsetX={[-28, 28]}
+                {...inviteSheetGestureHandlers}
+              >
               <Animated.View
                 style={[
                   styles.editModalContent,
@@ -4579,11 +4602,17 @@ const FlowScreen = ({ navigation, route }) => {
                   }
                 ]}
                 onLayout={(e) => setInviteModalHeight(e.nativeEvent.layout.height)}
-                {...invitePanResponder.panHandlers}
               >
-                <View style={styles.handleArea}>
-                  <View style={styles.modalHandle} />
-                </View>
+                <PanGestureHandler
+                  activeOffsetY={8}
+                  failOffsetX={[-28, 28]}
+                  simultaneousHandlers={inviteSheetGestureRef}
+                  {...inviteHandleGestureHandlers}
+                >
+                  <View style={styles.handleArea}>
+                    <View style={styles.modalHandle} />
+                  </View>
+                </PanGestureHandler>
                 <View style={styles.editHeader}>
                   <View style={{ width: 64, alignItems: 'flex-start' }} />
                   <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
@@ -4606,9 +4635,11 @@ const FlowScreen = ({ navigation, route }) => {
                   </View>
                 </View>
 
-                <ScrollView
+                <GHScrollView
                   bounces={false}
                   showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                  simultaneousHandlers={inviteSheetGestureRef}
                   scrollEventThrottle={16}
                   onScroll={(e) => { inviteModalScrollY.current = e.nativeEvent.contentOffset.y; }}
                   contentContainerStyle={{ paddingBottom: 40 }}
@@ -4857,10 +4888,11 @@ const FlowScreen = ({ navigation, route }) => {
                     )}
                   </View>
 
-                </ScrollView>
+                </GHScrollView>
                 {/* iOS 더블 모달 이슈 해결을 위해 모달 내부에도 컨펌 모달 배치 */}
                 {renderConfirmModal()}
               </Animated.View>
+              </PanGestureHandler>
             </View>
           </GestureHandlerRootView>
         </Modal>

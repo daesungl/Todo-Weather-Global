@@ -662,11 +662,18 @@ const TasksScreen = ({ navigation }) => {
     setShowRangePicker(false);
     setShowTimePicker(false);
     setShowEndTimePicker(false);
-    setIsAdding(false);
-    if (typeof onAfterClose === 'function') {
-      onAfterClose();
-    }
-  }, [isMemoEditing, setShowColorPicker, setSearchMode]);
+    Animated.timing(modalAddY, {
+      toValue: height,
+      duration: 240,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsAdding(false);
+      modalAddY.setValue(height);
+      if (typeof onAfterClose === 'function') {
+        onAfterClose();
+      }
+    });
+  }, [isMemoEditing, modalAddY, setShowColorPicker, setSearchMode]);
 
   const closeTaskListModal = useCallback(() => {
     Animated.timing(listModalTranslateY, {
@@ -2622,8 +2629,9 @@ const TasksScreen = ({ navigation }) => {
 
         <Modal
           visible={isAdding}
-          animationType="slide"
-          presentationStyle="pageSheet"
+          animationType="none"
+          transparent={true}
+          presentationStyle="overFullScreen"
           onRequestClose={closeAddModal}
           onShow={() => {
             modalScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -2631,7 +2639,12 @@ const TasksScreen = ({ navigation }) => {
           }}
         >
           <View style={[styles.modalBg, { flex: 1 }]}>
-            <View style={styles.modalContent}>
+            <Animated.View
+              style={[
+                styles.modalContent,
+                { transform: [{ translateY: modalAddY }] },
+              ]}
+            >
               <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={{ flex: 1 }}
@@ -2903,7 +2916,7 @@ const TasksScreen = ({ navigation }) => {
                   </>
                 )}
               </KeyboardAvoidingView>
-            </View>
+            </Animated.View>
 
             {/* Range Calendar Modal */}
             <RangeCalendarModal
