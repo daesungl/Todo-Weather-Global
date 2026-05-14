@@ -115,6 +115,16 @@ const TASK_COLOR_LABELS = [
 
 const TASK_COLORS = TASK_COLOR_LABELS.map(l => l.color);
 
+// WCAG relative luminance — filters colors to those with ≥4.5:1 contrast against white text
+const _lum = (hex) => {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const lin = c => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+};
+const TASK_RANDOM_COLORS = TASK_COLOR_LABELS.filter(({ color }) => 1.05 / (_lum(color) + 0.05) >= 4.5);
+
 // Calendar Swiping Constants
 const CALENDAR_START_DATE = new Date(2000, 0, 1);
 const CALENDAR_MONTH_RANGE = (2100 - 2000 + 1) * 12;
@@ -671,10 +681,17 @@ const TasksScreen = ({ navigation }) => {
     });
   }, [listModalTranslateY, sheetAnim]);
 
-  const createModalPanResponder = (translateValue, closeCallback) => {
+  const createModalPanResponder = (translateValue, closeCallback, scrollYRef = null) => {
     return PanResponder.create({
       onStartShouldSetPanResponderCapture: () => false,
+      // Bubble phase fires after children — ScrollView child wins inside scroll area,
+      // parent wins in header/empty areas where no child claims.
       onStartShouldSetPanResponder: () => true,
+      // Capture phase: steal from ScrollView only when it's at the top + clear downward swipe
+      onMoveShouldSetPanResponderCapture: (_, gs) => {
+        if (!scrollYRef) return false;
+        return scrollYRef.current <= 0 && gs.dy > 8 && gs.dy > Math.abs(gs.dx);
+      },
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 1 && Math.abs(gs.dy) > Math.abs(gs.dx),
       onPanResponderGrant: () => { Keyboard.dismiss(); },
       onPanResponderMove: (_, gs) => {
@@ -704,9 +721,14 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const addModalPanResponder = useRef(createModalPanResponder(modalAddY, closeAddModal)).current;
-  const holidayModalPanResponder = useRef(createModalPanResponder(holidayModalY, closeHolidayModal)).current;
-  const filterModalPanResponder = useRef(createModalPanResponder(filterModalY, closeFilterModal)).current;
-  const listModalPanResponder = useRef(createModalPanResponder(listModalTranslateY, closeTaskListModal)).current;
+
+  const listScrollY = useRef(0);
+  const holidayScrollY = useRef(0);
+  const filterScrollY = useRef(0);
+
+  const holidayModalPanResponder = useRef(createModalPanResponder(holidayModalY, closeHolidayModal, holidayScrollY)).current;
+  const filterModalPanResponder = useRef(createModalPanResponder(filterModalY, closeFilterModal, filterScrollY)).current;
+  const listModalPanResponder = useRef(createModalPanResponder(listModalTranslateY, closeTaskListModal, listScrollY)).current;
 
   // Modal open animations are now triggered directly via onPress/onShow for better reliability.
 
@@ -1084,7 +1106,7 @@ const TasksScreen = ({ navigation }) => {
     setNewMemo('');
     setNewLocName('');
     setNewWeatherRegion(null);
-    setSelectedColor(TASK_COLOR_LABELS[Math.floor(Math.random() * TASK_COLOR_LABELS.length)].color);
+    setSelectedColor(TASK_RANDOM_COLORS[Math.floor(Math.random() * TASK_RANDOM_COLORS.length)].color);
     setRepeatType(null);
     setRepeatEndDate(null);
     setShowRepeatPicker(false);
@@ -1100,6 +1122,7 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const handleBackToList = () => {
+    listScrollY.current = 0;
     Animated.timing(sheetAnim, {
       toValue: 0,
       duration: 300,
@@ -1187,7 +1210,8 @@ const TasksScreen = ({ navigation }) => {
     });
   }, [editSheetX, editSheetY]);
 
-  const editSheetPanResponder = useRef(createModalPanResponder(editSheetY, closeEditInSheet)).current;
+  const editSheetScrollY = useRef(0);
+  const editSheetPanResponder = useRef(createModalPanResponder(editSheetY, closeEditInSheet, editSheetScrollY)).current;
 
   const handleSaveTask = async () => {
     if (isTaskSavingRef.current) return;
@@ -1773,7 +1797,7 @@ const TasksScreen = ({ navigation }) => {
               height: height * 0.9,
               overflow: 'hidden',
               transform: [{ translateY: listModalTranslateY }]
-            }]}>
+            }]} {...listModalPanResponder.panHandlers}>
               <Animated.View style={{
                 flex: 1,
                 flexDirection: 'row',
@@ -1787,7 +1811,7 @@ const TasksScreen = ({ navigation }) => {
               }}>
                 {/* PAGE 1: Task List */}
                 <View style={{ width: width }}>
-                  <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
+                  <View style={styles.modalHeader}>
                     <View style={styles.modalHandle} />
                     <View style={styles.sheetTitleArea}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1810,6 +1834,8 @@ const TasksScreen = ({ navigation }) => {
                     style={styles.sheetList}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={{ paddingBottom: 20 }}
+                    scrollEventThrottle={16}
+                    onScroll={(e) => { listScrollY.current = e.nativeEvent.contentOffset.y; }}
                   >
                     {isCalendarSyncing ? (
                       <View style={styles.emptyState}>
@@ -1903,7 +1929,7 @@ const TasksScreen = ({ navigation }) => {
 
                 {/* PAGE 2: Task Detail */}
                 <View style={{ width: width }}>
-                  <View style={styles.modalHeader} {...listModalPanResponder.panHandlers}>
+                  <View style={styles.modalHeader}>
                     <View style={styles.modalHandle} />
                     <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
                       <TouchableOpacity onPress={handleBackToList} style={styles.detailHeaderBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
@@ -1925,6 +1951,8 @@ const TasksScreen = ({ navigation }) => {
                       style={{ flex: 1 }}
                       showsVerticalScrollIndicator={false}
                       contentContainerStyle={{ paddingBottom: 60 }}
+                      scrollEventThrottle={16}
+                      onScroll={(e) => { listScrollY.current = e.nativeEvent.contentOffset.y; }}
                     >
                       <ViewShot
                         ref={taskDetailShotRef}
@@ -2092,7 +2120,7 @@ const TasksScreen = ({ navigation }) => {
                 <Animated.View style={[
                   StyleSheet.absoluteFill,
                   { backgroundColor: 'white', paddingHorizontal: Spacing.xl, transform: [{ translateX: editSheetX }, { translateY: editSheetY }] }
-                ]}>
+                ]} {...editSheetPanResponder.panHandlers}>
                   <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                     style={{ flex: 1 }}
@@ -2132,7 +2160,7 @@ const TasksScreen = ({ navigation }) => {
                       </View>
                     ) : (
                       <>
-                        <View style={styles.modalHeader} {...editSheetPanResponder.panHandlers}>
+                        <View style={styles.modalHeader}>
                           <View style={styles.modalHandle} />
                           <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
                             <TouchableOpacity onPress={() => closeEditInSheet()} style={styles.headerActionBtn} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
@@ -2169,6 +2197,8 @@ const TasksScreen = ({ navigation }) => {
                           keyboardShouldPersistTaps="handled"
                           contentContainerStyle={{ paddingBottom: 250 }}
                           automaticallyAdjustKeyboardInsets={true}
+                          scrollEventThrottle={16}
+                          onScroll={(e) => { editSheetScrollY.current = e.nativeEvent.contentOffset.y; }}
                         >
                           <TextInput
                             ref={titleInputRef}
@@ -3131,8 +3161,8 @@ const TasksScreen = ({ navigation }) => {
                 }
               ]}
             />
-            <Animated.View style={[styles.modalContent, { transform: [{ translateY: holidayModalY }] }]}>
-              <View style={styles.modalHeader} {...holidayModalPanResponder.panHandlers}>
+            <Animated.View style={[styles.modalContent, { transform: [{ translateY: holidayModalY }] }]} {...holidayModalPanResponder.panHandlers}>
+              <View style={styles.modalHeader}>
                 <View style={styles.modalHandle} />
                 <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 4 }}>
                   <View style={{ flex: 1 }} />
@@ -3188,6 +3218,8 @@ const TasksScreen = ({ navigation }) => {
                     maxToRenderPerBatch={10}
                     windowSize={5}
                     getItemLayout={(data, index) => ({ length: 65, offset: 65 * index, index })}
+                    scrollEventThrottle={16}
+                    onScroll={(e) => { holidayScrollY.current = e.nativeEvent.contentOffset.y; }}
                     ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.search_results', 'Search Results')}</Text>}
                     renderItem={({ item }) => (
                       <CountryItem
@@ -3212,6 +3244,8 @@ const TasksScreen = ({ navigation }) => {
                     showsVerticalScrollIndicator={false}
                     initialNumToRender={15}
                     getItemLayout={(data, index) => ({ length: 75, offset: 75 * index, index })}
+                    scrollEventThrottle={16}
+                    onScroll={(e) => { holidayScrollY.current = e.nativeEvent.contentOffset.y; }}
                     ListHeaderComponent={<Text style={styles.sectionSmallTitle}>{t('tasks.selected_countries', 'Selected Countries')}</Text>}
                     renderItem={({ item: code }) => (
                       <SelectedCountryItem
@@ -3253,8 +3287,8 @@ const TasksScreen = ({ navigation }) => {
                 }
               ]}
             />
-            <Animated.View style={[styles.modalContent, { transform: [{ translateY: filterModalY }] }]}>
-              <View style={styles.modalHeader} {...filterModalPanResponder.panHandlers}>
+            <Animated.View style={[styles.modalContent, { transform: [{ translateY: filterModalY }] }]} {...filterModalPanResponder.panHandlers}>
+              <View style={styles.modalHeader}>
                 <View style={styles.modalHandle} />
                 <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 10, paddingBottom: 10 }}>
                   <View style={{ flex: 1.2 }} />
@@ -3273,7 +3307,7 @@ const TasksScreen = ({ navigation }) => {
                 </View>
               </View>
 
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 16 }}>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 16 }} scrollEventThrottle={16} onScroll={(e) => { filterScrollY.current = e.nativeEvent.contentOffset.y; }}>
                 <Text style={{ fontSize: 13, color: Colors.textSecondary, marginBottom: 20, paddingHorizontal: 20, textAlign: 'center', lineHeight: 18 }}>
                   {t('tasks.filter_guide')}
                 </Text>

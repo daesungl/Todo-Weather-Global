@@ -499,7 +499,13 @@ Deno.serve(async (req) => {
         if (upsertError) throw upsertError;
       }
       const deleteQuery = admin.from('plan_steps').delete().eq('plan_id', planId);
-      if (nextIds.length > 0) deleteQuery.not('id', 'in', `(${nextIds.map(id => `"${id}"`).join(',')})`);
+      if (nextIds.length > 0) {
+        const inList = nextIds
+          .map(id => String(id).replace(/[(),]/g, ''))
+          .filter(Boolean)
+          .join(',');
+        if (inList) deleteQuery.not('id', 'in', `(${inList})`);
+      }
       const { error: deleteError } = await deleteQuery;
       if (deleteError) throw deleteError;
 

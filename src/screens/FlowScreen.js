@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import Reanimated, { LinearTransition, Easing as REasing } from 'react-native-reanimated';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Easing, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -312,15 +313,12 @@ const FlowScreen = ({ navigation, route }) => {
   const [isJoining, setIsJoining] = useState(false);
   const [showRangePicker, setShowRangePicker] = useState(false);
   const panY = useRef(new Animated.Value(0)).current;
-  const flowPanY = useRef(new Animated.Value(0)).current;
-  const flowKeyboardOffset = useRef(new Animated.Value(0)).current;
   const invitePanY = useRef(new Animated.Value(height)).current;
   const joinPanY = useRef(new Animated.Value(height)).current;
   const joinKeyboardOffset = useRef(new Animated.Value(0)).current;
   const searchPanY = useRef(new Animated.Value(0)).current;
   const [inviteModalHeight, setInviteModalHeight] = useState(0);
   const [joinModalHeight, setJoinModalHeight] = useState(0);
-  const [flowModalHeight, setFlowModalHeight] = useState(0);
   const [editModalHeight, setEditModalHeight] = useState(0);
   const [searchModalHeight, setSearchModalHeight] = useState(0);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
@@ -754,41 +752,26 @@ const FlowScreen = ({ navigation, route }) => {
       setKeyboardHeight(kbHeight);
       
       // Calculate offset based on modal height and keyboard height
-      const currentModalHeight = flowModalVisible ? flowModalHeight : (editModalVisible ? editModalHeight : (Platform.OS === 'ios' && joinModalVisible ? joinModalHeight : 0));
-      if (currentModalHeight > 0) {
-        const maxShift = height - currentModalHeight - (Platform.OS === 'ios' ? 60 : 40);
+      if (Platform.OS === 'ios' && joinModalVisible && joinModalHeight > 0) {
+        const maxShift = height - joinModalHeight - 60;
         const shift = Math.min(kbHeight, Math.max(0, maxShift));
-        
-        if (flowModalVisible) {
-          Animated.timing(flowKeyboardOffset, {
-            toValue: shift, // flowKeyboardOffset is subtracted, so positive moves UP
-            duration: e.duration || 250,
-            useNativeDriver: true,
-          }).start();
-        } else if (editModalVisible) {
-          Animated.timing(panY, {
-            toValue: -shift, // panY is directly used, so negative moves UP
-            duration: e.duration || 250,
-            useNativeDriver: true,
-          }).start();
-        } else if (Platform.OS === 'ios' && joinModalVisible) {
-          Animated.timing(joinKeyboardOffset, {
-            toValue: shift,
-            duration: e.duration || 250,
-            useNativeDriver: true,
-          }).start();
-        }
+        Animated.timing(joinKeyboardOffset, {
+          toValue: shift,
+          duration: e.duration || 250,
+          useNativeDriver: true,
+        }).start();
       }
     });
     const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', (e) => {
       setIsKeyboardVisible(false);
       setKeyboardHeight(0);
-      const targetAnim = flowModalVisible ? flowKeyboardOffset : (Platform.OS === 'ios' && joinModalVisible ? joinKeyboardOffset : panY);
-      Animated.timing(targetAnim, {
-        toValue: 0,
-        duration: e.duration || 200,
-        useNativeDriver: true,
-      }).start();
+      if (Platform.OS === 'ios' && joinModalVisible) {
+        Animated.timing(joinKeyboardOffset, {
+          toValue: 0,
+          duration: e.duration || 200,
+          useNativeDriver: true,
+        }).start();
+      }
     });
 
     return () => {
@@ -797,113 +780,54 @@ const FlowScreen = ({ navigation, route }) => {
     };
   }, []);
 
-  const panResponder = useRef(
+  const _makeModalPanResponder = (panValue, closeCallback, scrollYRef = null) =>
     PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => false,
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) panY.setValue(gestureState.dy);
+      onMoveShouldSetPanResponderCapture: (_, gs) => {
+        if (!scrollYRef) return false;
+        return scrollYRef.current <= 0 && gs.dy > 8 && gs.dy > Math.abs(gs.dx);
       },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(panY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
-            closeEditModal();
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 5 && gs.dy > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) panValue.setValue(gs.dy);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 100 || gs.vy > 0.5) {
+          Animated.timing(panValue, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+            closeCallback();
           });
         } else {
-          Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+          Animated.spring(panValue, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
         }
       },
-    })
-  ).current;
-
-  const flowPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) flowPanY.setValue(gestureState.dy);
+      onPanResponderTerminate: () => {
+        Animated.spring(panValue, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
       },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(flowPanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
-            closeFlowModal();
-          });
-        } else {
-          Animated.spring(flowPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
-        }
-      },
-    })
-  ).current;
+    });
 
+  const editModalScrollY = useRef(0);
+  const flowModalScrollY = useRef(0);
+  const inviteModalScrollY = useRef(0);
+  const joinModalScrollY = useRef(0);
+
+  const panResponder = useRef(_makeModalPanResponder(panY, () => closeEditModal(), editModalScrollY)).current;
+  const invitePanResponder = useRef(_makeModalPanResponder(invitePanY, () => closeInviteModal(), inviteModalScrollY)).current;
+  const joinPanResponder = useRef(_makeModalPanResponder(joinPanY, () => closeJoinModal(), joinModalScrollY)).current;
+
+  const searchModalScrollY = useRef(0);
   const searchPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) searchPanY.setValue(gestureState.dy);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(searchPanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
-            closeSearch();
-            searchPanY.setValue(0);
-          });
-        } else {
-          Animated.spring(searchPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
-        }
-      },
-    })
-  ).current;
-
-  const invitePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) invitePanY.setValue(gestureState.dy);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(invitePanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
-            closeInviteModal();
-          });
-        } else {
-          Animated.spring(invitePanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
-        }
-      },
-    })
-  ).current;
-
-  const joinPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) joinPanY.setValue(gestureState.dy);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(joinPanY, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
-            closeJoinModal();
-          });
-        } else {
-          Animated.spring(joinPanY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
-        }
-      },
-    })
+    _makeModalPanResponder(searchPanY, () => { closeSearch(); searchPanY.setValue(0); }, searchModalScrollY)
   ).current;
 
   const openEditModal = (isNew = false) => {
     isSavingRef.current = false;
     setIsSaving(false);
-    panY.setValue(height);
     setEditModalVisible(true);
     stepScrollRef.current?.scrollTo({ y: 0, animated: false });
-    Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
     if (isNew) {
       setTimeout(() => {
         activityInputRef.current?.focus();
-        // 포커스 후 스크롤이 튀는 것을 방지하기 위해 다시 한번 상단으로 스크롤
         setTimeout(() => stepScrollRef.current?.scrollTo({ y: 0, animated: true }), 100);
       }, 350);
     }
@@ -918,8 +842,6 @@ const FlowScreen = ({ navigation, route }) => {
       showStepRepeatEndPicker,
       editingStepId: editingStep?.id,
     });
-    panY.stopAnimation();
-    panY.setValue(0);
     setEditModalVisible(false);
     setEditingStep(null);
     setEditActivity('');
@@ -2047,14 +1969,13 @@ const FlowScreen = ({ navigation, route }) => {
 
       const applyToFlow = async (updatedSteps) => {
         if (__DEV__) console.log('[FlowScreen] applyToFlow starting...', { flowId: selectedFlow.id, ownerUid: selectedFlow._ownerUid });
-        
-        // UI 즉시 반응: 모달 닫기
-        closeEditModal();
-        
+
         const sorted = sortSteps(updatedSteps);
         const updatedF = { ...selectedFlow, steps: sorted, updatedAt: now };
-        setSelectedFlow(updatedF);
         const updatedFlows = flows.map(f => f.id === selectedFlow.id ? updatedF : f);
+
+        closeEditModal();
+        setSelectedFlow(updatedF);
         setFlows(updatedFlows);
         
         try {
@@ -2444,16 +2365,6 @@ const FlowScreen = ({ navigation, route }) => {
       deletedCount: deletedStepIds.length,
     });
 
-    // 삭제 대상 스텝들의 알림 취소 (per-user AsyncStorage에서 notifId 읽기)
-    const _deletePrefs = await getUserNotifPrefs(user?.uid);
-    const toCancel = deletedSteps.map(step => _deletePrefs[step.id]?.notificationId).filter(Boolean);
-    await Promise.all(deletedSteps.map(step => deleteUserNotifPref(user?.uid, step.id, selectedFlow?.id)));
-    setUserNotifPrefs(prev => {
-      const next = { ...prev };
-      deletedSteps.forEach(step => delete next[step.id]);
-      return next;
-    });
-
     let updatedF;
     const updatedFlows = flows.map(f => {
       if (f.id !== selectedFlow.id) return f;
@@ -2464,9 +2375,20 @@ const FlowScreen = ({ navigation, route }) => {
 
     if (!updatedF) return;
 
+    // UI를 즉시 업데이트 — 비동기 작업 전에 호출해야 스텝이 사라진 후 다시 나타나지 않음
     setSelectedFlow(updatedF);
     setFlows(updatedFlows);
     closeEditModal();
+
+    // 알림 취소는 UI 업데이트 후 백그라운드에서 처리
+    const _deletePrefs = await getUserNotifPrefs(user?.uid);
+    const toCancel = deletedSteps.map(step => _deletePrefs[step.id]?.notificationId).filter(Boolean);
+    await Promise.all(deletedSteps.map(step => deleteUserNotifPref(user?.uid, step.id, selectedFlow?.id)));
+    setUserNotifPrefs(prev => {
+      const next = { ...prev };
+      deletedSteps.forEach(step => delete next[step.id]);
+      return next;
+    });
     debugFlow('doDeleteStep:uiClosed', {
       flowId: updatedF.id,
       afterCount: updatedF.steps?.length || 0,
@@ -2619,7 +2541,6 @@ const FlowScreen = ({ navigation, route }) => {
   const openFlowModal = (flow = null) => {
     isSavingRef.current = false;
     setIsSaving(false);
-    flowPanY.setValue(height);
     setEditingFlow(flow);
     setFlowTitle(flow ? flow.title : '');
     setFlowDescription(flow ? (flow.description || '') : '');
@@ -2629,7 +2550,6 @@ const FlowScreen = ({ navigation, route }) => {
     setFlowLon(flow ? flow.lon : null);
     setFlowGradient(flow ? (flow.gradient || FLOW_GRADIENT_PRESETS[0].colors) : FLOW_GRADIENT_PRESETS[Math.floor(Math.random() * FLOW_GRADIENT_PRESETS.length)].colors);
     setFlowModalVisible(true);
-    Animated.spring(flowPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
 
   const openEditStep = async (step) => {
@@ -2655,15 +2575,15 @@ const FlowScreen = ({ navigation, route }) => {
     if (!deleteAnimRefs.current.has(id)) {
       deleteAnimRefs.current.set(id, new Animated.Value(0));
     }
-    const anim = deleteAnimRefs.current.get(id);
-    Animated.timing(anim, {
+    const slideAnim = deleteAnimRefs.current.get(id);
+    Animated.timing(slideAnim, {
       toValue: -width,
-      duration: 280,
+      duration: 300,
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
       deleteAnimRefs.current.delete(id);
-      onDone();
+      onDone(); // Reanimated LinearTransition handles the gap-fill on UI thread
     });
   };
 
@@ -2939,8 +2859,8 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   const renderSearchLayer = () => (
-    <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.background, zIndex: 2000, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg }, { transform: [{ translateY: searchPanY }] }]}>
-      <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 16 }} {...searchPanResponder.panHandlers}>
+    <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.background, zIndex: 2000, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg }, { transform: [{ translateY: searchPanY }] }]} {...searchPanResponder.panHandlers}>
+      <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 16 }}>
         <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.outline, opacity: 0.4 }} />
       </View>
       <View style={styles.modalHeader}>
@@ -2965,7 +2885,7 @@ const FlowScreen = ({ navigation, route }) => {
           <Text style={styles.cancelText}>{t('common.cancel', 'Cancel')}</Text>
         </GHButton>
       </View>
-      <ScrollView style={styles.searchResultsList}>
+      <ScrollView style={styles.searchResultsList} scrollEventThrottle={16} onScroll={(e) => { searchModalScrollY.current = e.nativeEvent.contentOffset.y; }}>
         {isSearching ? (
           <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
         ) : (
@@ -3581,6 +3501,7 @@ const FlowScreen = ({ navigation, route }) => {
                     const cardSlideAnim = deleteAnimRefs.current.get(flow.id);
                     return (
                     <ScaleDecorator>
+                      <Reanimated.View layout={LinearTransition.duration(450).easing(REasing.inOut(REasing.quad))}>
                       <View style={styles.flowCardContainer}>
                         {flow.inactive ? (
                           <View style={[styles.flowCardLocked, {
@@ -3754,6 +3675,7 @@ const FlowScreen = ({ navigation, route }) => {
                         </Animated.View>
                         )}
                       </View>
+                      </Reanimated.View>
                     </ScaleDecorator>
                     );
                   }}
@@ -3851,18 +3773,14 @@ const FlowScreen = ({ navigation, route }) => {
         {/* --- Flow Modal --- */}
         <Modal
           visible={flowModalVisible}
-          transparent={true}
-          animationType="none"
+          animationType="slide"
+          presentationStyle="pageSheet"
           onRequestClose={closeFlowModal}
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
-            <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeFlowModal} />
-            <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View
-                onLayout={(e) => setFlowModalHeight(e.nativeEvent.layout.height)}
-                style={[styles.editModalContent, { transform: [{ translateY: Animated.subtract(flowPanY, flowKeyboardOffset) }] }]}
-              >
-                    <View {...flowPanResponder.panHandlers} style={styles.handleArea}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.pageSheetContent}>
+                    <View style={styles.handleArea}>
                       <View style={styles.modalHandle} />
                     </View>
                     <View style={styles.editHeader}>
@@ -3893,7 +3811,7 @@ const FlowScreen = ({ navigation, route }) => {
                       </View>
                     </View>
 
-                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
+                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true} scrollEventThrottle={16} onScroll={(e) => { flowModalScrollY.current = e.nativeEvent.contentOffset.y; }}>
                       <View style={styles.modalContentPadding}>
                         <View style={styles.labelRow}>
                           <Text style={styles.inputLabel}>{t('flow.flow_title', 'Plan Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
@@ -3992,7 +3910,7 @@ const FlowScreen = ({ navigation, route }) => {
                     </ScrollView>
 
                     {searchModalVisible && searchMode === 'flow' && renderSearchLayer()}
-              </Animated.View>
+              </View>
             </View>
           </GestureHandlerRootView>
         </Modal>
@@ -4000,18 +3918,17 @@ const FlowScreen = ({ navigation, route }) => {
         {/* --- Step Modal --- */}
         <Modal
           visible={editModalVisible}
-          transparent={true}
-          animationType="none"
+          animationType="slide"
+          presentationStyle="pageSheet"
           onRequestClose={closeEditModal}
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
-            <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeEditModal} />
-            <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View 
+            <View style={{ flex: 1 }}>
+              <View
                 onLayout={(e) => setEditModalHeight(e.nativeEvent.layout.height)}
-                style={[styles.editModalContent, { transform: [{ translateY: panY }] }]}
+                style={styles.pageSheetContent}
               >
-                    <View {...panResponder.panHandlers} style={styles.handleArea}>
+                    <View style={styles.handleArea}>
                       <View style={styles.modalHandle} />
                     </View>
                     <View style={styles.editHeader}>
@@ -4068,6 +3985,8 @@ const FlowScreen = ({ navigation, route }) => {
                       keyboardShouldPersistTaps="handled"
                       automaticallyAdjustKeyboardInsets={true}
                       pointerEvents={isSaving ? 'none' : 'auto'}
+                      scrollEventThrottle={16}
+                      onScroll={(e) => { editModalScrollY.current = e.nativeEvent.contentOffset.y; }}
                     >
                       <View style={styles.modalContentPadding}>
                         <View style={styles.labelRow}>
@@ -4377,7 +4296,7 @@ const FlowScreen = ({ navigation, route }) => {
                     </ScrollView>
 
                     {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
-              </Animated.View>
+              </View>
             </View>
 
             {/* Date / Time Picker Overlay */}
@@ -4469,19 +4388,20 @@ const FlowScreen = ({ navigation, route }) => {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeInviteModal} />
             <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-              <Animated.View 
+              <Animated.View
                 style={[
-                  styles.editModalContent, 
-                  { 
+                  styles.editModalContent,
+                  {
                     height: 'auto',
                     maxHeight: height * 0.9,
                     paddingHorizontal: 16,
-                    transform: [{ translateY: invitePanY }] 
+                    transform: [{ translateY: invitePanY }]
                   }
                 ]}
                 onLayout={(e) => setInviteModalHeight(e.nativeEvent.layout.height)}
+                {...invitePanResponder.panHandlers}
               >
-                <View {...invitePanResponder.panHandlers} style={styles.handleArea}>
+                <View style={styles.handleArea}>
                   <View style={styles.modalHandle} />
                 </View>
                 <View style={styles.editHeader}>
@@ -4506,9 +4426,11 @@ const FlowScreen = ({ navigation, route }) => {
                   </View>
                 </View>
 
-                <ScrollView 
-                  bounces={false} 
+                <ScrollView
+                  bounces={false}
                   showsVerticalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  onScroll={(e) => { inviteModalScrollY.current = e.nativeEvent.contentOffset.y; }}
                   contentContainerStyle={{ paddingBottom: 40 }}
                 >
                   {/* 역할 선택 */}
@@ -4787,8 +4709,9 @@ const FlowScreen = ({ navigation, route }) => {
                   }
                 ]}
                 onLayout={(e) => setJoinModalHeight(e.nativeEvent.layout.height)}
+                {...joinPanResponder.panHandlers}
               >
-                <View {...joinPanResponder.panHandlers} style={styles.handleArea}>
+                <View style={styles.handleArea}>
                   <View style={styles.modalHandle} />
                 </View>
                 <View style={styles.editHeader}>
@@ -4820,7 +4743,7 @@ const FlowScreen = ({ navigation, route }) => {
                   </View>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+                <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} scrollEventThrottle={16} onScroll={(e) => { joinModalScrollY.current = e.nativeEvent.contentOffset.y; }}>
                   <View style={styles.modalContentPadding}>
                     <Text style={{ color: Colors.outline, fontSize: 13, marginBottom: 12 }}>{t('flow.enter_invite_code')}</Text>
                     <TextInput
@@ -5236,6 +5159,7 @@ const styles = StyleSheet.create({
   resultAddress: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, marginTop: 2 },
   modalBg: { backgroundColor: 'rgba(0,0,0,0.5)' },
   editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 0, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20, maxHeight: height * 0.9 },
+  pageSheetContent: { flex: 1, backgroundColor: Colors.background, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
   inviteCodeBox: {
     width: '100%',
     backgroundColor: Colors.surfaceContainer,

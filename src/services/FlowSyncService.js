@@ -13,6 +13,7 @@ import { supabase } from '../config/supabaseConfig';
 
 const getFlowsStorageKey = (uid) => `@todo_weather_flows_${uid || 'guest'}`;
 const getSharedFlowsStorageKey = (uid) => `@todo_weather_shared_flows_${uid}`;
+const getDeletedFlowsStorageKey = (uid) => `@todo_weather_deleted_flows_${uid || 'guest'}`;
 
 let _userId = null;
 let _snapshotListeners = new Set();
@@ -28,6 +29,7 @@ let _initPromise = null;
 let _initUid = null;
 let _lastUserOrderChangeMs = 0;
 let _pendingDeletes = new Set();
+let _deletedFlowIds = new Set();
 
 export const isRemoteFlowUpdate = () => _isRemoteUpdate;
 
@@ -71,6 +73,44 @@ const _stopMembershipPoll = () => {
 
 const _isValidPlanId = (id) => id && /^\d+$/.test(String(id));
 
+const _loadDeletedFlowIds = async (uid) => {
+  if (!uid) return new Set();
+  try {
+    const json = await AsyncStorage.getItem(getDeletedFlowsStorageKey(uid));
+    const ids = json ? JSON.parse(json) : [];
+    return new Set(Array.isArray(ids) ? ids.filter(Boolean).map(String) : []);
+  } catch (e) {
+    console.warn('[FlowSync] deleted flow tombstone load error:', e);
+    return new Set();
+  }
+};
+
+const _saveDeletedFlowIds = async () => {
+  if (!_userId) return;
+  try {
+    await AsyncStorage.setItem(getDeletedFlowsStorageKey(_userId), JSON.stringify(Array.from(_deletedFlowIds)));
+  } catch (e) {
+    console.warn('[FlowSync] deleted flow tombstone save error:', e);
+  }
+};
+
+const _rememberDeletedFlowId = (flowId) => {
+  if (!flowId) return;
+  _deletedFlowIds.add(String(flowId));
+  _pendingDeletes.add(String(flowId));
+  _saveDeletedFlowIds();
+};
+
+const _forgetDeletedFlowId = (flowId) => {
+  if (!flowId) return;
+  _deletedFlowIds.delete(String(flowId));
+  _pendingDeletes.delete(String(flowId));
+  _saveDeletedFlowIds();
+};
+
+const _filterDeletedFlows = (flows = []) =>
+  (Array.isArray(flows) ? flows : []).filter(flow => flow?.id && !_deletedFlowIds.has(String(flow.id)));
+
 const _startMembershipPoll = (uid) => {
   _stopMembershipPoll();
   if (!uid) return;
@@ -83,11 +123,11 @@ const _startMembershipPoll = (uid) => {
     try {
       const plans = await listSupabasePlans();
       // 유효한 플랜 ID만 허용 (숫자 타임스탬프 ID)
-      const validPlans = plans.filter(p => p.id && /^\d+$/.test(String(p.id)));
+      const validPlans = _filterDeletedFlows(plans.filter(p => p.id && /^\d+$/.test(String(p.id))));
       const returnedIds = new Set(validPlans.map(p => p.id));
       const toRevoke = [];
       for (const [flowId, ref] of _flowRefs.entries()) {
-        if (ref.role !== 'owner' && !returnedIds.has(flowId)) toRevoke.push(flowId);
+        if (!returnedIds.has(flowId)) toRevoke.push(flowId);
       }
       toRevoke.forEach(flowId => _dropInaccessibleFlow(flowId, 'membership revoked'));
       const staleStepPlanIds = [];
@@ -257,6 +297,7 @@ const _filterDeletedSteps = (flowId, steps = []) => {
 };
 
 const _flowFromParts = (flowId) => {
+  if (_deletedFlowIds.has(String(flowId))) return null;
   const ref = _flowRefs.get(flowId);
   const doc = _flowDocs.get(flowId);
   if (!ref || !doc) return null;
@@ -266,7 +307,7 @@ const _flowFromParts = (flowId) => {
     id: flowId,
     title: doc.title || '제목 없는 플로우',
     ...doc,
-    steps: _sortSteps(_flowSteps.get(flowId) || []),
+    steps: _sortSteps(_filterDeletedSteps(flowId, _flowSteps.get(flowId) || [])),
     _role: role,
     _permissions: ref.permissions,
     _joinedAt: ref.joinedAt,
@@ -303,7 +344,7 @@ const _mergeAndNotify = (fromRemote = false) => {
 const _loadRemoteFlows = async (uid) => {
   const plans = await listSupabasePlans();
   // 유효한 플랜 ID만 허용 (숫자 타임스탬프 ID)
-  const validPlans = plans.filter(p => p.id && /^\d+$/.test(String(p.id)));
+  const validPlans = _filterDeletedFlows(plans.filter(p => p.id && /^\d+$/.test(String(p.id))));
   const normalizedPlans = validPlans.map(plan => ({
     ...plan,
     _ownerUid: plan.ownerUid && plan.ownerUid !== uid ? plan.ownerUid : undefined,
@@ -332,7 +373,17 @@ const _loadRemoteFlows = async (uid) => {
     _flowDocs.set(plan.id, { ...plan, id: plan.id });
     _flowSteps.set(plan.id, _sortSteps(_filterDeletedSteps(plan.id, plan.steps || [])));
   }
-  _cachedFlows = plansWithSteps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const returnedIds = new Set(plansWithSteps.map(plan => plan.id));
+  for (const flowId of Array.from(_flowRefs.keys())) {
+    if (!returnedIds.has(flowId)) {
+      _flowRefs.delete(flowId);
+      _flowDocs.delete(flowId);
+      _flowSteps.delete(flowId);
+    }
+  }
+  _cachedFlows = plansWithSteps
+    .map(plan => ({ ...plan, steps: _sortSteps(_filterDeletedSteps(plan.id, plan.steps || [])) }))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   return _cachedFlows;
 };
 
@@ -341,6 +392,7 @@ const _initFlowSyncInternal = async (uid) => {
   _flowRefs = new Map();
   _flowDocs = new Map();
   _flowSteps = new Map();
+  _deletedFlowIds = await _loadDeletedFlowIds(uid);
   _cachedFlows = null;
   _stopMembershipPoll();
 
@@ -354,7 +406,9 @@ const _initFlowSyncInternal = async (uid) => {
       const localAll = [
         ...(Array.isArray(localOwn) ? localOwn : []),
         ...(Array.isArray(localShared) ? localShared : []),
-      ].filter(f => _isValidPlanId(f.id)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      ].filter(f => _isValidPlanId(f.id))
+        .filter(f => !_deletedFlowIds.has(String(f.id)))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       // 유효하지 않은 ID가 있는 경우 정리된 데이터를 로컬 저장
       const hasInvalid = (Array.isArray(localOwn) ? localOwn : []).some(f => !_isValidPlanId(f.id))
         || (Array.isArray(localShared) ? localShared : []).some(f => !_isValidPlanId(f.id));
@@ -375,7 +429,7 @@ const _initFlowSyncInternal = async (uid) => {
             order: flow.order ?? 0,
           });
           _flowDocs.set(flow.id, { ...flow, id: flow.id });
-          _flowSteps.set(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
+          _flowSteps.set(flow.id, _sortSteps(_filterDeletedSteps(flow.id, flow.steps || [])));
         });
         _cachedFlows = localAll;
         _snapshotListeners.forEach(cb => cb(localAll));
@@ -419,7 +473,7 @@ export const subscribeToFlows = (callback) => {
 export const subscribeToFlowSteps = (flowId, callback) => {
   if (!flowId) return () => {};
 
-  const cachedSteps = _sortSteps(_flowSteps.get(flowId) || []);
+  const cachedSteps = _sortSteps(_filterDeletedSteps(flowId, _flowSteps.get(flowId) || []));
   if (callback) callback(cachedSteps);
 
   const flow = _flowFromParts(flowId);
@@ -485,6 +539,7 @@ export const subscribeToFlowSteps = (flowId, callback) => {
 
 export const refreshSharedFlowListener = (ownerUid, flowId, role, order) => {
   if (!_userId || !flowId) return;
+  _forgetDeletedFlowId(flowId);
   _loadRemoteFlows(_userId)
     .then(flows => {
       if (order !== undefined && _flowRefs.has(flowId)) {
@@ -529,6 +584,7 @@ export const markFlowRead = async (flowId, options = {}) => {
 };
 
 export const removeSharedFlowOptimistic = (flowId) => {
+  _rememberDeletedFlowId(flowId);
   _flowRefs.delete(flowId);
   _flowDocs.delete(flowId);
   _flowSteps.delete(flowId);
@@ -576,7 +632,12 @@ export const deleteFlowStepDocs = async (flow, stepIds = []) => {
 
   const ids = [...new Set((Array.isArray(stepIds) ? stepIds : [stepIds]).filter(Boolean))];
   if (ids.length === 0) return false;
+
+  // Supabase 쓰기 중 realtime 이벤트가 발생해 load()가 구버전 데이터를 복원하지 않도록 보호
+  _lastOptimisticUpdateMs.set(flow.id, Date.now());
   _rememberDeletedStepIds(flow.id, ids);
+  _flowSteps.set(flow.id, _sortSteps(_filterDeletedSteps(flow.id, flow.steps || [])));
+  _mergeAndNotify();
 
   const ownerUid = flow._ownerUid || flow.ownerUid || _userId;
   const isOwner = ownerUid === _userId && (!flow._role || flow._role === 'owner');
@@ -608,7 +669,7 @@ export const deleteFlowStepDocs = async (flow, stepIds = []) => {
   }
 
   _flowDocs.set(flow.id, { id: flow.id, ...meta });
-  _flowSteps.set(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
+  _flowSteps.set(flow.id, _sortSteps(_filterDeletedSteps(flow.id, flow.steps || [])));
   _mergeAndNotify();
   return true;
 };
@@ -623,7 +684,9 @@ export const getLocalCachedFlows = async () => {
     return [
       ...(Array.isArray(own) ? own : []),
       ...(Array.isArray(shared) ? shared : []),
-    ].filter(f => _isValidPlanId(f.id)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    ].filter(f => _isValidPlanId(f.id))
+      .filter(f => !_deletedFlowIds.has(String(f.id)))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   } catch {
     return [];
   }
@@ -688,7 +751,7 @@ export const getFlows = async () => {
 };
 
 export const saveFlows = async (flows) => {
-  const arr = Array.isArray(flows) ? flows : [];
+  const arr = _filterDeletedFlows(Array.isArray(flows) ? flows : []);
   const ordered = arr.map((f, i) => ({ ...f, order: i }));
   const ownFlows = ordered.filter(f => !f._ownerUid || f._role === 'owner');
   const sharedFlows = ordered.filter(f => f._ownerUid || (f._role && f._role !== 'owner'));
@@ -756,6 +819,7 @@ export const saveFlows = async (flows) => {
 };
 
 export const addFlow = async (flow) => {
+  _forgetDeletedFlowId(flow.id);
   _lastUserOrderChangeMs = Date.now();
   let minOrder = 0;
   for (const doc of _flowDocs.values()) {
@@ -798,7 +862,7 @@ export const addFlow = async (flow) => {
 };
 
 export const deleteFlow = async (id) => {
-  _pendingDeletes.add(id);
+  _rememberDeletedFlowId(id);
   const role = _flowRefs.get(id)?.role || _flowDocs.get(id)?._role || 'owner';
   _flowRefs.delete(id);
   _flowDocs.delete(id);
@@ -816,12 +880,22 @@ export const deleteFlow = async (id) => {
       if (__DEV__) console.warn('[FlowSync] deleteFlow Supabase error:', e);
     }
   }
-  _pendingDeletes.delete(id);
 
   try {
-    const json = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
-    const data = json ? JSON.parse(json) : [];
-    await AsyncStorage.setItem(getFlowsStorageKey(_userId), JSON.stringify(data.filter(f => f.id !== id)));
+    const ownJson = await AsyncStorage.getItem(getFlowsStorageKey(_userId));
+    const sharedJson = _userId ? await AsyncStorage.getItem(getSharedFlowsStorageKey(_userId)) : null;
+    const own = ownJson ? JSON.parse(ownJson) : [];
+    const shared = sharedJson ? JSON.parse(sharedJson) : [];
+    await AsyncStorage.setItem(
+      getFlowsStorageKey(_userId),
+      JSON.stringify((Array.isArray(own) ? own : []).filter(f => f.id !== id))
+    );
+    if (_userId) {
+      await AsyncStorage.setItem(
+        getSharedFlowsStorageKey(_userId),
+        JSON.stringify((Array.isArray(shared) ? shared : []).filter(f => f.id !== id))
+      );
+    }
   } catch (e) {
     if (__DEV__) console.error('[FlowSync] deleteFlow AsyncStorage error:', e);
   }
