@@ -3,7 +3,7 @@ import Reanimated, { LinearTransition, Easing as REasing } from 'react-native-re
 import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Easing, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton, PanGestureHandler, State, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
@@ -313,6 +313,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [isJoining, setIsJoining] = useState(false);
   const [showRangePicker, setShowRangePicker] = useState(false);
   const panY = useRef(new Animated.Value(0)).current;
+  const flowPanY = useRef(new Animated.Value(0)).current;
   const invitePanY = useRef(new Animated.Value(height)).current;
   const joinPanY = useRef(new Animated.Value(height)).current;
   const joinKeyboardOffset = useRef(new Animated.Value(0)).current;
@@ -783,14 +784,18 @@ const FlowScreen = ({ navigation, route }) => {
   const _makeModalPanResponder = (panValue, closeCallback, scrollYRef = null) =>
     PanResponder.create({
       onStartShouldSetPanResponderCapture: () => false,
-      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponderCapture: (_, gs) => {
         if (!scrollYRef) return false;
-        return scrollYRef.current <= 0 && gs.dy > 8 && gs.dy > Math.abs(gs.dx);
+        return scrollYRef.current <= 0 && gs.dy > 6 && gs.dy > Math.abs(gs.dx) * 1.2;
       },
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 5 && gs.dy > Math.abs(gs.dx),
+      onMoveShouldSetPanResponder: (_, gs) => (
+        (!scrollYRef || scrollYRef.current <= 0)
+        && gs.dy > 6
+        && gs.dy > Math.abs(gs.dx) * 1.2
+      ),
       onPanResponderMove: (_, gs) => {
-        if (gs.dy > 0) panValue.setValue(gs.dy);
+        if (gs.dy > 0) panValue.setValue(gs.dy * 0.92);
       },
       onPanResponderRelease: (_, gs) => {
         if (gs.dy > 100 || gs.vy > 0.5) {
@@ -810,10 +815,59 @@ const FlowScreen = ({ navigation, route }) => {
   const flowModalScrollY = useRef(0);
   const inviteModalScrollY = useRef(0);
   const joinModalScrollY = useRef(0);
+  const flowSheetGestureRef = useRef(null);
+  const stepSheetGestureRef = useRef(null);
 
-  const panResponder = useRef(_makeModalPanResponder(panY, () => closeEditModal(), editModalScrollY)).current;
   const invitePanResponder = useRef(_makeModalPanResponder(invitePanY, () => closeInviteModal(), inviteModalScrollY)).current;
   const joinPanResponder = useRef(_makeModalPanResponder(joinPanY, () => closeJoinModal(), joinModalScrollY)).current;
+
+  const closeSheetAfterDrag = (panValue, closeCallback) => {
+    Animated.timing(panValue, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
+      closeCallback({ skipAnimation: true });
+    });
+  };
+
+  const _makeModalGestureHandlers = (panValue, closeCallback, scrollYRef = null) => ({
+    onGestureEvent: ({ nativeEvent }) => {
+      const dy = nativeEvent.translationY || 0;
+      if ((scrollYRef?.current || 0) > 0 || dy <= 0) {
+        panValue.setValue(0);
+        return;
+      }
+      panValue.setValue(dy * 0.92);
+    },
+    onHandlerStateChange: ({ nativeEvent }) => {
+      const state = nativeEvent.state;
+      if (![State.END, State.CANCELLED, State.FAILED].includes(state)) return;
+
+      const dy = nativeEvent.translationY || 0;
+      const vy = nativeEvent.velocityY || 0;
+      const canClose = (scrollYRef?.current || 0) <= 0 && (dy > 100 || vy > 700);
+
+      if (canClose) {
+        closeSheetAfterDrag(panValue, closeCallback);
+      } else {
+        Animated.spring(panValue, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
+      }
+    },
+  });
+
+  const flowSheetGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(flowPanY, () => closeFlowModal(), flowModalScrollY),
+    [flowPanY]
+  );
+  const flowHandleGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(flowPanY, () => closeFlowModal(), null),
+    [flowPanY]
+  );
+  const stepSheetGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(panY, () => closeEditModal(), editModalScrollY),
+    [panY]
+  );
+  const stepHandleGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(panY, () => closeEditModal(), null),
+    [panY]
+  );
 
   const searchModalScrollY = useRef(0);
   const searchPanResponder = useRef(
@@ -823,7 +877,17 @@ const FlowScreen = ({ navigation, route }) => {
   const openEditModal = (isNew = false) => {
     isSavingRef.current = false;
     setIsSaving(false);
+    panY.setValue(height);
+    editModalScrollY.current = 0;
     setEditModalVisible(true);
+    requestAnimationFrame(() => {
+      Animated.spring(panY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 18,
+      }).start();
+    });
     stepScrollRef.current?.scrollTo({ y: 0, animated: false });
     if (isNew) {
       setTimeout(() => {
@@ -833,7 +897,7 @@ const FlowScreen = ({ navigation, route }) => {
     }
   };
 
-  const closeEditModal = () => {
+  const closeEditModal = ({ skipAnimation = false } = {}) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     debugFlow('closeEditModal', {
       pickerType,
@@ -842,36 +906,68 @@ const FlowScreen = ({ navigation, route }) => {
       showStepRepeatEndPicker,
       editingStepId: editingStep?.id,
     });
-    setEditModalVisible(false);
-    setEditingStep(null);
-    setEditActivity('');
-    setEditMemo('');
-    setEditDate('');
-    setEditTime('');
-    setEditEndDate('');
-    setEditEndTime('');
-    setMatchStartDate(true);
-    setPickerType(null);
-    setSearchModalVisible(false);
-    setShowRangePicker(false);
-    setSelectedRegion(null);
-    setStepRepeatType(null);
-    setStepRepeatEndDate('');
-    setShowStepRepeatPicker(false);
-    setShowStepRepeatEndPicker(false);
-    setStepNotify(false);
+    const finish = () => {
+      setEditModalVisible(false);
+      setEditingStep(null);
+      setEditActivity('');
+      setEditMemo('');
+      setEditDate('');
+      setEditTime('');
+      setEditEndDate('');
+      setEditEndTime('');
+      setMatchStartDate(true);
+      setPickerType(null);
+      setSearchModalVisible(false);
+      setShowRangePicker(false);
+      setSelectedRegion(null);
+      setStepRepeatType(null);
+      setStepRepeatEndDate('');
+      setShowStepRepeatPicker(false);
+      setShowStepRepeatEndPicker(false);
+      setStepNotify(false);
+      panY.setValue(height);
+      editModalScrollY.current = 0;
+    };
+
+    if (skipAnimation) {
+      finish();
+      return;
+    }
+
+    Animated.timing(panY, {
+      toValue: height,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(finish);
   };
 
-  const closeFlowModal = () => {
+  const closeFlowModal = ({ skipAnimation = false } = {}) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setFlowModalVisible(false);
-    setEditingFlow(null);
-    setFlowTitle('');
-    setFlowLocation('');
-    setFlowAddress('');
-    setFlowLat(null);
-    setFlowLon(null);
-    setFlowDescription('');
+    const finish = () => {
+      setFlowModalVisible(false);
+      setEditingFlow(null);
+      setFlowTitle('');
+      setFlowLocation('');
+      setFlowAddress('');
+      setFlowLat(null);
+      setFlowLon(null);
+      setFlowDescription('');
+      flowPanY.setValue(height);
+      flowModalScrollY.current = 0;
+    };
+
+    if (skipAnimation) {
+      finish();
+      return;
+    }
+
+    Animated.timing(flowPanY, {
+      toValue: height,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(finish);
   };
 
   const isFlowOwner = (flow) =>
@@ -2541,6 +2637,8 @@ const FlowScreen = ({ navigation, route }) => {
   const openFlowModal = (flow = null) => {
     isSavingRef.current = false;
     setIsSaving(false);
+    flowPanY.setValue(height);
+    flowModalScrollY.current = 0;
     setEditingFlow(flow);
     setFlowTitle(flow ? flow.title : '');
     setFlowDescription(flow ? (flow.description || '') : '');
@@ -2550,6 +2648,14 @@ const FlowScreen = ({ navigation, route }) => {
     setFlowLon(flow ? flow.lon : null);
     setFlowGradient(flow ? (flow.gradient || FLOW_GRADIENT_PRESETS[0].colors) : FLOW_GRADIENT_PRESETS[Math.floor(Math.random() * FLOW_GRADIENT_PRESETS.length)].colors);
     setFlowModalVisible(true);
+    requestAnimationFrame(() => {
+      Animated.spring(flowPanY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 18,
+      }).start();
+    });
   };
 
   const openEditStep = async (step) => {
@@ -3773,16 +3879,37 @@ const FlowScreen = ({ navigation, route }) => {
         {/* --- Flow Modal --- */}
         <Modal
           visible={flowModalVisible}
-          animationType="slide"
-          presentationStyle="pageSheet"
+          animationType="none"
+          transparent
+          presentationStyle="overFullScreen"
           onRequestClose={closeFlowModal}
         >
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.pageSheetContent}>
-                    <View style={styles.handleArea}>
-                      <View style={styles.modalHandle} />
-                    </View>
+          <GestureHandlerRootView style={styles.sheetModalOuter}>
+            <View style={styles.sheetModalInner}>
+              <PanGestureHandler
+                ref={flowSheetGestureRef}
+                enabled={!searchModalVisible}
+                activeOffsetY={8}
+                failOffsetX={[-28, 28]}
+                {...flowSheetGestureHandlers}
+              >
+              <Animated.View
+                style={[
+                  styles.pageSheetContent,
+                  { transform: [{ translateY: flowPanY }] },
+                ]}
+              >
+                    <PanGestureHandler
+                      enabled={!searchModalVisible}
+                      activeOffsetY={8}
+                      failOffsetX={[-28, 28]}
+                      simultaneousHandlers={flowSheetGestureRef}
+                      {...flowHandleGestureHandlers}
+                    >
+                      <View style={styles.handleArea}>
+                        <View style={styles.modalHandle} />
+                      </View>
+                    </PanGestureHandler>
                     <View style={styles.editHeader}>
                       <View style={{ width: 80, alignItems: 'flex-start' }} />
                       
@@ -3811,7 +3938,7 @@ const FlowScreen = ({ navigation, route }) => {
                       </View>
                     </View>
 
-                    <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true} scrollEventThrottle={16} onScroll={(e) => { flowModalScrollY.current = e.nativeEvent.contentOffset.y; }}>
+                    <GHScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true} nestedScrollEnabled simultaneousHandlers={flowSheetGestureRef} scrollEventThrottle={16} onScroll={(e) => { flowModalScrollY.current = e.nativeEvent.contentOffset.y; }}>
                       <View style={styles.modalContentPadding}>
                         <View style={styles.labelRow}>
                           <Text style={styles.inputLabel}>{t('flow.flow_title', 'Plan Title')} <Text style={styles.requiredAsterisk}>*</Text></Text>
@@ -3907,10 +4034,11 @@ const FlowScreen = ({ navigation, route }) => {
                       </View>
 
                       <View style={{ height: 100 }} />
-                    </ScrollView>
+                    </GHScrollView>
 
                     {searchModalVisible && searchMode === 'flow' && renderSearchLayer()}
-              </View>
+              </Animated.View>
+              </PanGestureHandler>
             </View>
           </GestureHandlerRootView>
         </Modal>
@@ -3918,19 +4046,38 @@ const FlowScreen = ({ navigation, route }) => {
         {/* --- Step Modal --- */}
         <Modal
           visible={editModalVisible}
-          animationType="slide"
-          presentationStyle="pageSheet"
+          animationType="none"
+          transparent
+          presentationStyle="overFullScreen"
           onRequestClose={closeEditModal}
         >
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <View style={{ flex: 1 }}>
-              <View
-                onLayout={(e) => setEditModalHeight(e.nativeEvent.layout.height)}
-                style={styles.pageSheetContent}
+          <GestureHandlerRootView style={styles.sheetModalOuter}>
+            <View style={styles.sheetModalInner}>
+              <PanGestureHandler
+                ref={stepSheetGestureRef}
+                enabled={!searchModalVisible && !pickerType && !showRangePicker && !showStepRepeatEndPicker}
+                activeOffsetY={8}
+                failOffsetX={[-28, 28]}
+                {...stepSheetGestureHandlers}
               >
-                    <View style={styles.handleArea}>
-                      <View style={styles.modalHandle} />
-                    </View>
+              <Animated.View
+                onLayout={(e) => setEditModalHeight(e.nativeEvent.layout.height)}
+                style={[
+                  styles.pageSheetContent,
+                  { transform: [{ translateY: panY }] },
+                ]}
+              >
+                    <PanGestureHandler
+                      enabled={!searchModalVisible && !pickerType && !showRangePicker && !showStepRepeatEndPicker}
+                      activeOffsetY={8}
+                      failOffsetX={[-28, 28]}
+                      simultaneousHandlers={stepSheetGestureRef}
+                      {...stepHandleGestureHandlers}
+                    >
+                      <View style={styles.handleArea}>
+                        <View style={styles.modalHandle} />
+                      </View>
+                    </PanGestureHandler>
                     <View style={styles.editHeader}>
                       <View style={{ width: 80, alignItems: 'flex-start' }}>
                         {editingStep && (
@@ -3978,12 +4125,14 @@ const FlowScreen = ({ navigation, route }) => {
                       </View>
                     </View>
 
-                    <ScrollView
+                    <GHScrollView
                       ref={stepScrollRef}
                       showsVerticalScrollIndicator={false}
                       bounces={false}
                       keyboardShouldPersistTaps="handled"
                       automaticallyAdjustKeyboardInsets={true}
+                      nestedScrollEnabled
+                      simultaneousHandlers={stepSheetGestureRef}
                       pointerEvents={isSaving ? 'none' : 'auto'}
                       scrollEventThrottle={16}
                       onScroll={(e) => { editModalScrollY.current = e.nativeEvent.contentOffset.y; }}
@@ -4293,10 +4442,11 @@ const FlowScreen = ({ navigation, route }) => {
                         </View>
                       )}
                       <View style={{ height: 12 }} />
-                    </ScrollView>
+                    </GHScrollView>
 
                     {searchModalVisible && searchMode === 'step' && renderSearchLayer()}
-              </View>
+              </Animated.View>
+              </PanGestureHandler>
             </View>
 
             {/* Date / Time Picker Overlay */}
@@ -5160,6 +5310,8 @@ const styles = StyleSheet.create({
   modalBg: { backgroundColor: 'rgba(0,0,0,0.5)' },
   editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 0, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20, maxHeight: height * 0.9 },
   pageSheetContent: { flex: 1, backgroundColor: Colors.background, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
+  sheetModalOuter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheetModalInner: { flex: 1, maxHeight: height * 0.92, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
   inviteCodeBox: {
     width: '100%',
     backgroundColor: Colors.surfaceContainer,
