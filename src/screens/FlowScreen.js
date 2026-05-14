@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Reanimated, { LinearTransition, Easing as REasing } from 'react-native-reanimated';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Easing, Platform, Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Easing, Platform, Modal, TextInput, ActivityIndicator, Alert, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton, PanGestureHandler, State, ScrollView as GHScrollView } from 'react-native-gesture-handler';
@@ -309,6 +309,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [comments, setComments] = useState([]);
   const [isMembersLoading, setIsMembersLoading] = useState(false);
   const [joinModalVisible, setJoinModalVisible] = useState(false);
+  const joinModalVisibleRef = useRef(false);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [showRangePicker, setShowRangePicker] = useState(false);
@@ -747,15 +748,17 @@ const FlowScreen = ({ navigation, route }) => {
   };
 
   useEffect(() => {
+    joinModalVisibleRef.current = joinModalVisible;
+  }, [joinModalVisible]);
+
+  useEffect(() => {
     const showSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
       setIsKeyboardVisible(true);
       const kbHeight = e.endCoordinates.height;
       setKeyboardHeight(kbHeight);
       
-      // Calculate offset based on modal height and keyboard height
-      if (Platform.OS === 'ios' && joinModalVisible && joinModalHeight > 0) {
-        const maxShift = height - joinModalHeight - 60;
-        const shift = Math.min(kbHeight, Math.max(0, maxShift));
+      if (joinModalVisibleRef.current) {
+        const shift = kbHeight > 120 ? -Math.min(kbHeight - 24, height * 0.42) : 0;
         Animated.timing(joinKeyboardOffset, {
           toValue: shift,
           duration: e.duration || 250,
@@ -766,7 +769,7 @@ const FlowScreen = ({ navigation, route }) => {
     const hideSubscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', (e) => {
       setIsKeyboardVisible(false);
       setKeyboardHeight(0);
-      if (Platform.OS === 'ios' && joinModalVisible) {
+      if (joinModalVisibleRef.current) {
         Animated.timing(joinKeyboardOffset, {
           toValue: 0,
           duration: e.duration || 200,
@@ -817,9 +820,9 @@ const FlowScreen = ({ navigation, route }) => {
   const joinModalScrollY = useRef(0);
   const flowSheetGestureRef = useRef(null);
   const stepSheetGestureRef = useRef(null);
+  const joinSheetGestureRef = useRef(null);
 
   const invitePanResponder = useRef(_makeModalPanResponder(invitePanY, () => closeInviteModal(), inviteModalScrollY)).current;
-  const joinPanResponder = useRef(_makeModalPanResponder(joinPanY, () => closeJoinModal(), joinModalScrollY)).current;
 
   const closeSheetAfterDrag = (panValue, closeCallback) => {
     Animated.timing(panValue, { toValue: height, duration: 220, useNativeDriver: true }).start(() => {
@@ -867,6 +870,14 @@ const FlowScreen = ({ navigation, route }) => {
   const stepHandleGestureHandlers = useMemo(
     () => _makeModalGestureHandlers(panY, () => closeEditModal(), null),
     [panY]
+  );
+  const joinSheetGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(joinPanY, () => closeJoinModal(), joinModalScrollY),
+    [joinPanY]
+  );
+  const joinHandleGestureHandlers = useMemo(
+    () => _makeModalGestureHandlers(joinPanY, () => closeJoinModal(), null),
+    [joinPanY]
   );
 
   const searchModalScrollY = useRef(0);
@@ -1240,21 +1251,40 @@ const FlowScreen = ({ navigation, route }) => {
     setJoinCode('');
     joinPanY.setValue(height);
     joinKeyboardOffset.setValue(0);
+    joinModalScrollY.current = 0;
+    joinModalVisibleRef.current = true;
     setJoinModalVisible(true);
     Animated.spring(joinPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
 
-  const closeJoinModal = () => {
+  const closeJoinModal = ({ skipAnimation = false } = {}) => {
     Keyboard.dismiss();
-    joinKeyboardOffset.setValue(0);
-    Animated.timing(joinPanY, {
-      toValue: height,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
+    const finish = () => {
+      joinModalVisibleRef.current = false;
       setJoinModalVisible(false);
       setJoinCode('');
-    });
+      joinPanY.setValue(height);
+      joinKeyboardOffset.setValue(0);
+      joinModalScrollY.current = 0;
+    };
+
+    if (skipAnimation) {
+      finish();
+      return;
+    }
+
+    Animated.parallel([
+      Animated.timing(joinPanY, {
+        toValue: height,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(joinKeyboardOffset, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(finish);
   };
 
   // Membership Real-time Subscription
@@ -4843,27 +4873,35 @@ const FlowScreen = ({ navigation, route }) => {
         >
           <GestureHandlerRootView style={{ flex: 1 }}>
             <Pressable style={[StyleSheet.absoluteFill, styles.modalBg]} onPress={closeJoinModal} />
-            <KeyboardAvoidingView
-              enabled={Platform.OS === 'ios'}
-              behavior="padding"
+            <View
               style={{ flex: 1, justifyContent: 'flex-end' }}
               pointerEvents="box-none"
             >
+              <PanGestureHandler
+                ref={joinSheetGestureRef}
+                activeOffsetY={8}
+                failOffsetX={[-28, 28]}
+                {...joinSheetGestureHandlers}
+              >
               <Animated.View
                 style={[
-                  styles.editModalContent,
+                  styles.joinModalContent,
                   {
-                    height: 'auto',
-                    maxHeight: height * 0.9,
-                    transform: [{ translateY: joinPanY }]
+                    transform: [{ translateY: Animated.add(joinPanY, joinKeyboardOffset) }]
                   }
                 ]}
                 onLayout={(e) => setJoinModalHeight(e.nativeEvent.layout.height)}
-                {...joinPanResponder.panHandlers}
               >
-                <View style={styles.handleArea}>
-                  <View style={styles.modalHandle} />
-                </View>
+                <PanGestureHandler
+                  activeOffsetY={8}
+                  failOffsetX={[-28, 28]}
+                  simultaneousHandlers={joinSheetGestureRef}
+                  {...joinHandleGestureHandlers}
+                >
+                  <View style={styles.handleArea}>
+                    <View style={styles.modalHandle} />
+                  </View>
+                </PanGestureHandler>
                 <View style={styles.editHeader}>
                   <View style={{ width: 80, alignItems: 'flex-start' }}>
                     <GHButton onPress={closeJoinModal} style={styles.headerActionBtn}>
@@ -4893,7 +4931,7 @@ const FlowScreen = ({ navigation, route }) => {
                   </View>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} scrollEventThrottle={16} onScroll={(e) => { joinModalScrollY.current = e.nativeEvent.contentOffset.y; }}>
+                <GHScrollView style={{ flexGrow: 0 }} showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled simultaneousHandlers={joinSheetGestureRef} contentContainerStyle={{ paddingBottom: 20 }} scrollEventThrottle={16} onScroll={(e) => { joinModalScrollY.current = e.nativeEvent.contentOffset.y; }}>
                   <View style={styles.modalContentPadding}>
                     <Text style={{ color: Colors.outline, fontSize: 13, marginBottom: 12 }}>{t('flow.enter_invite_code')}</Text>
                     <TextInput
@@ -4918,9 +4956,10 @@ const FlowScreen = ({ navigation, route }) => {
                       autoCorrect={false}
                     />
                   </View>
-                </ScrollView>
+                </GHScrollView>
               </Animated.View>
-            </KeyboardAvoidingView>
+              </PanGestureHandler>
+            </View>
           </GestureHandlerRootView>
         </Modal>
 
@@ -5309,6 +5348,15 @@ const styles = StyleSheet.create({
   resultAddress: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, marginTop: 2 },
   modalBg: { backgroundColor: 'rgba(0,0,0,0.5)' },
   editModalContent: { backgroundColor: Colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 0, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20, maxHeight: height * 0.9 },
+  joinModalContent: {
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingTop: 0,
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 18,
+    maxHeight: Math.min(height * 0.64, 430),
+  },
   pageSheetContent: { flex: 1, backgroundColor: Colors.background, paddingHorizontal: Spacing.xl, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
   sheetModalOuter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheetModalInner: { flex: 1, maxHeight: height * 0.92, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
