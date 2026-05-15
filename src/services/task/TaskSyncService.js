@@ -2,11 +2,39 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../config/supabaseConfig';
 
 const TASKS_STORAGE_KEY = '@tasks_v1';
+const PENDING_DELETES_KEY = '@tasks_pending_deletes_v1';
 
 let _userId = null;
 let _snapshotListeners = new Set();
 let _subscription = null;
 let _cachedTasks = null;
+let _pendingDeleteIds = new Set();
+
+const _loadPendingDeletes = async () => {
+  try {
+    const json = await AsyncStorage.getItem(PENDING_DELETES_KEY);
+    const ids = json ? JSON.parse(json) : [];
+    _pendingDeleteIds = new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    _pendingDeleteIds = new Set();
+  }
+};
+
+const _savePendingDeletes = async () => {
+  try {
+    await AsyncStorage.setItem(PENDING_DELETES_KEY, JSON.stringify([..._pendingDeleteIds]));
+  } catch {}
+};
+
+const _addPendingDeletes = async (ids) => {
+  ids.forEach(id => _pendingDeleteIds.add(id));
+  await _savePendingDeletes();
+};
+
+const _removePendingDeletes = async (ids) => {
+  ids.forEach(id => _pendingDeleteIds.delete(id));
+  await _savePendingDeletes();
+};
 
 const toCamelCase = (dbObj) => {
   if (!dbObj) return null;
@@ -115,17 +143,34 @@ const _startSubscription = async (uid) => {
   }
 
   const fetchInitial = async () => {
+    await _loadPendingDeletes();
+
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('owner_uid', uid);
-    
+
     if (error) {
       console.warn('[TaskSync] fetch error:', error);
       return;
     }
-    
-    const tasks = (data || []).map(toCamelCase);
+
+    // Retry deletions that failed in a previous session
+    if (_pendingDeleteIds.size > 0) {
+      const pendingArr = [..._pendingDeleteIds];
+      const { data: retried } = await supabase
+        .from('tasks')
+        .delete()
+        .in('id', pendingArr)
+        .select('id');
+      if (retried && retried.length > 0) {
+        await _removePendingDeletes(retried.map(r => r.id));
+      }
+    }
+
+    const tasks = (data || [])
+      .map(toCamelCase)
+      .filter(t => !_pendingDeleteIds.has(t.id));
     _cachedTasks = tasks;
     _snapshotListeners.forEach((cb) => cb(tasks));
   };
@@ -224,7 +269,7 @@ export const addTask = async (taskData) => {
   if (_userId) {
     const dbObj = toDbObj({ ...newTask, ownerId: _userId });
     const { error } = await supabase.from('tasks').insert(dbObj);
-    if (error) console.warn('[TaskSync] addTask DB error:', error.message);
+    if (error) throw error;
   }
 
   _cachedTasks = updated;
@@ -245,7 +290,7 @@ export const toggleTaskCompletion = async (taskId) => {
     const { error } = await supabase.from('tasks')
       .update({ is_completed: !task.isCompleted, updated_at: now })
       .eq('id', taskId);
-    if (error) console.warn('[TaskSync] toggleTaskCompletion DB error:', error.message);
+    if (error) throw error;
   }
 
   _cachedTasks = updated;
@@ -257,12 +302,24 @@ export const deleteTask = async (taskId) => {
   const tasks = await getTasks();
   const updated = tasks.filter((t) => t.id !== taskId);
 
+  // Mark as pending so fetchInitial never restores it even if Supabase delete fails
+  await _addPendingDeletes([taskId]);
+
   if (_userId) {
-    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
-    if (error) console.warn('[TaskSync] deleteTask DB error:', error.message);
+    const { data, error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId)
+      .select('id');
+    if (error) {
+      console.warn('[TaskSync] deleteTask DB error:', error.message);
+    } else if (data && data.length > 0) {
+      await _removePendingDeletes([taskId]);
+    }
   }
 
   _cachedTasks = updated;
+  _snapshotListeners.forEach((cb) => cb(updated));
   AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
@@ -277,7 +334,7 @@ export const updateTask = async (taskId, updates) => {
   if (_userId) {
     const dbObj = toDbObj(updates);
     const { error } = await supabase.from('tasks').update(dbObj).eq('id', taskId);
-    if (error) console.warn('[TaskSync] updateTask DB error:', error.message);
+    if (error) throw error;
   }
 
   _cachedTasks = updated;
@@ -320,11 +377,7 @@ export const addRepeatTasks = async (taskData, repeat, repeatEndDate) => {
   const updated = [...tasks, ...newTasks];
 
   if (_userId) {
-    try {
-      await _batchWrite(_userId, newTasks, []);
-    } catch (e) {
-      console.warn('[TaskSync] addRepeatTasks DB error:', e.message);
-    }
+    await _batchWrite(_userId, newTasks, []);
   }
 
   _cachedTasks = updated;
@@ -348,17 +401,22 @@ export const deleteRepeatTasks = async (taskId, scope) => {
     updated = tasks.filter((t) => t.repeatGroupId !== task.repeatGroupId);
   }
 
+  const updatedIds = new Set(updated.map((t) => t.id));
+  const toDelete = tasks.filter((t) => !updatedIds.has(t.id)).map((t) => t.id);
+
+  await _addPendingDeletes(toDelete);
+
   if (_userId) {
     try {
-      const updatedIds = new Set(updated.map((t) => t.id));
-      const toDelete = tasks.filter((t) => !updatedIds.has(t.id)).map((t) => t.id);
       await _batchWrite(_userId, [], toDelete);
+      await _removePendingDeletes(toDelete);
     } catch (e) {
       console.warn('[TaskSync] deleteRepeatTasks DB error:', e.message);
     }
   }
 
   _cachedTasks = updated;
+  _snapshotListeners.forEach((cb) => cb(updated));
   AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   return updated;
 };
@@ -413,19 +471,15 @@ export const updateRepeatSeriesEndDate = async (taskId, newRepeatEndDate) => {
   const updated = [...remaining, ...newOccurrences];
 
   if (_userId) {
-    try {
-      const updatedIds = new Set(remaining.map((t) => t.id));
-      const toDelete = tasks
-        .filter((t) => t.repeatGroupId === groupId && !updatedIds.has(t.id))
-        .map((t) => t.id);
-      const toSet = [
-        ...remaining.filter((t) => t.repeatGroupId === groupId),
-        ...newOccurrences,
-      ];
-      await _batchWrite(_userId, toSet, toDelete);
-    } catch (e) {
-      console.warn('[TaskSync] updateRepeatSeriesEndDate DB error:', e.message);
-    }
+    const updatedIds = new Set(remaining.map((t) => t.id));
+    const toDelete = tasks
+      .filter((t) => t.repeatGroupId === groupId && !updatedIds.has(t.id))
+      .map((t) => t.id);
+    const toSet = [
+      ...remaining.filter((t) => t.repeatGroupId === groupId),
+      ...newOccurrences,
+    ];
+    await _batchWrite(_userId, toSet, toDelete);
   }
 
   _cachedTasks = updated;
@@ -454,14 +508,10 @@ export const convertRepeatTaskToSingle = async (taskId, updates) => {
     .map((t) => (t.id === taskId ? keptTask : t));
 
   if (_userId) {
-    try {
-      const toDelete = tasks
-        .filter((t) => t.repeatGroupId === groupId && t.id !== taskId)
-        .map((t) => t.id);
-      await _batchWrite(_userId, [keptTask], toDelete);
-    } catch (e) {
-      console.warn('[TaskSync] convertRepeatTaskToSingle DB error:', e.message);
-    }
+    const toDelete = tasks
+      .filter((t) => t.repeatGroupId === groupId && t.id !== taskId)
+      .map((t) => t.id);
+    await _batchWrite(_userId, [keptTask], toDelete);
   }
 
   _cachedTasks = updated;
@@ -508,15 +558,11 @@ export const updateRepeatTasks = async (taskId, updates, scope) => {
   }
 
   if (_userId) {
-    try {
-      const changedTasks = updated.filter((t) => {
-        const orig = tasks.find((o) => o.id === t.id);
-        return orig && orig.updatedAt !== t.updatedAt;
-      });
-      await _batchWrite(_userId, changedTasks, []);
-    } catch (e) {
-      console.warn('[TaskSync] updateRepeatTasks DB error:', e.message);
-    }
+    const changedTasks = updated.filter((t) => {
+      const orig = tasks.find((o) => o.id === t.id);
+      return orig && orig.updatedAt !== t.updatedAt;
+    });
+    await _batchWrite(_userId, changedTasks, []);
   }
 
   _cachedTasks = updated;

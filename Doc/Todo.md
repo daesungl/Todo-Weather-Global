@@ -3,6 +3,11 @@
 dev: 135255276638-cqps0rnc7kg3ka5lvfpml6v030rk20nr.apps.googleusercontent.com
 prod : 156613478220-7k0jed2lfpt8g13khlcavkv77qgcjuhb.apps.googleusercontent.com
 
+# QA3
+
+1. 태스크 스크린에서 일정 삭제를 하면 달력 선택 등 달력에서 날짜 선택이 안됨. 새로운 일정 추가 버튼이나 탭 메뉴 버튼은 잘 동작함.
+2. 태스크 스크린에서 일정 추가 모달을 띄우면 검은 반투명 백판이 없어진 것 같음. 모달과 배경 구분감이 약해짐.
+
 # QA2
 
 1. (done) home screen 에서 화면을 밑으로 길게 당겼다 놓으면 현재 위치 리프레시 되는 기능이 있으면 좋을듯.

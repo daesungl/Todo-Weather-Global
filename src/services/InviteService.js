@@ -5,6 +5,7 @@ import {
   leavePlan,
   listPlanMembers,
   removePlanMember,
+  syncAllPlanMemberDisplayNames,
   syncPlanMemberDisplayName,
   updatePlanMemberPermissions,
 } from './supabase/PlanApiService';
@@ -77,6 +78,11 @@ export const subscribeToFlowMembers = (ownerUid, flowId, onUpdate) => {
 export const syncMemberDisplayName = async (flowId, uid, displayName) => {
   if (!flowId || !uid || !displayName) return;
   await syncPlanMemberDisplayName(flowId, displayName);
+};
+
+export const syncAllMemberDisplayNames = async (displayName) => {
+  if (!displayName) return;
+  await syncAllPlanMemberDisplayNames(displayName);
 };
 
 export const updateMemberPermissions = async (ownerUid, flowId, memberUid, permissions) => {

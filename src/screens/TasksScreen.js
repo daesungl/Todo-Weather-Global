@@ -46,6 +46,7 @@ import { expandFlowStepsForRange } from '../utils/flowRecurrence';
 import MenuModal from '../components/MenuModal';
 import ConfirmModal from '../components/ConfirmModal';
 import MainHeader from '../components/MainHeader';
+import ToastStack, { useToastStack } from '../components/ToastStack';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RangeCalendarModal from '../components/RangeCalendarModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -451,36 +452,6 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
   return true;
 });
 
-// Toast item — animation starts after mount so native driver works correctly
-const ToastItem = React.memo(({ toast, bottom, onDone, styles }) => {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const anim = Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.delay(2000),
-      Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: true }),
-    ]);
-    anim.start(() => onDone(toast.id));
-    return () => anim.stop();
-  }, []);
-
-  useEffect(() => {
-    Animated.timing(translateY, {
-      toValue: toast.targetY,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [toast.targetY]);
-
-  return (
-    <Animated.View style={[styles.toastContainer, { opacity, transform: [{ translateY }], bottom }]}>
-      <Text style={styles.toastText}>{toast.message}</Text>
-    </Animated.View>
-  );
-});
-
 const CountryItem = React.memo(({ item, isSelected, onPress }) => (
   <TouchableOpacity
     style={styles.countryResultItem}
@@ -584,10 +555,7 @@ const TasksScreen = ({ navigation }) => {
   const editSheetX = useRef(new Animated.Value(width)).current;
   const editSheetY = useRef(new Animated.Value(0)).current;
 
-  // Toast Stack State
-  const [toasts, setToasts] = useState([]);
-  const toastIdCounter = useRef(0);
-  const TOAST_SPACING = 42;
+  const { toasts, showToast, handleToastDone } = useToastStack();
   const isAlertActiveRef = useRef(false);
   const isTaskSavingRef = useRef(false);
   const [confirmConfig, setConfirmConfig] = useState(null);
@@ -595,19 +563,6 @@ const TasksScreen = ({ navigation }) => {
   const showAlert = (title, message, options) => {
     setConfirmConfig({ title, message: message || '', options: options || [] });
   };
-
-  const showToast = (message) => {
-    const id = toastIdCounter.current++;
-    setToasts(prev => {
-      // Move old toasts UPWARDS when new ones appear at the bottom
-      const shifted = prev.map(t => ({ ...t, targetY: t.targetY - TOAST_SPACING }));
-      return [...shifted, { id, message, targetY: 0 }];
-    });
-  };
-
-  const handleToastDone = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
 
   // Modal swipe-to-dismiss logic
   const modalAddY = useRef(new Animated.Value(height)).current;
@@ -688,6 +643,16 @@ const TasksScreen = ({ navigation }) => {
     });
   }, [listModalTranslateY, sheetAnim]);
 
+  const forceCloseTaskListModal = useCallback(() => {
+    Keyboard.dismiss();
+    setIsDetailMenuVisible(false);
+    setIsEditingInSheet(false);
+    setSelectedTaskDetail(null);
+    setIsTaskListVisible(false);
+    sheetAnim.setValue(0);
+    listModalTranslateY.setValue(height);
+  }, [listModalTranslateY, sheetAnim]);
+
   const createModalPanResponder = (translateValue, closeCallback, scrollYRef = null) => {
     return PanResponder.create({
       onStartShouldSetPanResponderCapture: () => false,
@@ -749,21 +714,24 @@ const TasksScreen = ({ navigation }) => {
     if (!isAdding && isTaskListVisible && context !== 'isTaskListVisible') return null;
     if (!isAdding && !isTaskListVisible && context !== 'main') return null;
 
-    // Position the toast stack at the bottom, just above the "Add New Task" button
-    const toastBottom = insets.bottom + 90;
+    return <ToastStack toasts={toasts} onDone={handleToastDone} />;
+  };
+
+  const renderConfirm = (context) => {
+    if (!confirmConfig) return null;
+    if (isAdding && context !== 'isAdding') return null;
+    if (!isAdding && isTaskListVisible && context !== 'isTaskListVisible') return null;
+    if (!isAdding && !isTaskListVisible && context !== 'main') return null;
 
     return (
-      <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none', zIndex: 9999, justifyContent: 'flex-end' }]}>
-        {toasts.map(toast => (
-          <ToastItem
-            key={toast.id}
-            toast={toast}
-            bottom={toastBottom}
-            onDone={handleToastDone}
-            styles={styles}
-          />
-        ))}
-      </View>
+      <ConfirmModal
+        visible={!!confirmConfig}
+        title={confirmConfig?.title}
+        message={confirmConfig?.message}
+        options={confirmConfig?.options || []}
+        onDismiss={() => setConfirmConfig(null)}
+        useNativeModal={context === 'main'}
+      />
     );
   };
 
@@ -1399,7 +1367,7 @@ const TasksScreen = ({ navigation }) => {
             showToast(t('tasks.edit_success'));
           } catch (err) {
             console.error('[repeatEdit] error:', err);
-            showToast('편집 중 오류가 발생했습니다.');
+            showToast(t('tasks.edit_failed', '일정 수정에 실패했습니다.'));
           } finally {
             releaseSaveLock();
           }
@@ -1440,7 +1408,11 @@ const TasksScreen = ({ navigation }) => {
     } catch (err) {
       console.error('[TasksScreen] save task error:', err);
       releaseSaveLock();
-      showToast(t('common.error', '오류가 발생했습니다.'));
+      showToast(
+        editingTask
+          ? t('tasks.edit_failed', '일정 수정에 실패했습니다.')
+          : t('tasks.save_failed', '일정 추가에 실패했습니다.')
+      );
     }
   };
 
@@ -1460,14 +1432,19 @@ const TasksScreen = ({ navigation }) => {
   };
 
   const handleToggle = async (id) => {
-    const task = tasks.find(t => t.id === id);
-    const willComplete = !task?.isCompleted;
-    if (willComplete && task?.notificationId) await cancelNotification(task.notificationId);
-    const updated = await toggleTaskCompletion(id);
-    setTasks(updated);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    showToast(willComplete ? t('tasks.complete_success') : t('tasks.incomplete_success'));
-    if (willComplete) onTaskCompleted();
+    try {
+      const task = tasks.find(t => t.id === id);
+      const willComplete = !task?.isCompleted;
+      if (willComplete && task?.notificationId) await cancelNotification(task.notificationId);
+      const updated = await toggleTaskCompletion(id);
+      setTasks(updated);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      showToast(willComplete ? t('tasks.complete_success') : t('tasks.incomplete_success'));
+      if (willComplete) onTaskCompleted();
+    } catch (err) {
+      console.error('[TasksScreen] toggle task error:', err);
+      showToast(t('common.error', '오류가 발생했습니다.'));
+    }
   };
 
   const handleShareTaskImage = async () => {
@@ -1501,22 +1478,31 @@ const TasksScreen = ({ navigation }) => {
 
   const handleDelete = (id, onComplete) => {
     const task = tasks.find(t => t.id === id);
+    const runDeleteAction = async (action) => {
+      try {
+        await action();
+      } catch (err) {
+        console.error('[TasksScreen] delete task error:', err);
+        showToast(t('tasks.delete_failed', '일정 삭제에 실패했습니다.'));
+      }
+    };
+
     if (task?.repeatGroupId) {
       isAlertActiveRef.current = true;
       showAlert(
         t('tasks.delete_repeat_title', '반복 일정 삭제'),
         '',
         [
-          { text: t('tasks.edit_repeat_this', '이 일정만'), style: 'destructive', onPress: async () => {
+          { text: t('tasks.edit_repeat_this', '이 일정만'), style: 'destructive', onPress: () => runDeleteAction(async () => {
               isAlertActiveRef.current = false;
               if (task?.notificationId) await cancelNotification(task.notificationId);
               const updated = await deleteRepeatTasks(id, 'this');
               setTasks(updated);
               showToast(t('tasks.delete_success'));
               onComplete?.();
-            }
+            })
           },
-          { text: t('tasks.edit_repeat_future', '이후 일정 모두'), style: 'destructive', onPress: async () => {
+          { text: t('tasks.edit_repeat_future', '이후 일정 모두'), style: 'destructive', onPress: () => runDeleteAction(async () => {
               isAlertActiveRef.current = false;
               const futureIds = tasks.filter(t2 => t2.repeatGroupId === task.repeatGroupId && t2.date >= task.date && t2.notificationId).map(t2 => t2.notificationId);
               await Promise.all(futureIds.map(cancelNotification));
@@ -1524,9 +1510,9 @@ const TasksScreen = ({ navigation }) => {
               setTasks(updated);
               showToast(t('tasks.delete_success'));
               onComplete?.();
-            }
+            })
           },
-          { text: t('tasks.edit_repeat_all', '모든 반복 일정'), style: 'destructive', onPress: async () => {
+          { text: t('tasks.edit_repeat_all', '모든 반복 일정'), style: 'destructive', onPress: () => runDeleteAction(async () => {
               isAlertActiveRef.current = false;
               const allIds = tasks.filter(t2 => t2.repeatGroupId === task.repeatGroupId && t2.notificationId).map(t2 => t2.notificationId);
               await Promise.all(allIds.map(cancelNotification));
@@ -1534,7 +1520,7 @@ const TasksScreen = ({ navigation }) => {
               setTasks(updated);
               showToast(t('tasks.delete_success'));
               onComplete?.();
-            }
+            })
           },
           { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
         ]
@@ -1543,14 +1529,14 @@ const TasksScreen = ({ navigation }) => {
       isAlertActiveRef.current = true;
       showAlert(t('common.delete'), t('tasks.delete_confirm'), [
         { text: t('common.cancel'), style: 'cancel', onPress: () => { isAlertActiveRef.current = false; } },
-        { text: t('common.delete'), style: 'destructive', onPress: async () => {
+        { text: t('common.delete'), style: 'destructive', onPress: () => runDeleteAction(async () => {
             isAlertActiveRef.current = false;
             if (task?.notificationId) await cancelNotification(task.notificationId);
             const updated = await deleteTask(id);
             setTasks(updated);
             showToast(t('tasks.delete_success'));
             onComplete?.();
-          }
+          })
         },
       ]);
     }
@@ -2061,13 +2047,18 @@ const TasksScreen = ({ navigation }) => {
                         ) : (
                           <TouchableOpacity style={styles.menuItem} onPress={async () => {
                             setIsDetailMenuVisible(false);
-                            const updated = await toggleTaskCompletion(selectedTaskDetail.id);
-                            setTasks(updated);
-                            const newStatus = !selectedTaskDetail.isCompleted;
-                            setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                            showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
-                            if (newStatus) onTaskCompleted();
+                            try {
+                              const updated = await toggleTaskCompletion(selectedTaskDetail.id);
+                              setTasks(updated);
+                              const newStatus = !selectedTaskDetail.isCompleted;
+                              setSelectedTaskDetail(prev => ({ ...prev, isCompleted: newStatus }));
+                              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                              showToast(newStatus ? t('tasks.complete_success') : t('tasks.incomplete_success'));
+                              if (newStatus) onTaskCompleted();
+                            } catch (err) {
+                              console.error('[TasksScreen] detail toggle error:', err);
+                              showToast(t('common.error', '오류가 발생했습니다.'));
+                            }
                           }}>
                             <CheckCircle2 size={18} color={selectedTaskDetail.isCompleted ? Colors.primary : Colors.text} />
                             <Text style={[styles.menuText, selectedTaskDetail.isCompleted && { color: Colors.primary }]}>
@@ -2110,7 +2101,7 @@ const TasksScreen = ({ navigation }) => {
                             <TouchableOpacity style={styles.menuItem} onPress={() => {
                               setIsDetailMenuVisible(false);
                               const taskId = selectedTaskDetail.id;
-                              handleDelete(taskId, () => handleBackToList());
+                              handleDelete(taskId, forceCloseTaskListModal);
                             }}>
                               <Trash2 size={18} color={Colors.error} /><Text style={[styles.menuText, { color: Colors.error }]}>{t('common.delete')}</Text>
                             </TouchableOpacity>
@@ -2188,8 +2179,8 @@ const TasksScreen = ({ navigation }) => {
                                 style={[styles.headerSaveBtn, isTaskSaving && { opacity: 0.55 }]}
                                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                               >
-                                {isTaskSaving ? (
-                                  <ActivityIndicator size="small" color={Colors.primary} />
+	                                {isTaskSaving ? (
+	                                  <ActivityIndicator size="small" color="white" />
                                 ) : (
                                   <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
                                 )}
@@ -2514,6 +2505,7 @@ const TasksScreen = ({ navigation }) => {
             />
           </Animated.View>
             {renderToast('isTaskListVisible')}
+            {renderConfirm('isTaskListVisible')}
           </View>
 
         </Modal>
@@ -2641,6 +2633,20 @@ const TasksScreen = ({ navigation }) => {
           <View style={[styles.modalBg, { flex: 1 }]}>
             <Animated.View
               style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: 'black',
+                  opacity: modalAddY.interpolate({
+                    inputRange: [0, height],
+                    outputRange: [0.5, 0],
+                    extrapolate: 'clamp',
+                  }),
+                },
+              ]}
+              pointerEvents="none"
+            />
+            <Animated.View
+              style={[
                 styles.modalContent,
                 { transform: [{ translateY: modalAddY }] },
               ]}
@@ -2719,8 +2725,8 @@ const TasksScreen = ({ navigation }) => {
                             style={[styles.headerSaveBtn, isTaskSaving && { opacity: 0.55 }]}
                             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                           >
-                            {isTaskSaving ? (
-                              <ActivityIndicator size="small" color={Colors.primary} />
+	                            {isTaskSaving ? (
+	                              <ActivityIndicator size="small" color="white" />
                             ) : (
                               <Text style={styles.headerSaveText} pointerEvents="none">{t('common.save', 'Save')}</Text>
                             )}
@@ -3149,6 +3155,7 @@ const TasksScreen = ({ navigation }) => {
               </View>
             )}
             {renderToast('isAdding')}
+            {renderConfirm('isAdding')}
           </View>
         </Modal>
 
@@ -3423,13 +3430,7 @@ const TasksScreen = ({ navigation }) => {
           onReset={() => loadData()}
           navigation={navigation}
         />
-        <ConfirmModal
-          visible={!!confirmConfig}
-          title={confirmConfig?.title}
-          message={confirmConfig?.message}
-          options={confirmConfig?.options || []}
-          onDismiss={() => setConfirmConfig(null)}
-        />
+        {renderConfirm('main')}
 
       </View>
       <Pressable
@@ -3627,13 +3628,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerSaveBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+	  headerSaveBtn: {
+	    backgroundColor: Colors.primary,
+	    minWidth: 64,
+	    height: 40,
+	    paddingHorizontal: 14,
+	    borderRadius: 20,
+	    alignItems: 'center',
+	    justifyContent: 'center',
   },
   headerSaveText: {
     color: 'white',
@@ -3960,24 +3962,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: Colors.text,
-  },
-  toastContainer: {
-    position: 'absolute',
-    left: '10%',
-    right: '10%',
-    backgroundColor: 'rgba(60,60,60,0.72)',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 9999,
-  },
-  toastText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   inlinePickerContainer: {
     backgroundColor: 'white',

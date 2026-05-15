@@ -385,6 +385,32 @@ Deno.serve(async (req) => {
       return json({ badges: data || [] });
     }
 
+    if (req.method === 'PUT' && path[0] === 'me' && path[1] === 'display-name') {
+      const body = await req.json();
+      const displayName = normalizeDisplayName(body.displayName, user.email) || user.displayName || null;
+      if (!displayName) {
+        throw new Response('Missing display name', { status: 400, headers: corsHeaders });
+      }
+
+      await admin
+        .from('profiles')
+        .upsert({
+          uid: user.uid,
+          email: user.email || null,
+          display_name: displayName,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'uid' })
+        .throwOnError();
+
+      await admin
+        .from('plan_members')
+        .update({ display_name: displayName })
+        .eq('uid', user.uid)
+        .throwOnError();
+
+      return json({ ok: true, displayName });
+    }
+
     if (req.method === 'GET' && path[0] === 'plans' && path.length === 1) {
       const { data, error } = await admin
         .from('plan_members')

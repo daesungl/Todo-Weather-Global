@@ -129,6 +129,12 @@ export const syncPlanMemberDisplayName = async (planId, displayName) =>
     body: JSON.stringify({ displayName }),
   });
 
+export const syncAllPlanMemberDisplayNames = async (displayName) =>
+  request('/me/display-name', {
+    method: 'PUT',
+    body: JSON.stringify({ displayName }),
+  });
+
 export const listPlanComments = async (planId) => {
   const data = await request(`/plans/${encodeURIComponent(planId)}/comments`);
   return data?.comments || [];

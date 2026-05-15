@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Reanimated, { LinearTransition, Easing as REasing } from 'react-native-reanimated';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Easing, Platform, Modal, TextInput, ActivityIndicator, Alert, Keyboard, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Animated, Easing, Platform, Modal, TextInput, ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, PanResponder, FlatList, Pressable, Switch, Share, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, TouchableOpacity as GHButton, BorderlessButton, PanGestureHandler, State, ScrollView as GHScrollView } from 'react-native-gesture-handler';
@@ -70,6 +70,8 @@ import { Colors, Spacing, Typography } from '../theme';
 import { useUnits } from '../contexts/UnitContext';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
+import ToastStack, { useToastStack } from '../components/ToastStack';
+import { supabase } from '../config/supabaseConfig';
 import WeatherService from '../services/weather/WeatherService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 import { searchPlaces as searchDomesticPlaces } from '../services/weather/VWorldService';
@@ -83,6 +85,7 @@ import {
   getFlowMembers,
   subscribeToFlowMembers,
   updateMemberPermissions,
+  syncAllMemberDisplayNames,
   syncMemberDisplayName,
   syncMemberCount,
 } from '../services/InviteService';
@@ -94,6 +97,7 @@ import { getFlowUnreadInfo as getSharedFlowUnreadInfo } from '../utils/flowUnrea
 
 const { width, height } = Dimensions.get('window');
 const BADGE_PERMISSION_PROMPT_KEY = '@flow_badge_permission_prompted';
+const DISPLAY_NAME_PROMPT_PREFIX = '@shared_plan_display_name_prompted';
 
 const _dateStrFlow = (date) => {
   const y = date.getFullYear();
@@ -182,7 +186,7 @@ const PulsingDot = ({ ringStyle, dotStyle }) => {
 const FlowScreen = ({ navigation, route }) => {
   const { t, i18n } = useTranslation();
   const { formatTemp } = useUnits();
-  const { user, syncLoading } = useAuth();
+  const { user, syncLoading, updateUserProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const [menuVisible, setMenuVisible] = useState(false);
   const [flowMenuVisible, setFlowMenuVisible] = useState(false);
@@ -301,6 +305,7 @@ const FlowScreen = ({ navigation, route }) => {
   const [inviteRole, setInviteRole] = useState('editor');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [flowMembers, setFlowMembers] = useState([]);
+  const [memberListModalVisible, setMemberListModalVisible] = useState(false);
   const [pendingPermissions, setPendingPermissions] = useState({});  // { [uid]: permissions }
   const [applyingPermissions, setApplyingPermissions] = useState({});  // { [uid]: bool }
   const [isLeaving, setIsLeaving] = useState(false);
@@ -312,6 +317,10 @@ const FlowScreen = ({ navigation, route }) => {
   const joinModalVisibleRef = useRef(false);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [displayNamePromptVisible, setDisplayNamePromptVisible] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [displayNamePromptFlowId, setDisplayNamePromptFlowId] = useState(null);
+  const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
   const [showRangePicker, setShowRangePicker] = useState(false);
   const panY = useRef(new Animated.Value(0)).current;
   const flowPanY = useRef(new Animated.Value(0)).current;
@@ -325,9 +334,12 @@ const FlowScreen = ({ navigation, route }) => {
   const [searchModalHeight, setSearchModalHeight] = useState(0);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
   const [unreadFlowBadges, setUnreadFlowBadges] = useState({});
-  const [flowToastMsg, setFlowToastMsg] = useState('');
-  const flowToastAnim = useRef(new Animated.Value(0)).current;
-  const flowToastTimeout = useRef(null);
+  const {
+    toasts: flowToasts,
+    showToast: showFlowToast,
+    clearToasts: resetFlowToast,
+    handleToastDone: handleFlowToastDone,
+  } = useToastStack();
   const refreshedFlowWeatherKeyRef = useRef(null);
   const debugFlow = (...args) => {
     if (__DEV__) console.log('[FlowScreen]', ...args);
@@ -1026,6 +1038,76 @@ const FlowScreen = ({ navigation, route }) => {
   const _isSharedFlow = (flow) =>
     !!(flow?._ownerUid || flow?.inviteCode || (flow?.memberCount ?? 0) > 1);
 
+  const getCurrentDisplayName = () => (
+    user?.displayName ||
+    user?.display_name ||
+    (user?.email ? String(user.email).split('@')[0] : '')
+  );
+
+  const maybePromptForSharedPlanDisplayName = async (flow) => {
+    if (!flow?.id || !user?.uid || !_isSharedFlow(flow)) return false;
+    try {
+      const key = `${DISPLAY_NAME_PROMPT_PREFIX}:${user.uid}:${flow.id}`;
+      const prompted = await AsyncStorage.getItem(key);
+      if (prompted) return false;
+
+      await AsyncStorage.setItem(key, '1');
+      setDisplayNameDraft(getCurrentDisplayName());
+      setDisplayNamePromptFlowId(flow.id);
+      setDisplayNamePromptVisible(true);
+      return true;
+    } catch {
+      // 안내 팝업은 보조 UX이므로 저장소 오류가 플랜 진입을 막으면 안 된다.
+      return false;
+    }
+  };
+
+  const closeDisplayNamePrompt = () => {
+    if (isSavingDisplayName) return;
+    setDisplayNamePromptVisible(false);
+    setDisplayNamePromptFlowId(null);
+  };
+
+  const saveDisplayNameFromPrompt = async () => {
+    if (!user?.uid || isSavingDisplayName) return;
+    const trimmedName = displayNameDraft.trim();
+    if (!trimmedName) {
+      showFlowToast(t('flow.display_name_prompt_required', 'Please enter a display name.'));
+      return;
+    }
+
+    setIsSavingDisplayName(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          uid: user.uid,
+          email: user.email || null,
+          display_name: trimmedName,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'uid' });
+
+      if (error) throw error;
+
+      updateUserProfile?.({ displayName: trimmedName, display_name: trimmedName });
+      await syncAllMemberDisplayNames(trimmedName);
+      if (displayNamePromptFlowId) {
+        syncMemberDisplayName(displayNamePromptFlowId, user.uid, trimmedName).catch(() => {});
+      }
+      setFlowMembers(prev => prev.map(member =>
+        member.uid === user.uid ? { ...member, displayName: trimmedName } : member
+      ));
+      showFlowToast(t('flow.display_name_prompt_saved', 'Display name updated.'));
+      setDisplayNamePromptVisible(false);
+      setDisplayNamePromptFlowId(null);
+    } catch (error) {
+      console.warn('[FlowScreen] display name update failed:', error);
+      showFlowToast(t('flow.display_name_prompt_failed', 'Failed to update display name.'));
+    } finally {
+      setIsSavingDisplayName(false);
+    }
+  };
+
   const isStepDateUpdated = (flow, step) => {
     if (!flow || !step || !_isSharedFlow(flow)) return false;
     if (!step.dateUpdatedAt || step.updatedBy === user?.uid) return false;
@@ -1092,19 +1174,39 @@ const FlowScreen = ({ navigation, route }) => {
     return colors[sum % colors.length];
   };
 
+  const getSortedFlowMembers = () => {
+    const ownerUid = selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId || user?.uid;
+    return [...flowMembers].sort((a, b) => {
+      if (a.uid === ownerUid || a.role === 'owner') return -1;
+      if (b.uid === ownerUid || b.role === 'owner') return 1;
+      return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b));
+    });
+  };
+
+  const getMemberRoleLabel = (member) => {
+    const ownerUid = selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId || user?.uid;
+    if (member?.uid === ownerUid || member?.role === 'owner') return t('flow.owner_short', 'Owner').toUpperCase();
+    return member?.role === 'editor'
+      ? t('flow.editor_short', 'Editor')
+      : t('flow.viewer_short', 'Viewer');
+  };
+
   const renderFlowMemberAvatars = () => {
     const members = flowMembers.length > 0 ? flowMembers : [];
     if (members.length <= 1) return null;
-    const sorted = [...members].sort((a, b) => {
-      if (a.role === 'owner') return -1;
-      if (b.role === 'owner') return 1;
-      return (a.displayName || '').localeCompare(b.displayName || '');
-    });
+    const sorted = getSortedFlowMembers();
     const visible = sorted.slice(0, 4);
     const hiddenCount = sorted.length - visible.length;
 
     return (
-      <View style={styles.flowAvatarStack}>
+      <Pressable
+        style={({ pressed }) => [styles.flowAvatarStack, pressed && { opacity: 0.72 }]}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setMemberListModalVisible(true);
+        }}
+      >
         {visible.map((member, index) => (
           <View
             key={member.uid}
@@ -1125,7 +1227,7 @@ const FlowScreen = ({ navigation, route }) => {
             <Text style={styles.flowAvatarMoreText}>+{hiddenCount}</Text>
           </View>
         )}
-      </View>
+      </Pressable>
     );
   };
 
@@ -1153,7 +1255,9 @@ const FlowScreen = ({ navigation, route }) => {
         markFlowBadgeRead(user.uid, flow.id);
       }, 1200);
     }
-    maybePromptForBadgePermission(flow);
+    maybePromptForSharedPlanDisplayName(flow).then((didPromptName) => {
+      if (!didPromptName) maybePromptForBadgePermission(flow);
+    });
   };
 
   const maybePromptForBadgePermission = async (flow, options = {}) => {
@@ -1273,6 +1377,12 @@ const FlowScreen = ({ navigation, route }) => {
     setJoinModalVisible(true);
     Animated.spring(joinPanY, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
   };
+
+  useEffect(() => {
+    if (!route.params?.openJoinModal) return;
+    openJoinModal();
+    navigation.setParams?.({ openJoinModal: undefined });
+  }, [route.params?.openJoinModal]);
 
   const closeJoinModal = ({ skipAnimation = false } = {}) => {
     Keyboard.dismiss();
@@ -1794,27 +1904,6 @@ const FlowScreen = ({ navigation, route }) => {
   }, [flows, isPremium, MAX_FLOWS]);
   const isFlowDataLoading = isLoading || (!!user?.uid && syncLoading && flows.length === 0);
 
-  const showFlowToast = (msg) => {
-    if (flowToastTimeout.current) clearTimeout(flowToastTimeout.current);
-    setFlowToastMsg(msg);
-    flowToastAnim.setValue(0);
-    Animated.sequence([
-      Animated.timing(flowToastAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.delay(2100),
-      Animated.timing(flowToastAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-    ]).start(() => setFlowToastMsg(''));
-  };
-
-  const resetFlowToast = () => {
-    if (flowToastTimeout.current) {
-      clearTimeout(flowToastTimeout.current);
-      flowToastTimeout.current = null;
-    }
-    flowToastAnim.stopAnimation();
-    flowToastAnim.setValue(0);
-    setFlowToastMsg('');
-  };
-
   const saveFlow = async () => {
     if (isSavingRef.current) return;
     if (!flowTitle.trim()) {
@@ -1836,7 +1925,6 @@ const FlowScreen = ({ navigation, route }) => {
       didCloseFlowModal = true;
       setFlowModalVisible(false);
     };
-    let optimisticFlowId = null;
 
     try {
       const now = new Date().toISOString();
@@ -1860,13 +1948,10 @@ const FlowScreen = ({ navigation, route }) => {
           createdAt: now,
           updatedAt: now,
         };
-        optimisticFlowId = newFlow.id;
-        const optimisticFlow = { ...newFlow, _role: 'owner' };
-        setFlows(prev => [optimisticFlow, ...prev]);
-        closeFlowModalNow();
-
-        const updatedFlows = await addFlow(newFlow);
+        const updatedFlows = await addFlow(newFlow, { optimistic: false });
         setFlows(updatedFlows);
+        closeFlowModalNow();
+        showFlowToast(t('flow.toast.plan_added', 'Plan added.'));
 
         if (flowLat && flowLon) {
           WeatherService.getWeather(flowLat, flowLon, false, flowLocation, flowLocation)
@@ -1897,16 +1982,17 @@ const FlowScreen = ({ navigation, route }) => {
         updatedAt: now,
       };
 
-      const optimisticFlows = flows.map(f =>
+      const updatedFlow = { ...editingFlow, ...basePatch };
+      const updatedFlows = flows.map(f =>
         f.id === editingFlow.id ? { ...f, ...basePatch } : f
       );
-      setFlows(optimisticFlows);
+      await updateFlowDoc(updatedFlow, { syncSteps: false, optimistic: false });
+      setFlows(updatedFlows);
       if (editingFlow && selectedFlow && selectedFlow.id === editingFlow.id) {
         setSelectedFlow(prev => ({ ...prev, ...basePatch }));
       }
       closeFlowModalNow();
-
-      await saveFlows(optimisticFlows);
+      showFlowToast(t('flow.toast.plan_updated', 'Plan updated.'));
 
       if (flowLat && flowLon) {
         WeatherService.getWeather(flowLat, flowLon, false, flowLocation, flowLocation)
@@ -1921,7 +2007,7 @@ const FlowScreen = ({ navigation, route }) => {
             if (selectedFlow && selectedFlow.id === editingFlow.id) {
               setSelectedFlow(prev => prev ? { ...prev, ...weatherPatch } : prev);
             }
-            const weatherFlows = optimisticFlows.map(f =>
+            const weatherFlows = updatedFlows.map(f =>
               f.id === editingFlow.id ? { ...f, ...weatherPatch } : f
             );
             saveFlows(weatherFlows).catch(() => {});
@@ -1929,9 +2015,6 @@ const FlowScreen = ({ navigation, route }) => {
           .catch(() => {});
       }
     } catch (e) {
-      if (!editingFlow && optimisticFlowId) {
-        setFlows(prev => prev.filter(f => f.id !== optimisticFlowId));
-      }
       console.error('[FlowScreen] saveFlow error:', {
         code: e?.code,
         message: e?.message,
@@ -1939,6 +2022,11 @@ const FlowScreen = ({ navigation, route }) => {
         uid: user?.uid,
         editingFlowId: editingFlow?.id,
       });
+      showFlowToast(
+        editingFlow
+          ? t('flow.toast.plan_update_failed', 'Failed to update plan.')
+          : t('flow.toast.plan_add_failed', 'Failed to add plan.')
+      );
       showConfirm(
         t('common.error', 'Error'),
         e?.message || t('flow.update_failed', 'Failed to update plan on server. Please check your connection.'),
@@ -1947,7 +2035,6 @@ const FlowScreen = ({ navigation, route }) => {
       );
     }
     finally {
-      closeFlowModalNow();
       isSavingRef.current = false;
       setIsSaving(false);
     }
@@ -2091,6 +2178,7 @@ const FlowScreen = ({ navigation, route }) => {
         }
 
         closeEditModal();
+        showFlowToast(t('flow.toast.step_updated', 'Schedule updated.'));
         releaseSaving();
         return;
       }
@@ -2116,31 +2204,40 @@ const FlowScreen = ({ navigation, route }) => {
         const sorted = sortSteps(updatedSteps);
         const updatedF = { ...selectedFlow, steps: sorted, updatedAt: now };
         const updatedFlows = flows.map(f => f.id === selectedFlow.id ? updatedF : f);
-
-        closeEditModal();
-        setSelectedFlow(updatedF);
-        setFlows(updatedFlows);
         
         try {
           if (selectedFlow._ownerUid) {
             if (canEditFlow(selectedFlow)) {
               if (__DEV__) console.log('[FlowScreen] Shared flow (editor/owner). Updating via updateFlowDoc...');
-              await updateFlowDoc(updatedF);
+              await updateFlowDoc(updatedF, { optimistic: false });
             } else {
               if (__DEV__) console.warn('[FlowScreen] Shared flow (viewer). Permission denied for update.');
-              // 뷰어는 서버에 저장할 수 없으므로 로컬 UI 변경을 롤백하거나 경고를 띄워야 함
-              // 여기서는 버튼 자체를 숨기므로 이 코드는 방어용
               showConfirm(t('common.info'), t('flow.alert.viewer_cannot_edit', 'You only have view permission.'), null, false);
-              return; // 서버 업데이트 실패했으므로 여기서 중단 (UI는 이미 바뀌었지만 Snapshot에 의해 곧 원복됨)
+              return false;
             }
           } else {
             if (__DEV__) console.log('[FlowScreen] Own flow detected. Updating via updateFlowDoc...');
-            await updateFlowDoc(updatedF);
+            await updateFlowDoc(updatedF, { optimistic: false });
           }
+          setSelectedFlow(updatedF);
+          setFlows(updatedFlows);
+          closeEditModal();
+          showFlowToast(
+            editingStep
+              ? t('flow.toast.step_updated', 'Schedule updated.')
+              : t('flow.toast.step_added', 'Schedule added.')
+          );
           if (__DEV__) console.log('[FlowScreen] applyToFlow success.');
+          return true;
         } catch (err) {
           if (__DEV__) console.error('[FlowScreen] applyToFlow error:', err);
+          showFlowToast(
+            editingStep
+              ? t('flow.toast.step_update_failed', 'Failed to update schedule.')
+              : t('flow.toast.step_add_failed', 'Failed to add schedule.')
+          );
           showConfirm(t('common.error', 'Error'), t('flow.update_failed', 'Failed to update plan on server. Please check your connection.'), null, false);
+          return false;
         } finally {
           releaseSaving(); // 여기서도 확실히 해제
         }
@@ -2201,7 +2298,7 @@ const FlowScreen = ({ navigation, route }) => {
         let updatedSteps;
         if (scope === 'this') {
           updatedSteps = currentSteps.map(s => s.id === editingStep.id ? { ...s, ...baseUpdates } : s);
-          await applyToFlow(updatedSteps);
+          if (!await applyToFlow(updatedSteps)) return;
         } else {
           const { date: _d, endDate: _ed, ...shared } = baseUpdates;
 
@@ -2254,7 +2351,7 @@ const FlowScreen = ({ navigation, route }) => {
             return { ...s, ...sharedForOthers, date: newDateStr, endDate: newEndDate };
           });
 
-          await applyToFlow(updatedSteps);
+          if (!await applyToFlow(updatedSteps)) return;
 
           if (stepNotify) {
             const flowForRefill = flows.map(f => f.id !== selectedFlow.id ? f : { ...f, steps: sortSteps(updatedSteps) });
@@ -2293,7 +2390,7 @@ const FlowScreen = ({ navigation, route }) => {
                 ? { ...s, ...nonRepeatUpdates }
                 : s
               );
-            await applyToFlow(updatedSteps);
+            if (!await applyToFlow(updatedSteps)) return;
             return;
           }
 
@@ -2318,7 +2415,7 @@ const FlowScreen = ({ navigation, route }) => {
                 : s
               );
 
-            await applyToFlow(updatedSteps);
+            if (!await applyToFlow(updatedSteps)) return;
             if (stepNotify) {
               const flowForRefill = flows.map(f => f.id !== selectedFlow.id ? f : { ...f, steps: sortSteps(updatedSteps) });
               refillStepNotifications(flowForRefill, user?.uid, async (sId, newNotifId, meta) => {
@@ -2347,7 +2444,7 @@ const FlowScreen = ({ navigation, route }) => {
             updatedAt: now,
           };
           const editRepeatSteps = [...stepsWithoutEditing, repeatMasterStep];
-          await applyToFlow(editRepeatSteps);
+          if (!await applyToFlow(editRepeatSteps)) return;
           if (stepNotify) {
             const flowForRefill = flows.map(f => f.id !== selectedFlow.id ? f : { ...f, steps: sortSteps(editRepeatSteps) });
             refillStepNotifications(flowForRefill, user?.uid, async (sId, newNotifId, meta) => {
@@ -2357,7 +2454,7 @@ const FlowScreen = ({ navigation, route }) => {
           }
         } else {
           const updatedSteps = currentSteps.map(s => s.id === editingStep.id ? { ...s, ...baseUpdates } : s);
-          await applyToFlow(updatedSteps);
+          if (!await applyToFlow(updatedSteps)) return;
           await setUserNotifPref(
             user?.uid,
             editingStep.id,
@@ -2406,7 +2503,7 @@ const FlowScreen = ({ navigation, route }) => {
           updatedAt: now,
         }];
       const newRepeatSteps = [...currentSteps, ...newSteps];
-      await applyToFlow(newRepeatSteps);
+      if (!await applyToFlow(newRepeatSteps)) return;
       if (stepNotify) {
         const flowForRefill = flows.map(f => f.id !== selectedFlow.id ? f : { ...f, steps: sortSteps(newRepeatSteps) });
         refillStepNotifications(flowForRefill, user?.uid, async (sId, newNotifId, meta) => {
@@ -2421,9 +2518,9 @@ const FlowScreen = ({ navigation, route }) => {
         status: 'upcoming',
         createdAt: now,
         createdBy: user?.uid || null,
-        createdByName: user?.displayName || user?.email || null,
-      };
-        await applyToFlow([...currentSteps, newStep]);
+          createdByName: user?.displayName || user?.email || null,
+        };
+        if (!await applyToFlow([...currentSteps, newStep])) return;
         await setUserNotifPref(
           user?.uid,
           newStep.id,
@@ -2443,13 +2540,24 @@ const FlowScreen = ({ navigation, route }) => {
       }
     } catch (e) {
       if (__DEV__) console.error('[FlowScreen] saveStep error:', e);
+      showFlowToast(
+        editingStep
+          ? t('flow.toast.step_update_failed', 'Failed to update schedule.')
+          : t('flow.toast.step_add_failed', 'Failed to add schedule.')
+      );
+      showConfirm(
+        t('common.error', 'Error'),
+        e?.message || t('flow.update_failed', 'Failed to update plan on server. Please check your connection.'),
+        null,
+        false
+      );
     } finally {
       releaseSaving();
     }
   };
 
   const persistStepDeletion = async (flow, updatedFlows, deletedStepIds) => {
-    if (!flow) return;
+    if (!flow) return false;
 
     try {
       debugFlow('persistStepDeletion:start', {
@@ -2474,14 +2582,17 @@ const FlowScreen = ({ navigation, route }) => {
         await saveFlows(updatedFlows);
       }
       debugFlow('persistStepDeletion:done', { flowId: flow.id, deletedCount: deletedStepIds.length });
+      return true;
     } catch (e) {
       if (__DEV__) console.error('[FlowScreen] delete step sync error:', e);
+      showFlowToast(t('flow.toast.step_delete_failed', 'Failed to delete schedule.'));
       showConfirm(
         t('common.error', 'Error'),
         t('flow.update_failed', 'Failed to update plan on server. Please check your connection.'),
         null,
         false
       );
+      return false;
     }
   };
 
@@ -2539,7 +2650,10 @@ const FlowScreen = ({ navigation, route }) => {
 
     await Promise.all(toCancel.map(cancelNotification))
       .catch(e => { if (__DEV__) console.warn('[FlowScreen] cancel notification error:', e); });
-    await persistStepDeletion(updatedF, updatedFlows, deletedStepIds);
+    const deleted = await persistStepDeletion(updatedF, updatedFlows, deletedStepIds);
+    if (deleted) {
+      showFlowToast(t('flow.toast.step_deleted', 'Schedule deleted.'));
+    }
   };
 
   const deleteStep = () => {
@@ -2587,7 +2701,10 @@ const FlowScreen = ({ navigation, route }) => {
       await deleteUserNotifPref(user?.uid, step.id, selectedFlow?.id);
       setUserNotifPrefs(prev => { const next = { ...prev }; delete next[step.id]; return next; });
     }
-    await persistStepDeletion(updatedF, updatedFlows, stepId ? [stepId] : []);
+    const deleted = await persistStepDeletion(updatedF, updatedFlows, stepId ? [stepId] : []);
+    if (deleted) {
+      showFlowToast(t('flow.toast.step_deleted', 'Schedule deleted.'));
+    }
   };
 
   const confirmDeleteStepById = (step) => {
@@ -2748,10 +2865,16 @@ const FlowScreen = ({ navigation, route }) => {
         t('flow.alert.delete_flow_msg'),
         () => {
           _animateCardOut(id, async () => {
-            const updated = flows.filter(f => f.id !== id);
-            setFlows(updated);
-            if (selectedFlow?.id === id) setSelectedFlow(null);
-            await deleteFlow(id);
+            try {
+              const updated = flows.filter(f => f.id !== id);
+              setFlows(updated);
+              if (selectedFlow?.id === id) setSelectedFlow(null);
+              await deleteFlow(id);
+              showFlowToast(t('flow.toast.plan_deleted', 'Plan deleted.'));
+            } catch (e) {
+              console.warn('[FlowScreen] deleteFlow error:', e);
+              showFlowToast(t('flow.toast.plan_delete_failed', 'Failed to delete plan.'));
+            }
           });
         },
         true,
@@ -2769,8 +2892,10 @@ const FlowScreen = ({ navigation, route }) => {
             removeSharedFlowOptimistic(flow.id);
             setSelectedFlow(null);
             await leaveFlow(user?.uid, flow._ownerUid, flow.id);
+            showFlowToast(t('flow.toast.plan_left', 'You left the plan.'));
           } catch (e) {
             console.warn('[FlowScreen] leaveFlow error:', e);
+            showFlowToast(t('flow.toast.plan_leave_failed', 'Failed to leave plan.'));
             showConfirm(t('common.error'), e.message, null, false);
           } finally {
             setIsLeaving(false);
@@ -2818,6 +2943,129 @@ const FlowScreen = ({ navigation, route }) => {
       </View>
     </Modal>
   );
+
+  const renderDisplayNamePromptModal = () => (
+    <Modal visible={displayNamePromptVisible} transparent animationType="fade" onRequestClose={closeDisplayNamePrompt}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={Keyboard.dismiss} />
+        <View style={styles.displayNamePromptModal}>
+          <Text style={styles.confirmTitle}>{t('flow.display_name_prompt_title')}</Text>
+          <Text style={styles.displayNamePromptMessage}>{t('flow.display_name_prompt_desc')}</Text>
+          <TextInput
+            value={displayNameDraft}
+            onChangeText={setDisplayNameDraft}
+            placeholder={t('flow.display_name_prompt_placeholder')}
+            placeholderTextColor={Colors.textTertiary}
+            autoCapitalize="words"
+            returnKeyType="done"
+            editable={!isSavingDisplayName}
+            onSubmitEditing={saveDisplayNameFromPrompt}
+            style={styles.displayNamePromptInput}
+          />
+          <View style={styles.confirmActions}>
+            <Pressable
+              style={({ pressed }) => [styles.confirmBtn, { opacity: pressed ? 0.6 : 1 }]}
+              onPress={closeDisplayNamePrompt}
+              disabled={isSavingDisplayName}
+            >
+              <Text style={styles.confirmCancelText}>{t('flow.display_name_prompt_later')}</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.confirmBtn,
+                styles.displayNamePromptSaveBtn,
+                { opacity: pressed || isSavingDisplayName ? 0.75 : 1 },
+              ]}
+              onPress={saveDisplayNameFromPrompt}
+              disabled={isSavingDisplayName}
+            >
+              {isSavingDisplayName ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.confirmDestructiveText}>{t('flow.display_name_prompt_save')}</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
+  const renderMemberListModal = () => {
+    const members = getSortedFlowMembers();
+
+    return (
+      <Modal
+        visible={memberListModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMemberListModalVisible(false)}
+      >
+        <View style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMemberListModalVisible(false)} />
+          <View style={styles.memberListModal}>
+            <View style={styles.memberListHeader}>
+              <View>
+                <Text style={styles.memberListTitle}>{t('flow.plan_members_title', 'Plan Members')}</Text>
+                <Text style={styles.memberListSubtitle}>
+                  {t('flow.plan_members_count', '{{count}} members', { count: members.length })}
+                </Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.memberListCloseBtn, pressed && { opacity: 0.65 }]}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                onPress={() => setMemberListModalVisible(false)}
+              >
+                <X size={20} color={Colors.onSurfaceVariant} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.memberListScroll}
+              contentContainerStyle={styles.memberListContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {members.map(member => (
+                <View key={member.uid} style={styles.memberListRow}>
+                  <View style={[styles.memberListAvatar, { backgroundColor: getMemberAvatarColor(member.uid) }]}>
+                    <Text style={styles.memberListAvatarText} numberOfLines={1}>
+                      {getMemberInitials(member)}
+                    </Text>
+                  </View>
+                  <View style={styles.memberListNameBlock}>
+                    <View style={styles.memberListNameRow}>
+                      <Text style={styles.memberListName} numberOfLines={1} ellipsizeMode="tail">
+                        {getMemberDisplayName(member) || t('flow.member', 'Member')}
+                      </Text>
+                      {member.uid === user?.uid && (
+                        <Text style={styles.memberListYouText}>{t('flow.you_label', '(You)')}</Text>
+                      )}
+                    </View>
+                    {!!member.email && (
+                      <Text style={styles.memberListEmail} numberOfLines={1} ellipsizeMode="tail">
+                        {member.email}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={[
+                    styles.memberListRoleChip,
+                    (member.role === 'owner' || member.uid === (selectedFlow?._ownerUid || selectedFlow?.ownerUid || selectedFlow?.ownerId)) && styles.memberListOwnerChip,
+                  ]}>
+                    <Text style={styles.memberListRoleText} numberOfLines={1}>
+                      {getMemberRoleLabel(member)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
 
   const handleWeatherIconPress = (step) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -3965,15 +4213,18 @@ const FlowScreen = ({ navigation, route }) => {
                       </Text>
 
                       <View style={{ width: 80, alignItems: 'flex-end' }}>
-                        <GHButton 
+                        <GHButton
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             isKeyboardVisible ? Keyboard.dismiss() : saveFlow();
-                          }} 
-                          style={styles.headerActionBtn}
+                          }}
+                          style={[styles.headerActionBtn, isSaving && { opacity: 0.55 }]}
                           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                          disabled={isSaving}
                         >
-                          {isKeyboardVisible ? (
+                          {isSaving ? (
+                            <ActivityIndicator size="small" color={Colors.primary} />
+                          ) : isKeyboardVisible ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} pointerEvents="none">
                               <KeyboardIcon size={18} color={Colors.primary} />
                               <ChevronDown size={14} color={Colors.primary} />
@@ -4146,20 +4397,17 @@ const FlowScreen = ({ navigation, route }) => {
                       </Text>
 
                       <View style={{ width: 80, alignItems: 'flex-end' }}>
-                        <GHButton 
+                        <GHButton
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             isKeyboardVisible ? Keyboard.dismiss() : saveStep();
-                          }} 
+                          }}
                           style={[styles.headerActionBtn, isSaving && { opacity: 0.5 }]}
                           hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                           disabled={isSaving}
                         >
                           {isSaving ? (
-                            <View style={styles.headerSavingContent}>
-                              <ActivityIndicator size="small" color={Colors.primary} />
-                              <Text style={styles.headerSaveText}>{t('common.saving', 'Saving...')}</Text>
-                            </View>
+                            <ActivityIndicator size="small" color={Colors.primary} />
                           ) : isKeyboardVisible ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                               <KeyboardIcon size={18} color={Colors.primary} />
@@ -4940,12 +5188,17 @@ const FlowScreen = ({ navigation, route }) => {
                       <Text style={styles.headerSaveText}>{t('common.close', 'Close')}</Text>
                     </GHButton>
                   </View>
-                  <Text style={[styles.editTitle, { flex: 1, textAlign: 'center' }]} numberOfLines={1}>
+                  <Text
+                    style={[styles.editTitle, styles.joinModalTitle]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                  >
                     {t('flow.join_shared_flow')}
                   </Text>
                   <View style={{ width: 80, alignItems: 'flex-end' }}>
-                    <GHButton 
-                      onPress={handleJoinFlow} 
+                    <GHButton
+                      onPress={handleJoinFlow}
                       style={styles.headerActionBtn}
                       disabled={isJoining || joinCode.length !== 6}
                     >
@@ -5088,21 +5341,10 @@ const FlowScreen = ({ navigation, route }) => {
           </Pressable>
         </Modal>
 
-        {flowToastMsg !== '' && (
-          <Animated.View
-            style={[
-              styles.flowToast,
-              {
-                opacity: flowToastAnim,
-                transform: [{ translateY: flowToastAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
-              },
-            ]}
-            pointerEvents="none"
-          >
-            <Text style={styles.flowToastText}>{flowToastMsg}</Text>
-          </Animated.View>
-        )}
+        <ToastStack toasts={flowToasts} onDone={handleFlowToastDone} />
 
+        {renderDisplayNamePromptModal()}
+        {renderMemberListModal()}
         {renderConfirmModal()}
       </View>
     </GestureHandlerRootView>
@@ -5433,9 +5675,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.primary,
   },
-  headerActionBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(0, 191, 255, 0.05)' },
-  headerSavingContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerActionBtn: { minWidth: 56, height: 44, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(0, 191, 255, 0.05)', alignItems: 'center', justifyContent: 'center' },
   headerSaveText: { ...Typography.body, fontWeight: '800', color: Colors.primary },
+  joinModalTitle: { flex: 1, textAlign: 'center', flexShrink: 1, marginHorizontal: 4, includeFontPadding: false },
   searchAccessoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0, 191, 255, 0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   searchAccessoryText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   modalContentPadding: { marginBottom: Spacing.xl },
@@ -5600,8 +5842,6 @@ const styles = StyleSheet.create({
   commentBubble: { flex: 1, alignSelf: 'flex-start', backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 2, marginBottom: 4 },
   commentText: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 20 },
   commentAuthor: { fontWeight: '700', color: Colors.onBackground },
-  flowToast: { position: 'absolute', top: Constants.statusBarHeight + 72, alignSelf: 'center', maxWidth: width - 48, backgroundColor: 'rgba(30,30,30,0.88)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 22, zIndex: 9999 },
-  flowToastText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 16, gap: 8 },
   commentInput: {
     flex: 1,
@@ -5731,6 +5971,154 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 22,
+  },
+  displayNamePromptModal: {
+    width: Math.min(width - 40, 420),
+    backgroundColor: 'white',
+    borderRadius: 24,
+    padding: 24,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20 },
+      android: { elevation: 12 }
+    }),
+  },
+  displayNamePromptMessage: {
+    ...Typography.body,
+    fontSize: 14,
+    color: Colors.onSurfaceVariant,
+    textAlign: 'center',
+    marginBottom: 18,
+    lineHeight: 21,
+  },
+  displayNamePromptInput: {
+    minHeight: 54,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.outlineVariant,
+    backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: 16,
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.onBackground,
+    marginBottom: 18,
+  },
+  displayNamePromptSaveBtn: {
+    backgroundColor: Colors.primary,
+  },
+  memberListModal: {
+    width: Math.min(width - 40, 420),
+    maxHeight: height * 0.62,
+    backgroundColor: 'white',
+    borderRadius: 24,
+    padding: 18,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20 },
+      android: { elevation: 12 }
+    }),
+  },
+  memberListHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
+  },
+  memberListTitle: {
+    ...Typography.h3,
+    fontSize: 19,
+    color: Colors.onBackground,
+  },
+  memberListSubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+  },
+  memberListCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+  memberListScroll: {
+    maxHeight: height * 0.46,
+  },
+  memberListContent: {
+    gap: 8,
+    paddingBottom: 2,
+  },
+  memberListRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant + '30',
+  },
+  memberListAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  memberListAvatarText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  memberListNameBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  memberListNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
+  },
+  memberListName: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.onBackground,
+  },
+  memberListYouText: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+  },
+  memberListEmail: {
+    marginTop: 2,
+    fontSize: 12,
+    color: Colors.outline,
+  },
+  memberListRoleChip: {
+    maxWidth: 86,
+    flexShrink: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: Colors.primary + '10',
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+  },
+  memberListOwnerChip: {
+    backgroundColor: Colors.primary + '16',
+  },
+  memberListRoleText: {
+    color: Colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
   },
   confirmActions: {
     flexDirection: 'row',

@@ -174,6 +174,16 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const getAuthErrorMessage = (error) => {
+    const rawMessage = String(error?.message || '');
+    const code = String(error?.code || error?.statusCode || '');
+    if (
+      rawMessage.includes('DEVELOPER_ERROR') ||
+      rawMessage.includes('Developer console is not set up correctly') ||
+      code === '10'
+    ) {
+      return i18n.t('auth.errors.googleDeveloperError');
+    }
+
     switch (error.message) {
       case 'User already registered':
         return i18n.t('auth.errors.emailInUse');

@@ -4,7 +4,7 @@ import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-h
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind, Crown, User as UserIcon } from 'lucide-react-native';
+import { X, Shield, Settings, Info, CreditCard, RefreshCw, Globe, ChevronRight, Languages, ArrowLeft, CheckCircle2, Thermometer, Wind, Crown, User as UserIcon, Ticket } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUnits } from '../contexts/UnitContext';
@@ -31,6 +31,11 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const handleMenuItemPress = async (id) => {
     if (id === 'profile') {
       pendingNavRef.current = () => navigation.navigate('Profile');
+      onClose();
+      return;
+    }
+    if (id === 'joinInvite') {
+      pendingNavRef.current = () => navigation.navigate('Flow', { openJoinModal: Date.now() });
       onClose();
       return;
     }
@@ -166,6 +171,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   };
 
   const menuItems = [
+    { id: 'joinInvite', icon: <Ticket size={20} color={Colors.primary} />, label: t('menu.enter_invite_code'), sub: t('menu.enter_invite_code_sub') },
     { id: 'source', icon: <Globe size={20} color={Colors.primary} />, label: t('menu.source'), sub: t('menu.source_sub') },
     { id: 'settings', icon: <Settings size={20} color={Colors.primary} />, label: t('menu.preferences'), sub: t('menu.preferences_sub') },
     { id: 'privacy', icon: <Shield size={20} color={Colors.primary} />, label: t('menu.privacy', 'Privacy Policy'), sub: t('menu.privacy_sub', 'Check our privacy policy') },

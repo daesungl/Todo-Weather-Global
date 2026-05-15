@@ -1,0 +1,27 @@
+diff --git a/node_modules/react-native/sdks/hermes-engine/hermes-utils.rb b/node_modules/react-native/sdks/hermes-engine/hermes-utils.rb
+index d01a1d3..7651703 100644
+--- a/node_modules/react-native/sdks/hermes-engine/hermes-utils.rb
++++ b/node_modules/react-native/sdks/hermes-engine/hermes-utils.rb
+@@ -266,7 +266,8 @@ end
+ def hermes_artifact_exists(tarball_url)
+     # -L is used to follow redirects, useful for the nightlies
+     # I also needed to wrap the url in quotes to avoid escaping & and ?.
+-    return (`curl -o /dev/null --silent -Iw '%{http_code}' -L "#{tarball_url}"` == "200")
++    # Use separate -I and -w flags to avoid shell parsing issues with -Iw in some environments
++    return (`curl -o /dev/null --silent -I -w '%{http_code}' -L "#{tarball_url}"` == "200")
+ end
+ 
+ def hermes_log(message, level = :warning)
+diff --git a/node_modules/react-native/sdks/hermes-engine/utils/build-hermes-xcode.sh b/node_modules/react-native/sdks/hermes-engine/utils/build-hermes-xcode.sh
+index b1ac920..b44c6b3 100755
+--- a/node_modules/react-native/sdks/hermes-engine/utils/build-hermes-xcode.sh
++++ b/node_modules/react-native/sdks/hermes-engine/utils/build-hermes-xcode.sh
+@@ -54,7 +54,7 @@ deployment_target=$(get_deployment_target $PLATFORM_NAME)
+ 
+ xcode_15_flags=""
+ xcode_major_version=$(xcodebuild -version | grep -oE '[0-9]*' | head -n 1)
+-if [[ $xcode_major_version -ge 15 ]]; then
++if [[ $xcode_major_version -ge 15 ]] && xcrun -f ld_classic &>/dev/null; then
+   echo "########### Using LINKER:-ld_classic ###########"
+   xcode_15_flags="LINKER:-ld_classic"
+ fi

@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { LucideLogOut, LucideUser, LucideArrowLeft, LucideX, LucideCheck, LucideChevronRight, LucideLock, LucideMail, Info } from 'lucide-react-native';
 import { supabase } from '../config/supabaseConfig';
+import { syncAllMemberDisplayNames } from '../services/InviteService';
 import { Colors, Spacing, Typography } from '../theme';
 import { deleteCurrentUserAccount, isRecentLoginRequired } from '../services/AccountDeletionService';
 import ConfirmModal from '../components/ConfirmModal';
@@ -129,6 +130,9 @@ const ProfileScreen = ({ navigation }) => {
       }
       
       updateUserProfile({ display_name: trimmedName, displayName: trimmedName });
+      syncAllMemberDisplayNames(trimmedName).catch(error => {
+        console.warn('[ProfileScreen] Member display name sync failed:', error);
+      });
       setEditModalVisible(false);
       showAlert(t('common.success'), t('auth.profileUpdated'));
     } catch (error) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ToastAndroid, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Alert, Platform, Modal, TextInput, ActivityIndicator, Animated, PanResponder, Pressable, RefreshControl } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView, ScrollView as GHScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS } from 'react-native-reanimated';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
@@ -14,6 +14,7 @@ import { Sun, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Comp
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
+import ToastStack, { useToastStack } from '../components/ToastStack';
 import { getWeather } from '../services/weather/WeatherService';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionSyncService';
 import { searchPlaces } from '../services/weather/VWorldService';
@@ -89,6 +90,7 @@ const HomeScreen = ({ navigation }) => {
   const regionsRef = useRef([]);
   const scrollViewRef = useRef(null);
   const isSwipingRef = useRef(false); // 스와이프 중 탭 무시용 플래그
+  const { toasts, showToast, handleToastDone } = useToastStack();
 
   const { isPremium, limits } = useSubscription();
 
@@ -450,9 +452,15 @@ const HomeScreen = ({ navigation }) => {
           text: t('common.delete', '삭제'),
           style: 'destructive',
           onPress: async () => {
-            const updated = await removeRegion(id);
-            regionsRef.current = updated;
-            setRegions(updated);
+            try {
+              const updated = await removeRegion(id);
+              regionsRef.current = updated;
+              setRegions(updated);
+              showToast(t('home.region_delete_success', '관심 지역이 삭제되었습니다.'));
+            } catch (error) {
+              console.error('[HomeScreen] delete region error:', error);
+              showToast(t('home.region_delete_failed', '관심 지역 삭제에 실패했습니다.'));
+            }
           }
         }
       ]
@@ -460,48 +468,56 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleAddRegion = async (item) => {
-    let finalItem = { ...item };
+    try {
+      let finalItem = { ...item };
 
-    // 주(State)나 국가(Country) 단위 결과인 경우 대표 도시 좌표로 보정
-    if (item.isRegion) {
-      setIsSearching(true);
-      const representative = await getRepresentativeCoordinates(item.name, item.rawType, i18n.language);
-      setIsSearching(false);
-      if (representative) {
-        finalItem = {
-          ...item,
-          lat: representative.lat,
-          lon: representative.lon,
-        };
-        console.log(`[HomeScreen] Location corrected: ${item.name} -> ${representative.name} coordinates`);
+      // 주(State)나 국가(Country) 단위 결과인 경우 대표 도시 좌표로 보정
+      if (item.isRegion) {
+        setIsSearching(true);
+        const representative = await getRepresentativeCoordinates(item.name, item.rawType, i18n.language);
+        setIsSearching(false);
+        if (representative) {
+          finalItem = {
+            ...item,
+            lat: representative.lat,
+            lon: representative.lon,
+          };
+          console.log(`[HomeScreen] Location corrected: ${item.name} -> ${representative.name} coordinates`);
+        }
       }
+
+      if (displayRegions.filter(r => !r.inactive).length >= limits.regions) {
+        Alert.alert(
+          t('common.info', '알림'),
+          isPremium
+            ? t('region.limit_premium', `최대 ${limits.regions}개 지역까지 추가할 수 있습니다.`)
+            : t('region.limit_free', `무료 플랜은 최대 ${limits.regions}개까지 추가할 수 있습니다. 더 추가하려면 프리미엄을 이용해 주세요.`)
+        );
+        return;
+      }
+
+      // Check if the current page has space (limit 3)
+      const pageIndex = currentPage - 1;
+      const pageRegionsCount = regions.filter(r => r.pageIndex === pageIndex).length;
+
+      if (pageRegionsCount >= 3) {
+        Alert.alert(t('common.info', '알림'), t('home.region_limit_guide', '한 페이지당 최대 3개의 지역만 추가할 수 있습니다.'));
+        return;
+      }
+
+      const updated = await addRegion(finalItem.name, finalItem.address, finalItem.lat, finalItem.lon, pageIndex);
+      regionsRef.current = updated;
+      setRegions(updated);
+      const newest = updated[updated.length - 1];
+      fetchRegionWeather(newest);
+      closeSearchModal();
+      showToast(t('home.region_add_success', '관심 지역이 추가되었습니다.'));
+    } catch (error) {
+      console.error('[HomeScreen] add region error:', error);
+      showToast(t('home.region_add_failed', '관심 지역 추가에 실패했습니다.'));
+    } finally {
+      setIsSearching(false);
     }
-
-    if (displayRegions.filter(r => !r.inactive).length >= limits.regions) {
-      Alert.alert(
-        t('common.info', '알림'),
-        isPremium
-          ? t('region.limit_premium', `최대 ${limits.regions}개 지역까지 추가할 수 있습니다.`)
-          : t('region.limit_free', `무료 플랜은 최대 ${limits.regions}개까지 추가할 수 있습니다. 더 추가하려면 프리미엄을 이용해 주세요.`)
-      );
-      return;
-    }
-
-    // Check if the current page has space (limit 3)
-    const pageIndex = currentPage - 1;
-    const pageRegionsCount = regions.filter(r => r.pageIndex === pageIndex).length;
-
-    if (pageRegionsCount >= 3) {
-      Alert.alert(t('common.info', '알림'), t('home.region_limit_guide', '한 페이지당 최대 3개의 지역만 추가할 수 있습니다.'));
-      return;
-    }
-
-    const updated = await addRegion(finalItem.name, finalItem.address, finalItem.lat, finalItem.lon, pageIndex);
-    regionsRef.current = updated;
-    setRegions(updated);
-    const newest = updated[updated.length - 1];
-    fetchRegionWeather(newest);
-    closeSearchModal();
   };
 
   // tzOffsetMs 기반으로 condKey의 낮/밤을 실시간 교정
@@ -874,6 +890,8 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </GestureHandlerRootView>
       </Modal>
+
+      <ToastStack toasts={toasts} onDone={handleToastDone} />
     </View>
   );
 };

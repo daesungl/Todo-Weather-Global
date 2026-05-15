@@ -1,8 +1,28 @@
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
-require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+
+rn_package_json_path = `node --print "require.resolve('react-native/package.json')"`.strip
+require File.join(File.dirname(rn_package_json_path), "scripts/react_native_pods")
 
 require 'json'
+require 'fileutils'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
+
+# Force prebuilt Hermes tarball — avoids curl parsing bug in EAS build that
+# causes the artifact existence check to silently fail and fall back to a
+# slow/broken source build from GitHub main.
+begin
+  rn_version = JSON.parse(File.read(rn_package_json_path))['version']
+  hermes_artifacts_dir = File.join(__dir__, 'Pods', 'hermes-engine-artifacts')
+  hermes_tarball = File.join(hermes_artifacts_dir, "hermes-ios-#{rn_version}-release.tar.gz")
+  unless File.exist?(hermes_tarball)
+    hermes_maven_url = "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/#{rn_version}/react-native-artifacts-#{rn_version}-hermes-ios-release.tar.gz"
+    FileUtils.mkdir_p(hermes_artifacts_dir)
+    system("curl -L --silent --fail '#{hermes_maven_url}' -o '#{hermes_tarball}'") rescue nil
+  end
+  ENV['HERMES_ENGINE_TARBALL_PATH'] = hermes_tarball if File.exist?(hermes_tarball)
+rescue => e
+  # Non-fatal: fall through to normal hermes source resolution
+end
 
 def ccache_enabled?(podfile_properties)
   # Environment variable takes precedence
@@ -60,9 +80,32 @@ target 'TodoWeather' do
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
 
+    # Fix for Xcode 26+: ld_classic linker was removed; skip the flag if it doesn't exist
+    hermes_build_script = "#{config[:reactNativePath]}/sdks/hermes-engine/utils/build-hermes-xcode.sh"
+    if File.exist?(hermes_build_script)
+      content = File.read(hermes_build_script)
+      if content.include?('if [[ $xcode_major_version -ge 15 ]]; then')
+        File.write(hermes_build_script, content.gsub(
+          'if [[ $xcode_major_version -ge 15 ]]; then',
+          'if [[ $xcode_major_version -ge 15 ]] && xcrun -f ld_classic &>/dev/null; then'
+        ))
+      end
+    end
+
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+
+        # Xcode 26's clang can fail compiling fmt 11's consteval format strings
+        # during archive. Keep this scoped to fmt so React Native's other pods
+        # continue to use their default C++ settings.
+        if target.name == 'fmt'
+          config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+          definitions = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+          definitions = [definitions] if definitions.is_a?(String)
+          definitions << 'FMT_USE_CONSTEVAL=0' unless definitions.include?('FMT_USE_CONSTEVAL=0')
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = definitions
+        end
       end
     end
   end

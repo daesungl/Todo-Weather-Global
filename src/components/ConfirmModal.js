@@ -7,7 +7,7 @@ const { width } = Dimensions.get('window');
 // options: [{ text, onPress, style: 'default'|'cancel'|'destructive' }]
 // When options has 2 items → side-by-side buttons
 // When options has 3+ items → stacked buttons (action sheet style)
-export default function ConfirmModal({ visible, title, message, options = [], onDismiss }) {
+export default function ConfirmModal({ visible, title, message, options = [], onDismiss, useNativeModal = true }) {
   const cancelOption = options.find(o => o.style === 'cancel');
   const actionOptions = options.filter(o => o.style !== 'cancel');
   const stacked = actionOptions.length >= 2;
@@ -22,8 +22,7 @@ export default function ConfirmModal({ visible, title, message, options = [], on
     if (cancelOption?.onPress) cancelOption.onPress();
   };
 
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
+  const content = (
       <View style={styles.overlay}>
         <View style={styles.modal}>
           {!!title && <Text style={styles.title}>{title}</Text>}
@@ -84,11 +83,30 @@ export default function ConfirmModal({ visible, title, message, options = [], on
           )}
         </View>
       </View>
+  );
+
+  if (!useNativeModal) {
+    if (!visible) return null;
+    return (
+      <View style={styles.inlineHost}>
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
+      {content}
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  inlineHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100000,
+    elevation: 100000,
+  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

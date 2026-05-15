@@ -28,7 +28,15 @@
       "Bash(supabase db *)",
       "Bash(curl -s -X POST https://ghrhxxlhhohgkdummdaq.supabase.co/auth/v1/signup -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdocmh4eGxoaG9oZ2tkdW1tZGFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNTAxOTEsImV4cCI6MjA5MzkyNjE5MX0.OAD4_StstiaAOAvgOM8rpsEMBNiB_f8TKelWwN5KDWE' -H 'Content-Type: application/json' -d '{}')",
       "Bash(npx supabase *)",
-      "Bash(supabase migration *)"
+      "Bash(supabase migration *)",
+      "Bash(xcodebuild -version)",
+      "Bash(xcrun --sdk iphoneos --show-sdk-version)",
+      "Bash(xcrun -f ld_classic)",
+      "Bash(npx patch-package *)",
+      "Bash(cmake --version)",
+      "Bash(xcrun xcresulttool *)",
+      "Bash(tar -tzf /Users/charles/Dev_App/Global-Todo-Weather/ios/Pods/hermes-engine-artifacts/hermes-ios-0.81.5-debug.tar.gz)",
+      "Bash(tar -tzf /Users/charles/Dev_App/Global-Todo-Weather/ios/Pods/hermes-engine-artifacts/hermes-ios-0.81.5-release.tar.gz)"
     ]
   }
 }

@@ -597,6 +597,7 @@ export const updateFlowDoc = async (flow, options = {}) => {
   const {
     syncSteps = true,
     markStepsUpdated = true,
+    optimistic = true,
   } = options || {};
 
   // Capture previous steps BEFORE updating local state (needed for change detection below)
@@ -604,10 +605,10 @@ export const updateFlowDoc = async (flow, options = {}) => {
     ? _flowSteps.get(flow.id)
     : null;
 
-  // Update _flowSteps BEFORE the DB write so that any Realtime callback
-  // fired during saveSupabasePlan sees the correct steps in _mergeAndNotify
-  // and doesn't briefly flash the old (pre-add) step list.
-  if (syncSteps && Array.isArray(flow.steps)) {
+  // For most interactions we keep optimistic updates. For step creation/editing
+  // we can opt out so the modal stays in a saving state until Supabase confirms,
+  // preventing the realtime listener from briefly restoring the previous list.
+  if (optimistic && syncSteps && Array.isArray(flow.steps)) {
     _flowSteps.set(flow.id, _sortSteps(_filterDeletedSteps(flow.id, flow.steps || [])));
   }
 
@@ -623,6 +624,7 @@ export const updateFlowDoc = async (flow, options = {}) => {
     if (stepsChanged) {
       await replaceSupabasePlanSteps(flow.id, flow.steps, { markUpdated: markStepsUpdated });
     }
+    _flowSteps.set(flow.id, _sortSteps(_filterDeletedSteps(flow.id, flow.steps || [])));
   }
   _mergeAndNotify();
 };
@@ -818,7 +820,8 @@ export const saveFlows = async (flows) => {
   }
 };
 
-export const addFlow = async (flow) => {
+export const addFlow = async (flow, options = {}) => {
+  const { optimistic = true } = options || {};
   _forgetDeletedFlowId(flow.id);
   _lastUserOrderChangeMs = Date.now();
   let minOrder = 0;
@@ -833,18 +836,19 @@ export const addFlow = async (flow) => {
   _flowRefs.set(flow.id, { flowId: flow.id, ownerUid: _userId, role: 'owner', order: newOrder });
   _flowDocs.set(flow.id, { id: flow.id, ...flow, ownerUid: _userId, order: newOrder });
   _flowSteps.set(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
-  _mergeAndNotify();
+  if (optimistic || !_userId) _mergeAndNotify();
 
   if (_userId) {
     try {
       await saveSupabasePlan({ ...flow, _role: 'owner', order: newOrder });
       await replaceSupabasePlanSteps(flow.id, _filterDeletedSteps(flow.id, flow.steps || []));
+      if (!optimistic) _mergeAndNotify();
     } catch (e) {
       console.warn('[FlowSync] addFlow backend save error:', e);
       _flowRefs.delete(flow.id);
       _flowDocs.delete(flow.id);
       _flowSteps.delete(flow.id);
-      _mergeAndNotify();
+      if (optimistic) _mergeAndNotify();
       throw e;
     }
 
