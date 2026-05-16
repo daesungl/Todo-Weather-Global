@@ -47,6 +47,14 @@ import ProfileScreen from './src/screens/ProfileScreen';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+const logAnalyticsEvent = async (name, params = {}) => {
+  try {
+    await logEvent(getAnalytics(), name, params);
+  } catch (error) {
+    if (__DEV__) console.warn('[Analytics] logEvent failed:', name, error?.message || error);
+  }
+};
+
 const setAppIconBadge = async (count) => {
   try {
     const badgeCount = Math.max(0, Number(count) || 0);
@@ -202,14 +210,22 @@ function AppContent({ navigationRef, routeNameRef, slideFromRight }) {
           <NavigationContainer
             ref={navigationRef}
             onReady={() => {
-              routeNameRef.current = navigationRef.current.getCurrentRoute()?.name;
+              const initialRouteName = navigationRef.current.getCurrentRoute()?.name;
+              routeNameRef.current = initialRouteName;
+              logAnalyticsEvent('app_open_custom');
+              if (initialRouteName) {
+                logAnalyticsEvent('screen_view', {
+                  screen_name: initialRouteName,
+                  screen_class: initialRouteName,
+                });
+              }
             }}
             onStateChange={async () => {
               const previousRouteName = routeNameRef.current;
               const currentRouteName = navigationRef.current.getCurrentRoute()?.name;
 
               if (previousRouteName !== currentRouteName) {
-                await logEvent(getAnalytics(), 'screen_view', {
+                await logAnalyticsEvent('screen_view', {
                   screen_name: currentRouteName,
                   screen_class: currentRouteName,
                 });

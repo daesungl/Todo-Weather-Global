@@ -58,5 +58,26 @@ fs.writeFileSync(
   `export const SUPABASE_ENV = '${env}';\nexport const SUPABASE_PROJECT_REF = '${config.projectRef}';\nexport const SUPABASE_CONFIG_URL = '${config.url}';\nexport const SUPABASE_CONFIG_ANON_KEY = '${config.anonKey}';\nexport const SUPABASE_PLAN_BACKEND = '${config.planBackend}';\nexport const IS_SUPABASE_DEV = SUPABASE_ENV === 'dev';\n`
 );
 console.log(`${env} -> ${path.relative(root, envConstFile)}`);
+
+const firebaseDir = path.join(root, 'firebase', env);
+const firebaseFiles = [
+  ['GoogleService-Info.plist', ['GoogleService-Info.plist', path.join('ios', 'TodoWeather', 'GoogleService-Info.plist')]],
+  ['google-services.json', ['google-services.json', path.join('android', 'app', 'google-services.json')]],
+];
+
+if (fs.existsSync(firebaseDir)) {
+  for (const [sourceName, targetNames] of firebaseFiles) {
+    const source = path.join(firebaseDir, sourceName);
+    if (fs.existsSync(source)) {
+      for (const targetName of targetNames) {
+        const target = path.join(root, targetName);
+        if (!fs.existsSync(path.dirname(target))) continue;
+        fs.copyFileSync(source, target);
+        console.log(`${env} -> ${path.relative(root, target)}`);
+      }
+    }
+  }
+}
+
 console.log(`Supabase environment switched to ${env}`);
 console.log(`Project ref: ${config.projectRef}`);

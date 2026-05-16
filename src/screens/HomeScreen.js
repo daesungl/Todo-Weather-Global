@@ -16,7 +16,7 @@ import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import ToastStack, { useToastStack } from '../components/ToastStack';
 import { getWeather } from '../services/weather/WeatherService';
-import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions } from '../services/weather/RegionSyncService';
+import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions, subscribeToRegions } from '../services/weather/RegionSyncService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
 
@@ -31,6 +31,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CURRENT_WEATHER_CACHE_KEY = '@home_current_weather';
 const { width, height } = Dimensions.get('window');
+const SEOUL_FALLBACK_COORDS = { lat: 37.5665, lon: 126.9780 };
 
 const dateStr = (date) => {
   const y = date.getFullYear();
@@ -281,15 +282,29 @@ const HomeScreen = ({ navigation }) => {
     };
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToRegions((nextRegions) => {
+      if (!Array.isArray(nextRegions)) return;
+      regionsRef.current = nextRegions;
+      setRegions(nextRegions);
+      loadPageWeather(currentPageRef.current - 1, nextRegions);
+    });
+
+    return unsubscribe;
+  }, []);
+
   // Search Debounce logic
   useEffect(() => {
+    const trimmed = searchQuery.trim();
+    const isKorean = isKoreanQuery(trimmed);
+    const minLength = isKorean ? 1 : 2;
     const timer = setTimeout(() => {
-      if (searchQuery.trim().length >= 2) {
-        performSearch(searchQuery);
+      if (trimmed.length >= minLength) {
+        performSearch(trimmed);
       } else {
         setSearchResults([]);
       }
-    }, 500); // 500ms debounce
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -299,17 +314,23 @@ const HomeScreen = ({ navigation }) => {
   const performSearch = async (query) => {
     setIsSearching(true);
     try {
-      // Run both domestic and global search concurrently
-      const [domesticResults, globalResults] = await Promise.all([
-        searchPlaces(query),
-        searchLocations(query, i18n.language)
-      ]);
+      const isKorean = isKoreanQuery(query);
+      const isShortKorean = isKorean && query.trim().length === 1;
 
-      // 한국어 쿼리면 국내 결과 우선, 영어 쿼리면 글로벌 결과 우선
-      const combined = isKoreanQuery(query)
-        ? [...domesticResults, ...globalResults]
-        : [...globalResults, ...domesticResults];
-      setSearchResults(combined);
+      if (isShortKorean) {
+        // 한 글자 한국어: Nominatim만 사용 (VWorld는 국내 결과 범람 가능)
+        const globalResults = await searchLocations(query, 'ko');
+        setSearchResults(globalResults);
+      } else {
+        const [domesticResults, globalResults] = await Promise.all([
+          searchPlaces(query),
+          searchLocations(query, isKorean ? 'ko' : 'en'),
+        ]);
+        const combined = isKorean
+          ? [...domesticResults, ...globalResults]
+          : [...globalResults, ...domesticResults];
+        setSearchResults(combined);
+      }
     } catch (e) {
       console.error('Search Error:', e);
     } finally {
@@ -319,10 +340,12 @@ const HomeScreen = ({ navigation }) => {
 
   const fetchMainWeather = async () => {
     // 캐시된 날씨 즉시 표시 → skeleton 없이 바로 보여줌
+    let cachedWeather = null;
     try {
       const cached = await AsyncStorage.getItem(CURRENT_WEATHER_CACHE_KEY);
       if (cached) {
-        setCurrentWeather(JSON.parse(cached));
+        cachedWeather = JSON.parse(cached);
+        setCurrentWeather(cachedWeather);
         setLoading(false);
       }
     } catch (_) {}
@@ -330,8 +353,8 @@ const HomeScreen = ({ navigation }) => {
     // GPS + 신선한 날씨 백그라운드 fetch
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
-      let lat = 37.5665;
-      let lon = 126.9780;
+      let lat = null;
+      let lon = null;
 
       if (status === 'granted') {
         try {
@@ -348,8 +371,17 @@ const HomeScreen = ({ navigation }) => {
             lon = location.coords.longitude;
           }
         } catch (locErr) {
-          console.warn('[HomeScreen] Location fetch failed, using default:', locErr);
+          console.warn('[HomeScreen] Location fetch failed:', locErr);
+          if (cachedWeather) return;
         }
+      } else {
+        lat = SEOUL_FALLBACK_COORDS.lat;
+        lon = SEOUL_FALLBACK_COORDS.lon;
+      }
+
+      if (lat == null || lon == null) {
+        lat = SEOUL_FALLBACK_COORDS.lat;
+        lon = SEOUL_FALLBACK_COORDS.lon;
       }
       const data = await getWeather(lat, lon);
       setCurrentWeather(data);
@@ -364,7 +396,8 @@ const HomeScreen = ({ navigation }) => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      let lat = 37.5665, lon = 126.9780;
+      let lat = null;
+      let lon = null;
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         try {
@@ -376,10 +409,20 @@ const HomeScreen = ({ navigation }) => {
           lon = location.coords.longitude;
         } catch (e) {
           console.warn('[HomeScreen] Refresh location failed:', e);
+          if (currentWeather) return;
         }
+      } else {
+        lat = SEOUL_FALLBACK_COORDS.lat;
+        lon = SEOUL_FALLBACK_COORDS.lon;
+      }
+
+      if (lat == null || lon == null) {
+        lat = SEOUL_FALLBACK_COORDS.lat;
+        lon = SEOUL_FALLBACK_COORDS.lon;
       }
       const data = await getWeather(lat, lon);
       setCurrentWeather(data);
+      AsyncStorage.setItem(CURRENT_WEATHER_CACHE_KEY, JSON.stringify(data)).catch(() => {});
     } catch (e) {
       console.error('[HomeScreen] Refresh error:', e);
     } finally {

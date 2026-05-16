@@ -1047,9 +1047,23 @@ const FlowScreen = ({ navigation, route }) => {
   const maybePromptForSharedPlanDisplayName = async (flow) => {
     if (!flow?.id || !user?.uid || !_isSharedFlow(flow)) return false;
     try {
-      const key = `${DISPLAY_NAME_PROMPT_PREFIX}:${user.uid}:${flow.id}`;
+      const key = `${DISPLAY_NAME_PROMPT_PREFIX}:${user.uid}`;
+      const legacyFlowKey = `${key}:${flow.id}`;
       const prompted = await AsyncStorage.getItem(key);
       if (prompted) return false;
+
+      const legacyPrompted = await AsyncStorage.getItem(legacyFlowKey);
+      if (legacyPrompted) {
+        await AsyncStorage.setItem(key, '1');
+        return false;
+      }
+
+      const allKeys = await AsyncStorage.getAllKeys();
+      const hasAnyLegacyPrompt = allKeys.some(storageKey => storageKey.startsWith(`${key}:`));
+      if (hasAnyLegacyPrompt) {
+        await AsyncStorage.setItem(key, '1');
+        return false;
+      }
 
       await AsyncStorage.setItem(key, '1');
       setDisplayNameDraft(getCurrentDisplayName());
@@ -1064,8 +1078,13 @@ const FlowScreen = ({ navigation, route }) => {
 
   const closeDisplayNamePrompt = () => {
     if (isSavingDisplayName) return;
+    const promptedFlowId = displayNamePromptFlowId;
     setDisplayNamePromptVisible(false);
     setDisplayNamePromptFlowId(null);
+    if (promptedFlowId) {
+      const promptedFlow = flows.find(f => f.id === promptedFlowId) || selectedFlow;
+      if (promptedFlow) setTimeout(() => maybePromptForBadgePermission(promptedFlow), 500);
+    }
   };
 
   const saveDisplayNameFromPrompt = async () => {
@@ -1099,7 +1118,12 @@ const FlowScreen = ({ navigation, route }) => {
       ));
       showFlowToast(t('flow.display_name_prompt_saved', 'Display name updated.'));
       setDisplayNamePromptVisible(false);
+      const savedFlowId = displayNamePromptFlowId;
       setDisplayNamePromptFlowId(null);
+      if (savedFlowId) {
+        const promptedFlow = flows.find(f => f.id === savedFlowId) || selectedFlow;
+        if (promptedFlow) setTimeout(() => maybePromptForBadgePermission(promptedFlow), 500);
+      }
     } catch (error) {
       console.warn('[FlowScreen] display name update failed:', error);
       showFlowToast(t('flow.display_name_prompt_failed', 'Failed to update display name.'));
@@ -1422,7 +1446,7 @@ const FlowScreen = ({ navigation, route }) => {
     }
 
     const ownerUid = selectedFlow._ownerUid || user?.uid;
-    if (inviteModalVisible) setIsMembersLoading(true);
+    if (inviteModalVisible || memberListModalVisible) setIsMembersLoading(true);
     const currentName = user?.displayName || user?.email || '';
     const isOwner = isFlowOwner(selectedFlow);
     let lastSyncedCount = null;
@@ -1501,7 +1525,7 @@ const FlowScreen = ({ navigation, route }) => {
     });
 
     return unsub;
-  }, [selectedFlow?.id, selectedFlow?._ownerUid, user?.uid, inviteModalVisible]);
+  }, [selectedFlow?.id, selectedFlow?._ownerUid, user?.uid, inviteModalVisible, memberListModalVisible]);
 
   const handleGenerateCode = async (forcedRole = null) => {
     if (!user?.uid) return;
@@ -3019,7 +3043,7 @@ const FlowScreen = ({ navigation, route }) => {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 onPress={() => setMemberListModalVisible(false)}
               >
-                <X size={20} color={Colors.onSurfaceVariant} />
+                <X size={20} color={Colors.onSurfaceVariant} pointerEvents="none" />
               </Pressable>
             </View>
 
@@ -3908,7 +3932,7 @@ const FlowScreen = ({ navigation, route }) => {
                           <View style={[styles.flowCardLocked, {
                             ...Platform.select({
                               ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20 },
-                              android: { elevation: 8 }
+                              android: {}
                             })
                           }]}>
                             <LinearGradient colors={['#9ca3af', '#6b7280']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.flowCard, { opacity: 0.7, elevation: 0, shadowOpacity: 0 }]}>
@@ -5362,17 +5386,17 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     backgroundColor: 'transparent',
   },
-  flowCardLocked: { borderRadius: 32, overflow: 'hidden' },
-  flowCard: { 
-    paddingTop: 20, 
-    paddingHorizontal: Spacing.xl, 
-    paddingBottom: 22, 
-    borderRadius: 32, 
-    height: 220, 
+  flowCardLocked: { borderRadius: 32 },
+  flowCard: {
+    paddingTop: 20,
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 22,
+    borderRadius: 32,
+    height: 220,
     flexDirection: 'column',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20 },
-      android: { elevation: 8 }
+      android: {},
     }),
   },
   cardUnreadDotRing: { position: 'absolute', top: 13, right: 13, width: 14, height: 14, borderRadius: 7, backgroundColor: 'white', zIndex: 1, alignItems: 'center', justifyContent: 'center' },

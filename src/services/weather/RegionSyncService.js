@@ -32,12 +32,25 @@ const toDbObj = (appObj) => {
   if (appObj.address !== undefined) dbObj.address = appObj.address;
   if (appObj.lat !== undefined) dbObj.lat = appObj.lat;
   if (appObj.lon !== undefined) dbObj.lon = appObj.lon;
-  if (appObj.pageIndex !== undefined) dbObj.page_index = appObj.pageIndex;
-  if (appObj.order !== undefined) dbObj.sort_order = appObj.order;
-  if (appObj.inactive !== undefined) dbObj.inactive = appObj.inactive;
+  dbObj.page_index = Number.isFinite(Number(appObj.pageIndex)) ? Number(appObj.pageIndex) : 0;
+  dbObj.sort_order = Number.isFinite(Number(appObj.order)) ? Number(appObj.order) : 0;
+  dbObj.inactive = appObj.inactive === true;
   if (appObj.ownerId !== undefined) dbObj.owner_uid = appObj.ownerId;
   return dbObj;
 };
+
+const normalizeRegion = (region, index = 0, ownerId = _userId) => ({
+  ...region,
+  id: String(region?.id || `${Date.now()}_${index}`),
+  name: String(region?.name || '').trim(),
+  address: region?.address || '',
+  lat: region?.lat ?? null,
+  lon: region?.lon ?? null,
+  pageIndex: Number.isFinite(Number(region?.pageIndex)) ? Number(region.pageIndex) : Math.floor(index / 3),
+  order: Number.isFinite(Number(region?.order)) ? Number(region.order) : index,
+  inactive: region?.inactive === true,
+  ownerId: ownerId || region?.ownerId,
+});
 
 const _startSubscription = async (uid) => {
   if (_subscription) {
@@ -149,44 +162,56 @@ export const getBookmarkedRegions = async () => {
 };
 
 export const saveBookmarkedRegions = async (regions) => {
-  const arr = Array.isArray(regions) ? regions : [];
+  const arr = (Array.isArray(regions) ? regions : [])
+    .map((region, index) => normalizeRegion(region, index))
+    .filter(region => region.name);
   if (_userId) {
+    const previousRegions = Array.isArray(_cachedRegions) ? _cachedRegions : [];
+    const newIds = new Set(arr.map(r => r.id));
+    const toDelete = previousRegions.filter(r => !newIds.has(r.id)).map(r => r.id);
+
     try {
-      const newIds = new Set(arr.map(r => r.id));
-      const toDelete = (_cachedRegions || []).filter(r => !newIds.has(r.id)).map(r => r.id);
-
-      // Optimistic cache update so useFocusEffect re-fetch sees new data immediately
-      _cachedRegions = arr;
-      _snapshotListeners.forEach(cb => cb(arr));
-
       const dbArr = arr.map((r, i) => toDbObj({ ...r, order: i, ownerId: _userId }));
       if (dbArr.length > 0) {
         const { error } = await supabase.from('regions').upsert(dbArr, { onConflict: 'id' });
-        if (error) console.warn('[RegionSync] saveBookmarkedRegions upsert error:', error);
+        if (error) throw error;
       }
       if (toDelete.length > 0) {
-        await supabase.from('regions').delete().in('id', toDelete);
+        const { error } = await supabase.from('regions').delete().in('id', toDelete);
+        if (error) throw error;
       }
-      return;
+
+      _cachedRegions = arr;
+      _snapshotListeners.forEach(cb => cb(arr));
+      return arr;
     } catch (e) {
       console.warn('[RegionSync] saveBookmarkedRegions error:', e);
+      throw e;
     }
   }
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-  } catch (e) {}
+    return arr;
+  } catch (e) {
+    console.warn('[RegionSync] AsyncStorage save error:', e);
+    throw e;
+  }
 };
 
 export const addRegion = async (name, address, lat, lon, pageIndex = 0) => {
   const regions = await getBookmarkedRegions();
   const newRegion = {
     id: Date.now().toString(),
-    name,
-    address,
-    lat,
-    lon,
-    pageIndex,
+    name: String(name || '').trim(),
+    address: address || '',
+    lat: lat ?? null,
+    lon: lon ?? null,
+    pageIndex: Number.isFinite(Number(pageIndex)) ? Number(pageIndex) : 0,
+    order: regions.length,
+    inactive: false,
+    ownerId: _userId || undefined,
   };
+  if (!newRegion.name) throw new Error('REGION_NAME_REQUIRED');
   const updated = [...regions, newRegion];
   await saveBookmarkedRegions(updated);
   return updated;

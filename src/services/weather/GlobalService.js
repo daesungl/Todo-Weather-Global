@@ -234,7 +234,7 @@ export const fetchExtraMetrics = async (lat, lon) => {
  * 전 세계 도시 및 지역을 검색합니다. (Nominatim / OpenStreetMap)
  */
 export const searchLocations = async (query, lang = 'ko') => {
-  if (!query || query.length < 2) return [];
+  if (!query || query.length < 1) return [];
 
   try {
     const acceptLang = lang.startsWith('ko') ? 'ko,en' : 'en,ko';
@@ -243,7 +243,7 @@ export const searchLocations = async (query, lang = 'ko') => {
         q: query,
         format: 'json',
         addressdetails: 1,
-        limit: 10,
+        limit: 15,
         'accept-language': acceptLang,
       },
       headers: {

@@ -52,7 +52,7 @@ export const searchPlaces = async (query) => {
         request: 'search',
         version: '2.0',
         crs: 'epsg:4326',
-        size: '10', 
+        size: '15',
         page: '1',
         query: query,
         type: searchType, 
