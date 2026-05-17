@@ -4035,7 +4035,7 @@ const FlowScreen = ({ navigation, route }) => {
                             activeOpacity={0.9}
                             delayLongPress={250}
                           >
-                          <LinearGradient colors={flow.gradient || ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
+                          <LinearGradient colors={Array.isArray(flow.gradient) && flow.gradient.length >= 2 ? flow.gradient : FLOW_GRADIENT_PRESETS[parseInt(flow.id, 10) % FLOW_GRADIENT_PRESETS.length]?.colors ?? ['#6366f1', '#a855f7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.flowCard}>
 
                             {getFlowUnreadInfo(flow).hasUnread && (
                               <PulsingDot ringStyle={styles.cardUnreadDotRing} dotStyle={styles.cardUnreadDot} />

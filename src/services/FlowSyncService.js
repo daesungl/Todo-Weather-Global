@@ -164,6 +164,11 @@ const _startMembershipPoll = (uid) => {
         const mergedDoc = (userJustReordered && existingDoc && existingDoc.title)
           ? { ...plan, ...existingDoc, order: normalized.order, id: plan.id }
           : { ...(existingDoc || {}), ...normalized, order: normalized.order, id: plan.id };
+        // Preserve gradient from local cache if server returned null/empty — prevents color flicker
+        if (Array.isArray(existingDoc?.gradient) && existingDoc.gradient.length >= 2 &&
+            !(Array.isArray(mergedDoc.gradient) && mergedDoc.gradient.length >= 2)) {
+          mergedDoc.gradient = existingDoc.gradient;
+        }
         _flowDocs.set(plan.id, mergedDoc);
       });
       _mergeAndNotify(true);
