@@ -45,6 +45,9 @@ yarn-error.*
 .env*.local
 supabase/prod/config.json
 
+# private docs
+Doc/Todo.md
+
 # typescript
 *.tsbuildinfo
 

@@ -30,6 +30,7 @@ const ProfileScreen = ({ navigation }) => {
   const [newName, setNewName] = useState(user?.displayName || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const isLoggingOutRef = React.useRef(false);
@@ -241,8 +242,12 @@ const ProfileScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.headerCard}>
           <View style={styles.avatarContainer}>
-            {user.profileImage ? (
-              <Image source={{ uri: user.profileImage }} style={styles.avatar} />
+            {user.photoURL && !avatarError ? (
+              <Image
+                source={{ uri: user.photoURL }}
+                style={styles.avatar}
+                onError={() => setAvatarError(true)}
+              />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <LucideUser size={48} color={Colors.primary} />

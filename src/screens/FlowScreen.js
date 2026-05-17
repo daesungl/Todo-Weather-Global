@@ -1640,6 +1640,14 @@ const FlowScreen = ({ navigation, route }) => {
     }
   };
 
+  const handleShowInviteGuide = () => {
+    showConfirm(
+      t('flow.invite_guide_title', '초대 코드 사용 방법'),
+      t('flow.invite_guide_desc', '① 초대 코드를 생성하세요.\n② 공유 버튼으로 코드를 전달하세요.\n③ 초대받은 사람은 플랜 목록 화면에서 \'공유 플랜 참여\' 버튼을 눌러 코드를 입력하면 참여할 수 있습니다.'),
+      null, false
+    );
+  };
+
   const handleShowPermissionInfo = () => {
     showConfirm(
       t('flow.permission_info_title', '권한 안내'),
@@ -4916,6 +4924,11 @@ const FlowScreen = ({ navigation, route }) => {
                   onScroll={(e) => { inviteModalScrollY.current = e.nativeEvent.contentOffset.y; }}
                   contentContainerStyle={{ paddingBottom: 40 }}
                 >
+                  {/* 초대 안내 */}
+                  <Text style={{ fontSize: 13, color: Colors.outline, paddingHorizontal: 8, paddingTop: 16, lineHeight: 18 }}>
+                    {t('flow.invite_desc', '초대 코드를 생성하고 공유하면 지인들과 함께 플랜을 관리할 수 있습니다.')}
+                  </Text>
+
                   {/* 역할 선택 */}
                   <View style={{ paddingHorizontal: 8, paddingTop: 16 }}>
                     <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.outline, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('flow.invite_role_label', 'Role for new members')}</Text>

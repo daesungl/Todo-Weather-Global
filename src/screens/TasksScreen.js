@@ -19,6 +19,7 @@ import {
   KeyboardAvoidingView,
   Pressable,
   TouchableOpacity,
+  AppState,
 } from 'react-native';
 import { BorderlessButton } from 'react-native-gesture-handler';
 import ViewShot from 'react-native-view-shot';
@@ -175,7 +176,7 @@ const getMonthDays = (baseDate) => {
   return days;
 };
 
-const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMap, onDayPress, calendarFilter }) => {
+const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMap, onDayPress, calendarFilter, todayStr }) => {
   const baseDate = React.useMemo(() => getDateFromIndex(index), [index]);
   const days = React.useMemo(() => getMonthDays(baseDate), [baseDate]);
 
@@ -293,8 +294,6 @@ const MonthGrid = React.memo(({ index, tasks, flows, selectedDateStr, holidaysMa
 
     return { monthTasks: combinedTasks, taskSlots: slots };
   }, [tasks, flows, days, holidaysMap, calendarFilter]);
-
-  const todayStr = React.useMemo(() => dateStr(new Date()), []);
 
   return (
     <View style={[styles.monthGrid, { width: width - Spacing.sm * 2 }]}>
@@ -491,6 +490,7 @@ const TasksScreen = ({ navigation }) => {
   const [tasks, setTasks] = useState([]);
   const [flows, setFlows] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [todayStr, setTodayStr] = useState(() => dateStr(new Date()));
   const [menuVisible, setMenuVisible] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
@@ -772,6 +772,15 @@ const TasksScreen = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        setTodayStr(dateStr(new Date()));
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress', () => {
       setIsAdding(false);
       setIsTaskListVisible(false);
@@ -780,6 +789,7 @@ const TasksScreen = ({ navigation }) => {
       setIsEditingInSheet(false);
       const today = new Date();
       setSelectedDate(today);
+      setTodayStr(dateStr(today));
       calendarListRef.current?.scrollToIndex({ index: getMonthIndex(today), animated: true });
     });
     return unsubscribe;
@@ -1113,9 +1123,9 @@ const TasksScreen = ({ navigation }) => {
     setIsTaskSaving(false);
     setEditingTask(task);
     setNewTitle(task.title);
-    setTaskDate(new Date(task.date));
+    setTaskDate(new Date(task.date + 'T12:00:00'));
     setNewTime(task.time || '09:00');
-    setEndDate(new Date(task.endDate || task.date));
+    setEndDate(new Date((task.endDate || task.date) + 'T12:00:00'));
     setEndTime(task.endTime || '10:00');
     setIsAllDay(!!task.isAllDay);
     setNewMemo(task.memo || '');
@@ -1141,9 +1151,9 @@ const TasksScreen = ({ navigation }) => {
     setIsTaskSaving(false);
     setEditingTask(task);
     setNewTitle(task.title);
-    setTaskDate(new Date(task.date));
+    setTaskDate(new Date(task.date + 'T12:00:00'));
     setNewTime(task.time || '09:00');
-    setEndDate(new Date(task.endDate || task.date));
+    setEndDate(new Date((task.endDate || task.date) + 'T12:00:00'));
     setEndTime(task.endTime || '10:00');
     setIsAllDay(!!task.isAllDay);
     setNewMemo(task.memo || '');
@@ -1577,9 +1587,10 @@ const TasksScreen = ({ navigation }) => {
         holidaysMap={holidaysMap}
         onDayPress={handleDayPress}
         calendarFilter={calendarFilter}
+        todayStr={todayStr}
       />
     );
-  }, [tasks, flows, selectedDate, holidaysMap, handleDayPress, calendarFilter]);
+  }, [tasks, flows, selectedDate, holidaysMap, handleDayPress, calendarFilter, todayStr]);
 
   const searchTimerRef = useRef(null);
   const handleSearch = (val) => {

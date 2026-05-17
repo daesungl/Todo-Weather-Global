@@ -26,5 +26,4 @@ npm run build:prod:android
 
 # 잠수함 패치
 
-npx eas update --channel production --message "fix: task time/color persistence, card
-delete animation"
+npx eas update --channel production --message "update msg"
