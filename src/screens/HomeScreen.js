@@ -319,17 +319,19 @@ const HomeScreen = ({ navigation }) => {
 
       if (isShortKorean) {
         // 한 글자 한국어: Nominatim만 사용 (VWorld는 국내 결과 범람 가능)
-        const globalResults = await searchLocations(query, 'ko');
+        const globalResults = await searchLocations(query, i18n.language);
         setSearchResults(globalResults);
-      } else {
+      } else if (isKorean) {
+        // 한국어 쿼리: VWorld(국내) + Nominatim 병렬 검색
         const [domesticResults, globalResults] = await Promise.all([
           searchPlaces(query),
-          searchLocations(query, isKorean ? 'ko' : 'en'),
+          searchLocations(query, i18n.language),
         ]);
-        const combined = isKorean
-          ? [...domesticResults, ...globalResults]
-          : [...globalResults, ...domesticResults];
-        setSearchResults(combined);
+        setSearchResults([...domesticResults, ...globalResults]);
+      } else {
+        // 영어/일본어/중국어 등: Nominatim만 사용 (앱 언어 기준 결과 반환)
+        const globalResults = await searchLocations(query, i18n.language);
+        setSearchResults(globalResults);
       }
     } catch (e) {
       console.error('Search Error:', e);

@@ -233,11 +233,19 @@ export const fetchExtraMetrics = async (lat, lon) => {
 /**
  * 전 세계 도시 및 지역을 검색합니다. (Nominatim / OpenStreetMap)
  */
+const getAcceptLanguage = (lang) => {
+  if (lang.startsWith('ko')) return 'ko,en';
+  if (lang.startsWith('ja')) return 'ja,en';
+  if (lang === 'zh-TW') return 'zh-Hant,zh,en';
+  if (lang === 'zh-CN') return 'zh-Hans,zh,en';
+  return 'en';
+};
+
 export const searchLocations = async (query, lang = 'ko') => {
   if (!query || query.length < 1) return [];
 
   try {
-    const acceptLang = lang.startsWith('ko') ? 'ko,en' : 'en,ko';
+    const acceptLang = getAcceptLanguage(lang);
     const response = await axios.get('https://nominatim.openstreetmap.org/search', {
       params: {
         q: query,
@@ -297,7 +305,7 @@ export const searchLocations = async (query, lang = 'ko') => {
 export const getRepresentativeCoordinates = async (name, rawType, lang = 'ko') => {
   try {
     const cleanName = name.replace(' (State)', '').replace(' (Country)', '');
-    const acceptLang = lang.startsWith('ko') ? 'ko,en' : 'en,ko';
+    const acceptLang = getAcceptLanguage(lang);
     
     // 구조화된 검색 활용: 해당 주(State)나 국가(Country) 내의 'city'를 검색
     const searchParams = {

@@ -54,6 +54,12 @@ class AdManager {
       const msg = error?.message || String(error);
       // 다른 뷰컨트롤러가 이미 표시 중인 경우 → 광고는 여전히 유효하므로 유지
       if (msg.includes('already presenting')) return;
+      // Activity 미준비 상태 → 잠시 후 재시도 (dev/초기 기동 시 발생)
+      if (msg.includes('null-activity') || msg.includes('null_activity')) {
+        this.appOpenAd = null;
+        setTimeout(() => this.loadAppOpenAd(), 3000);
+        return;
+      }
       console.error('App Open Ad Error:', error);
       this.appOpenAd = null;
     });

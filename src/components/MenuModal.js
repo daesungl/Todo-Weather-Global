@@ -162,12 +162,20 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
     }
   }, [visible]);
 
-  const toggleLanguage = async () => {
-    const nextLang = currentLang.startsWith('ko') ? 'en' : 'ko';
+  const LANGUAGES = [
+    { code: 'en', label: 'English', flag: '🇺🇸' },
+    { code: 'ko', label: '한국어', flag: '🇰🇷' },
+    { code: 'ja', label: '日本語', flag: '🇯🇵' },
+    { code: 'zh-TW', label: '繁體中文', flag: '🇹🇼' },
+    { code: 'zh-CN', label: '简体中文', flag: '🇨🇳' },
+  ];
+
+  const selectLanguage = async (lang) => {
     try {
-      await AsyncStorage.setItem('@user_language', nextLang);
+      await AsyncStorage.setItem('@user_language', lang);
     } catch (_) {}
-    i18n.changeLanguage(nextLang);
+    i18n.changeLanguage(lang);
+    setActiveSubMenu(null);
   };
 
   const menuItems = [
@@ -312,6 +320,33 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                   </View>
                 </ScrollView>
               </>
+            ) : activeSubMenu === 'language' ? (
+              <>
+                <View style={[styles.header, { paddingHorizontal: Spacing.lg, justifyContent: 'flex-start', gap: 8 }]}>
+                  <TouchableOpacity onPress={() => setActiveSubMenu(null)} style={{ padding: 8 }}>
+                    <ArrowLeft size={24} color={Colors.text} />
+                  </TouchableOpacity>
+                  <Text style={Typography.h2}>{t('menu.language')}</Text>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                  <View style={styles.menuList}>
+                    {LANGUAGES.map(lang => (
+                      <TouchableOpacity
+                        key={lang.code}
+                        style={[styles.menuItem, currentLang === lang.code && { borderColor: Colors.primary, borderWidth: 1 }]}
+                        onPress={() => selectLanguage(lang.code)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[Typography.body, { fontWeight: '700', color: currentLang === lang.code ? Colors.primary : Colors.text }]}>
+                            {lang.flag}{'  '}{lang.label}
+                          </Text>
+                        </View>
+                        {currentLang === lang.code && <CheckCircle2 size={20} color={Colors.primary} />}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </>
             ) : (
               <>
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -337,22 +372,15 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                     ))}
 
                     {/* Inline Language Selector */}
-                    <TouchableOpacity style={styles.menuItem} onPress={toggleLanguage}>
+                    <TouchableOpacity style={styles.menuItem} onPress={() => setActiveSubMenu('language')}>
                       <View style={styles.iconWrap}>
                         <Languages size={20} color={Colors.primary} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={[Typography.body, { fontWeight: '700' }]}>{t('menu.language')}</Text>
-                        <Text style={styles.subText}>{currentLang.startsWith('ko') ? '한국어 (KR)' : 'English (EN)'}</Text>
+                        <Text style={styles.subText}>{LANGUAGES.find(l => l.code === currentLang)?.label ?? 'English'}</Text>
                       </View>
-                      <View style={styles.toggleTrack}>
-                        <View style={[styles.toggleChip, !currentLang.startsWith('ko') && styles.activeChip]}>
-                          <Text style={[styles.toggleText, !currentLang.startsWith('ko') && styles.activeToggleText]}>EN</Text>
-                        </View>
-                        <View style={[styles.toggleChip, currentLang.startsWith('ko') && styles.activeChip]}>
-                          <Text style={[styles.toggleText, currentLang.startsWith('ko') && styles.activeToggleText]}>KR</Text>
-                        </View>
-                      </View>
+                      <ChevronRight size={18} color={Colors.outlineVariant} />
                     </TouchableOpacity>
                   </View>
 
@@ -384,8 +412,8 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
                     activeOpacity={0.7}
                   >
                     <View style={styles.profileAvatarContainer}>
-                      {(!isGuest && user?.profileImage) ? (
-                        <Image source={{ uri: user.profileImage }} style={styles.profileAvatar} />
+                      {(!isGuest && user?.photoURL) ? (
+                        <Image source={{ uri: user.photoURL }} style={styles.profileAvatar} />
                       ) : (
                         <View style={[styles.profileAvatarPlaceholder, isGuest && { backgroundColor: Colors.surfaceContainer }]}>
                           <UserIcon size={20} color={isGuest ? Colors.outline : Colors.primary} />

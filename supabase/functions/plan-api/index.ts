@@ -48,7 +48,7 @@ const requireUser = async (req: Request) => {
     .maybeSingle();
 
   const displayName = normalizeDisplayName(
-    user.user_metadata?.full_name || user.user_metadata?.name || profile?.display_name,
+    profile?.display_name || user.user_metadata?.full_name || user.user_metadata?.name,
     user.email
   ) || 'Member';
 
