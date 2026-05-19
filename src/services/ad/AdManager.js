@@ -2,7 +2,7 @@ import mobileAds, { AppOpenAd, AdEventType } from 'react-native-google-mobile-ad
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { APP_OPENING_UNIT_ID } from '../../constants/AdUnits';
 
-const AD_COOLDOWN = 24 * 60 * 60 * 1000; // 24시간 (밀리초 단위)
+const AD_COOLDOWN = 48 * 60 * 60 * 1000; // 48시간 (밀리초 단위)
 const MIN_DAYS_BEFORE_ADS = 2; // 첫 오픈 후 2일이 지나야 광고 노출 (3일째부터)
 const LAST_AD_KEY = '@last_app_open_ad_time';
 const FIRST_INSTALL_DATE_KEY = '@first_install_date';

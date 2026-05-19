@@ -276,7 +276,17 @@
     "pollutant_so2": "二氧化硫",
     "alert_present": "天氣安全資訊",
     "alert_detail_title": "天氣警報詳情",
-    "alert_issued_at": "發布時間"
+    "alert_issued_at": "發布時間",
+    "moonrise": "月出",
+    "moonset": "月落",
+    "moon_new_moon": "新月",
+    "moon_waxing_crescent": "眉月",
+    "moon_first_quarter": "上弦月",
+    "moon_waxing_gibbous": "盈凸月",
+    "moon_full_moon": "滿月",
+    "moon_waning_gibbous": "虧凸月",
+    "moon_last_quarter": "下弦月",
+    "moon_waning_crescent": "殘月"
   },
   "search": {
     "place": "名稱",

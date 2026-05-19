@@ -276,7 +276,17 @@
     "pollutant_so2": "二酸化硫黄",
     "alert_present": "気象安全情報",
     "alert_detail_title": "気象警報の詳細",
-    "alert_issued_at": "発表日時"
+    "alert_issued_at": "発表日時",
+    "moonrise": "月の出",
+    "moonset": "月の入り",
+    "moon_new_moon": "新月",
+    "moon_waxing_crescent": "三日月",
+    "moon_first_quarter": "上弦の月",
+    "moon_waxing_gibbous": "十三夜月",
+    "moon_full_moon": "満月",
+    "moon_waning_gibbous": "十六夜月",
+    "moon_last_quarter": "下弦の月",
+    "moon_waning_crescent": "有明の月"
   },
   "search": {
     "place": "名称",

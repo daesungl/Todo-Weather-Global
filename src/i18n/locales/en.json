@@ -297,7 +297,17 @@
     "pollutant_so2": "Sulfur Dioxide",
     "alert_present": "Weather Safety Info",
     "alert_detail_title": "Weather Alert Details",
-    "alert_issued_at": "Issued at"
+    "alert_issued_at": "Issued at",
+    "moonrise": "Moonrise",
+    "moonset": "Moonset",
+    "moon_new_moon": "New Moon",
+    "moon_waxing_crescent": "Waxing Crescent",
+    "moon_first_quarter": "First Quarter",
+    "moon_waxing_gibbous": "Waxing Gibbous",
+    "moon_full_moon": "Full Moon",
+    "moon_waning_gibbous": "Waning Gibbous",
+    "moon_last_quarter": "Last Quarter",
+    "moon_waning_crescent": "Waning Crescent"
   },
   "search": {
     "place": "Name",

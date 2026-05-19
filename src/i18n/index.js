@@ -7,6 +7,8 @@ import ko from './locales/ko.json';
 import zhTW from './locales/zh-TW.json';
 import zhCN from './locales/zh-CN.json';
 import ja from './locales/ja.json';
+import es from './locales/es.json';
+import ptBR from './locales/pt-BR.json';
 
 const resources = {
   en: { translation: en },
@@ -14,6 +16,8 @@ const resources = {
   'zh-TW': { translation: zhTW },
   'zh-CN': { translation: zhCN },
   ja: { translation: ja },
+  es: { translation: es },
+  'pt-BR': { translation: ptBR },
 };
 
 export const LANGUAGE_STORAGE_KEY = '@user_language';
@@ -30,6 +34,8 @@ const getDeviceLanguage = () => {
     const isTraditional = region === 'TW' || region === 'HK' || region === 'MO';
     return isTraditional ? 'zh-TW' : 'zh-CN';
   }
+  if (code === 'es') return 'es';
+  if (code === 'pt') return 'pt-BR';
   return 'en';
 };
 

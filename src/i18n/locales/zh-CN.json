@@ -128,7 +128,17 @@
     "aqi_very_bad_desc": "对所有人不健康，请避免户外活动。",
     "aqi_hazardous_desc": "请尽量留在室内。",
     "pollutant_o3": "臭氧", "pollutant_no2": "二氧化氮", "pollutant_co": "一氧化碳", "pollutant_so2": "二氧化硫",
-    "alert_present": "天气安全提示", "alert_detail_title": "天气预警详情", "alert_issued_at": "发布时间"
+    "alert_present": "天气安全提示", "alert_detail_title": "天气预警详情", "alert_issued_at": "发布时间",
+    "moonrise": "月出",
+    "moonset": "月落",
+    "moon_new_moon": "新月",
+    "moon_waxing_crescent": "眉月",
+    "moon_first_quarter": "上弦月",
+    "moon_waxing_gibbous": "盈凸月",
+    "moon_full_moon": "满月",
+    "moon_waning_gibbous": "亏凸月",
+    "moon_last_quarter": "下弦月",
+    "moon_waning_crescent": "残月"
   },
   "search": { "place": "名称", "address": "地址", "placeholder": "搜索地点（例如：北京）", "guide": "搜索要添加的地区。", "no_results": "未找到结果。" },
   "tasks": {

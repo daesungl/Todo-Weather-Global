@@ -74,6 +74,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     uvIndex: '--',
     sunrise: '--',
     sunset: '--',
+    moonPhase: null,
+    moonIllumination: null,
+    moonrise: null,
+    moonset: null,
     source: '--'
   };
 
@@ -168,12 +172,21 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     const y = radius * Math.sin(angle);
 
     return {
-      left: 60 + x - 6,
+      left: 72 + x - 6,
       bottom: y - 6
     };
   };
 
   const sunPos = getSunPosition();
+
+  const getMoonEmoji = (phase) => {
+    const map = {
+      'New Moon': '🌑', 'Waxing Crescent': '🌒', 'First Quarter': '🌓',
+      'Waxing Gibbous': '🌔', 'Full Moon': '🌕', 'Waning Gibbous': '🌖',
+      'Last Quarter': '🌗', 'Waning Crescent': '🌘',
+    };
+    return map[phase] || '🌙';
+  };
 
   useEffect(() => {
     const region = route.params?.region;
@@ -935,6 +948,23 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             <View style={styles.sunGraphic}><View style={styles.sunHorizon} /><View style={styles.sunArc} />{sunPos && <View style={[styles.sunPoint, { left: sunPos.left, bottom: sunPos.bottom, backgroundColor: '#FFB800' }]}><View style={styles.sunGlow} /></View>}</View>
             <View style={styles.sunSide}><Text style={styles.sunLabel}>{t('weather.sunset', 'Sunset')}</Text><Text style={styles.sunTime}>{weatherData.sunset}</Text></View>
           </View>
+          {(weatherData.moonPhase || weatherData.moonrise || weatherData.moonset) && (
+            <View style={styles.moonRow}>
+              <Text style={styles.moonEmoji}>{getMoonEmoji(weatherData.moonPhase)}</Text>
+              <View style={styles.moonInfo}>
+                {weatherData.moonPhase && (
+                  <Text style={styles.moonPhaseName}>{t('weather.moon_' + weatherData.moonPhase.toLowerCase().replace(/ /g, '_'), weatherData.moonPhase)}{weatherData.moonIllumination != null ? `  ${weatherData.moonIllumination}%` : ''}</Text>
+                )}
+                {(weatherData.moonrise || weatherData.moonset) && (
+                  <Text style={styles.moonTimes}>
+                    {weatherData.moonrise ? `${t('weather.moonrise', 'Moonrise')} ${weatherData.moonrise}` : ''}
+                    {weatherData.moonrise && weatherData.moonset ? '  ·  ' : ''}
+                    {weatherData.moonset ? `${t('weather.moonset', 'Moonset')} ${weatherData.moonset}` : ''}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
         </View>
 
         <View style={styles.attribution}><Text style={styles.attrLabel}>{t('weather.data_provided_by', 'DATA PROVIDED BY')}</Text><Text style={styles.attrValue}>{weatherData.source}</Text></View>
@@ -1060,11 +1090,16 @@ const styles = StyleSheet.create({
   sunSide: { width: 70 },
   sunLabel: { fontSize: 11, color: Colors.textSecondary },
   sunTime: { fontSize: 13, fontWeight: '800' },
-  sunGraphic: { width: 120, height: 60, overflow: 'hidden' },
-  sunHorizon: { width: 120, height: 1, backgroundColor: Colors.outline, position: 'absolute', bottom: 0 },
-  sunArc: { width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: Colors.outline, borderStyle: 'dashed', position: 'absolute', bottom: -60 },
+  sunGraphic: { width: 144, height: 60, overflow: 'hidden' },
+  sunHorizon: { width: 144, height: 1, backgroundColor: Colors.outline, position: 'absolute', bottom: 0 },
+  sunArc: { width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: Colors.outline, borderStyle: 'dashed', position: 'absolute', bottom: -60, left: 12 },
   sunPoint: { width: 12, height: 12, borderRadius: 6, position: 'absolute' },
   sunGlow: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255, 184, 0, 0.2)', position: 'absolute', top: -4, left: -4 },
+  moonRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.surfaceContainer, gap: 12 },
+  moonEmoji: { fontSize: 28 },
+  moonInfo: { flex: 1 },
+  moonPhaseName: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  moonTimes: { fontSize: 11, color: Colors.textSecondary, marginTop: 3 },
   attribution: { paddingVertical: Spacing.xxl, alignItems: 'center' },
   attrLabel: { fontSize: 10, color: Colors.textSecondary },
   attrValue: { fontSize: 10, color: Colors.outline },

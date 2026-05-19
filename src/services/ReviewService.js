@@ -7,15 +7,26 @@ const KEYS = {
   lastAsked:      '@review_last_asked',
 };
 
-const MIN_LAUNCHES   = 5;
-const MIN_COMPLETES  = 3;
+const MIN_LAUNCHES   = 3;
+const MIN_COMPLETES  = 0;
 const COOLDOWN_DAYS  = 30;
 
 const getInt = async (key) => parseInt((await AsyncStorage.getItem(key)) || '0', 10);
 
 export const incrementLaunchCount = async () => {
   const n = await getInt(KEYS.launchCount);
-  await AsyncStorage.setItem(KEYS.launchCount, String(n + 1));
+  const newCount = n + 1;
+  await AsyncStorage.setItem(KEYS.launchCount, String(newCount));
+
+  if (!(await StoreReview.isAvailableAsync())) return;
+  if (newCount < MIN_LAUNCHES) return;
+
+  const lastAsked = parseInt((await AsyncStorage.getItem(KEYS.lastAsked)) || '0', 10);
+  const daysSince = (Date.now() - lastAsked) / (1000 * 60 * 60 * 24);
+  if (lastAsked && daysSince < COOLDOWN_DAYS) return;
+
+  await AsyncStorage.setItem(KEYS.lastAsked, String(Date.now()));
+  await StoreReview.requestReview();
 };
 
 // 태스크 완료 후 호출 — 조건 충족 시 리뷰 요청

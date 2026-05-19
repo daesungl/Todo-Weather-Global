@@ -297,7 +297,17 @@
     "pollutant_so2": "아황산가스",
     "alert_present": "기상 안전 정보",
     "alert_detail_title": "기상 안전 정보",
-    "alert_issued_at": "발표 시각"
+    "alert_issued_at": "발표 시각",
+    "moonrise": "달뜸",
+    "moonset": "달짐",
+    "moon_new_moon": "삭 (New Moon)",
+    "moon_waxing_crescent": "초승달",
+    "moon_first_quarter": "상현달",
+    "moon_waxing_gibbous": "상현망간달",
+    "moon_full_moon": "보름달",
+    "moon_waning_gibbous": "하현망간달",
+    "moon_last_quarter": "하현달",
+    "moon_waning_crescent": "그믐달"
   },
   "search": {
     "place": "명칭",
