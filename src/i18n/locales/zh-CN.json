@@ -61,7 +61,7 @@
     "interest_regions": "关注地区", "delete_region_confirm": "确定要删除此地区吗？",
     "region_limit_guide": "最多管理 5 个地区。", "widget_display": "📌 小组件",
     "locked_slot_guide": "需要升级高级版槽位", "upgrade": "升级",
-    "add_region": "添加地区", "region_add_success": "地区已添加。", "region_add_failed": "添加地区失败。",
+    "add_region": "添加地区", "region_add_success": "地区已添加。", "region_add_duplicate": "此地区已添加。", "region_add_failed": "添加地区失败。",
     "region_delete_success": "地区已删除。", "region_delete_failed": "删除地区失败。",
     "tasks_count": "今天有 {{count}} 个任务", "tasks_upcoming": "下一个：{{task}} 于 {{time}}",
     "premium_only_limit": "添加更多地区需要高级版订阅。（免费版最多 3 个）"
@@ -96,7 +96,7 @@
     "source_global": "全球模型（WeatherAPI）", "source_global_desc": "全球天气数据提供商",
     "curator_beta": "精选 Beta", "active_global": "当前使用 · 全球", "version": "Todo Weather v2.0.0 PREMIUM",
     "reset_confirm_msg": "确定要重置所有数据吗？\n此操作不可撤销。",
-    "reset_success_msg": "所有数据已重置。", "reset_weather_msg": "重置所有缓存的天气数据？",
+    "reset_success_msg": "所有数据已重置。", "reset_weather_success_msg": "天气缓存已重置。", "reset_todo_success_msg": "待办数据已重置。", "reset_flow_success_msg": "计划数据已重置。", "reset_all_success_msg": "所有数据已重置。", "reset_failed_msg": "数据重置失败。", "reset_weather_msg": "重置所有缓存的天气数据？",
     "reset_todo_msg": "重置所有待办数据？", "reset_flow_msg": "重置所有计划数据？",
     "reset_all_msg": "重置所有数据？此操作不可撤销。", "pref_title": "偏好设置",
     "pref_desc": "自定义温度和风速单位。", "pref_temp": "温度单位",

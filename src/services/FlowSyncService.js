@@ -910,6 +910,48 @@ export const deleteFlow = async (id) => {
   }
 };
 
+export const clearFlows = async () => {
+  const uid = _userId;
+  if (uid) {
+    try {
+      const plans = await listSupabasePlans();
+      await Promise.allSettled(
+        (plans || []).map(plan =>
+          plan?._role === 'owner' || plan?.role === 'owner' || plan?.ownerUid === uid
+            ? deleteSupabasePlan(plan.id)
+            : leaveSupabasePlan(plan.id)
+        )
+      );
+    } catch (e) {
+      console.warn('[FlowSync] clearFlows Supabase error:', e);
+      throw e;
+    }
+  }
+
+  _flowRefs = new Map();
+  _flowDocs = new Map();
+  _flowSteps = new Map();
+  _deletedStepIds = new Map();
+  _lastOptimisticUpdateMs = new Map();
+  _cachedFlows = [];
+  _pendingDeletes = new Set();
+  _deletedFlowIds = new Set();
+  _mergeAndNotify();
+
+  const keys = [
+    '@todo_weather_flows',
+    getFlowsStorageKey(uid),
+  ];
+  if (uid) {
+    keys.push(
+      getSharedFlowsStorageKey(uid),
+      getDeletedFlowsStorageKey(uid)
+    );
+  }
+  await AsyncStorage.multiRemove(keys);
+  return [];
+};
+
 export const applyFlowFreeLimit = async (limit) => {
   const flows = await getFlows();
   const ownFlows = flows.filter(f => !f._ownerUid);

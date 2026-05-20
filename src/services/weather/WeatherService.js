@@ -6,23 +6,25 @@ import AirService from './AirService';
 
 import { getCache, saveCache } from '../StorageService';
 
+const _inFlight = new Map();
+
 /**
  * Main Weather Engine
  * Strategy: Cache Check -> VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
  */
-export const getWeather = async (lat, lon, force = false, regionId = '', providedAddress = '') => {
+export const getWeather = (lat, lon, force = false, regionId = '', providedAddress = '') => {
   console.log(`[WeatherService] getWeather called: lat=${lat}, lon=${lon}, regionId=${regionId}, address=${providedAddress}`);
   if (__DEV__) {
     console.log('[WeatherService] coordinate debug', {
-      lat,
-      lon,
-      regionId,
-      providedAddress,
+      lat, lon, regionId, providedAddress,
       coordBasedIsKorea: lat >= 33 && lat <= 39 && lon >= 124 && lon <= 132,
     });
   }
   const cacheKey = `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
 
+  if (!force && _inFlight.has(cacheKey)) return _inFlight.get(cacheKey);
+
+  const promise = (async () => {
   try {
     // 0. Preliminary Cache Check
     if (!force) {
@@ -187,7 +189,13 @@ export const getWeather = async (lat, lon, force = false, regionId = '', provide
       dailyForecast: [],
       hourlyForecast: []
     };
+  } finally {
+    _inFlight.delete(cacheKey);
   }
+  })();
+
+  _inFlight.set(cacheKey, promise);
+  return promise;
 };
 
 

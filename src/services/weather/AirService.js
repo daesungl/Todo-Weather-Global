@@ -3,6 +3,8 @@ import { weatherProxy } from './weatherProxyClient';
 
 // 인메모리 캐시: 같은 세션 내 중복 호출 즉시 차단 (AsyncStorage I/O 없이 빠르게)
 const _memCache = new Map();
+// 진행 중인 요청 Map: 동시 중복 호출 시 동일 Promise 반환 (API 중복 방지)
+const _inFlight = new Map();
 // AsyncStorage 캐시 키 prefix (앱 재시작 후에도 1시간 유지)
 const AIR_CACHE_PREFIX = 'air_v1_';
 
@@ -136,82 +138,94 @@ export const fetchAirQuality = async (lat, lon, address = '') => {
     return memCached;
   }
 
-  // 2. AsyncStorage 영구 캐시 (앱 재시작 후 복원, 429 방지)
-  try {
-    const persisted = await getCache(storageCacheKey);
-    if (persisted) {
-      console.log(`[AirService] Persistent cache HIT for ${coordKey} (station: ${persisted?.stationName})`);
-      _memCache.set(coordKey, persisted); // 세션 메모리에도 올려둠
-      return persisted;
-    }
-  } catch (_) { /* 캐시 읽기 실패 시 무시하고 API 호출 */ }
-
-  try {
-    console.log(`[AirService] fetchAirQuality start: lat=${lat}, lon=${lon}, addr="${address}"`);
-    const tm = await getTMCoordinates(lat, lon, address);
-    if (!tm) { console.warn('[AirService] TM conversion failed, aborting'); return null; }
-
-    const station = await getNearestStation(tm.x, tm.y);
-    if (!station) { console.warn('[AirService] No station found, aborting'); return null; }
-
-    console.log(`[AirService] Fetching realtime for station: ${station.stationName}`);
-    const [realtimeRes, forecastRes] = await Promise.all([
-      weatherProxy('kma', 'B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty', {
-        returnType: 'json', stationName: station.stationName, dataTerm: 'DAILY', ver: '1.3', numOfRows: 1,
-      }).catch(e => {
-        console.error('[AirService] Realtime API error:', e?.response?.status, e?.message);
-        if (e.response?.status === 429) return { _error: '429' };
-        return null;
-      }),
-      weatherProxy('kma', 'B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth', {
-        returnType: 'json', searchDate: new Date().toISOString().split('T')[0], informCode: 'PM10',
-      }).catch(() => null),
-    ]);
-
-    if (realtimeRes?._error === '429') return { error: 'LIMIT_HIT', stationName: station.stationName };
-
-    const data = realtimeRes?.data?.response?.body?.items?.[0];
-    if (!data) { console.warn('[AirService] No realtime data returned'); return null; }
-
-    // 에어코리아 API는 미측정 시 '-' 문자열을 반환함 → 정상 파싱 필요
-    const safeGrade = (val) => {
-      const n = parseInt(val);
-      return isNaN(n) || n <= 0 ? null : n; // '-', null, '0' 모두 null 처리
-    };
-    const safeVal = (val) => (!val || val === '-' || val === 'NaN') ? '--' : val;
-
-    const khaiGradeNum = safeGrade(data.khaiGrade);
-    const baseInfo = getGradeInfo(khaiGradeNum || 2); // null이면 보통(2) 기본값
-
-    console.log(`[AirService] Raw data - khaiGrade=${data.khaiGrade}, khaiValue=${data.khaiValue}, pm10=${data.pm10Value}, pm25=${data.pm25Value}`);
-
-    const forecast = forecastRes?.data?.response?.body?.items?.[0];
-
-    const result = {
-      aqiValue: safeVal(data.khaiValue),
-      airQuality: khaiGradeNum ? baseInfo.label : '--',
-      aqiText: khaiGradeNum ? baseInfo.text : '측정 데이터가 없거나 준비 중입니다.',
-      aqiColor: baseInfo?.color || '#bdbdbd',
-      aqiIndex: baseInfo?.index || 0,
-      stationName: station?.stationName || '측정소 정보 없음',
-      aqiForecast: forecast ? forecast.informOverall : null,
-      pollutants: {
-        pm10: { value: safeVal(data.pm10Value), unit: 'μg/m³', ...getPollutantInfo(data.pm10Value, 'pm10') },
-        pm25: { value: safeVal(data.pm25Value), unit: 'μg/m³', ...getPollutantInfo(data.pm25Value, 'pm25') },
-        o3:   { value: safeVal(data.o3Value),   unit: 'ppm',   ...getPollutantInfo(data.o3Value,   'o3') },
-        no2:  { value: safeVal(data.no2Value),  unit: 'ppm',   ...getPollutantInfo(data.no2Value,  'no2') },
-        co:   { value: safeVal(data.coValue),   unit: 'ppm',   ...getPollutantInfo(data.coValue,   'co') },
-        so2:  { value: safeVal(data.so2Value),  unit: 'ppm',   ...getPollutantInfo(data.so2Value,  'so2') },
-      }
-    };
-
-    // 결과를 인메모리 + AsyncStorage 양쪽 캐시에 저장 (1시간 TTL)
-    _memCache.set(coordKey, result);
-    saveCache(storageCacheKey, result).catch(() => {}); // 비동기 저장, 실패 무시
-    return result;
-  } catch (error) {
-    return null;
+  // 2. 진행 중인 요청이 있으면 동일 Promise 반환 (동시 중복 호출 방지)
+  // _inFlight.set은 IIFE 시작 직후(첫 await 이전) 동기적으로 실행되므로 race-free
+  if (_inFlight.has(coordKey)) {
+    console.log(`[AirService] In-flight HIT for ${coordKey}`);
+    return _inFlight.get(coordKey);
   }
+
+  const promise = (async () => {
+    // 3. AsyncStorage 영구 캐시 (앱 재시작 후 복원, 429 방지)
+    try {
+      const persisted = await getCache(storageCacheKey);
+      if (persisted) {
+        console.log(`[AirService] Persistent cache HIT for ${coordKey} (station: ${persisted?.stationName})`);
+        _memCache.set(coordKey, persisted);
+        return persisted;
+      }
+    } catch (_) { /* 캐시 읽기 실패 시 무시하고 API 호출 */ }
+
+    try {
+      console.log(`[AirService] fetchAirQuality start: lat=${lat}, lon=${lon}, addr="${address}"`);
+      const tm = await getTMCoordinates(lat, lon, address);
+      if (!tm) { console.warn('[AirService] TM conversion failed, aborting'); return null; }
+
+      const station = await getNearestStation(tm.x, tm.y);
+      if (!station) { console.warn('[AirService] No station found, aborting'); return null; }
+
+      console.log(`[AirService] Fetching realtime for station: ${station.stationName}`);
+      const [realtimeRes, forecastRes] = await Promise.all([
+        weatherProxy('kma', 'B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty', {
+          returnType: 'json', stationName: station.stationName, dataTerm: 'DAILY', ver: '1.3', numOfRows: 1,
+        }).catch(e => {
+          console.error('[AirService] Realtime API error:', e?.response?.status, e?.message);
+          if (e.response?.status === 429) return { _error: '429' };
+          return null;
+        }),
+        weatherProxy('kma', 'B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth', {
+          returnType: 'json', searchDate: new Date().toISOString().split('T')[0], informCode: 'PM10',
+        }).catch(() => null),
+      ]);
+
+      if (realtimeRes?._error === '429') return { error: 'LIMIT_HIT', stationName: station.stationName };
+
+      const data = realtimeRes?.data?.response?.body?.items?.[0];
+      if (!data) { console.warn('[AirService] No realtime data returned'); return null; }
+
+      const safeGrade = (val) => {
+        const n = parseInt(val);
+        return isNaN(n) || n <= 0 ? null : n;
+      };
+      const safeVal = (val) => (!val || val === '-' || val === 'NaN') ? '--' : val;
+
+      const khaiGradeNum = safeGrade(data.khaiGrade);
+      const baseInfo = getGradeInfo(khaiGradeNum || 2);
+
+      console.log(`[AirService] Raw data - khaiGrade=${data.khaiGrade}, khaiValue=${data.khaiValue}, pm10=${data.pm10Value}, pm25=${data.pm25Value}`);
+
+      const forecast = forecastRes?.data?.response?.body?.items?.[0];
+
+      const result = {
+        aqiValue: safeVal(data.khaiValue),
+        airQuality: khaiGradeNum ? baseInfo.label : '--',
+        aqiText: khaiGradeNum ? baseInfo.text : '측정 데이터가 없거나 준비 중입니다.',
+        aqiColor: baseInfo?.color || '#bdbdbd',
+        aqiIndex: baseInfo?.index || 0,
+        stationName: station?.stationName || '측정소 정보 없음',
+        aqiForecast: forecast ? forecast.informOverall : null,
+        pollutants: {
+          pm10: { value: safeVal(data.pm10Value), unit: 'μg/m³', ...getPollutantInfo(data.pm10Value, 'pm10') },
+          pm25: { value: safeVal(data.pm25Value), unit: 'μg/m³', ...getPollutantInfo(data.pm25Value, 'pm25') },
+          o3:   { value: safeVal(data.o3Value),   unit: 'ppm',   ...getPollutantInfo(data.o3Value,   'o3') },
+          no2:  { value: safeVal(data.no2Value),  unit: 'ppm',   ...getPollutantInfo(data.no2Value,  'no2') },
+          co:   { value: safeVal(data.coValue),   unit: 'ppm',   ...getPollutantInfo(data.coValue,   'co') },
+          so2:  { value: safeVal(data.so2Value),  unit: 'ppm',   ...getPollutantInfo(data.so2Value,  'so2') },
+        }
+      };
+
+      _memCache.set(coordKey, result);
+      saveCache(storageCacheKey, result).catch(() => {});
+      return result;
+    } catch (error) {
+      return null;
+    } finally {
+      _inFlight.delete(coordKey);
+    }
+  })();
+
+  _inFlight.set(coordKey, promise);
+  return promise;
 };
 
 const AirService = {

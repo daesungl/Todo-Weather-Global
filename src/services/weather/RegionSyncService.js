@@ -198,6 +198,24 @@ export const saveBookmarkedRegions = async (regions) => {
   }
 };
 
+export const clearBookmarkedRegions = async () => {
+  if (_userId) {
+    const { error } = await supabase
+      .from('regions')
+      .delete()
+      .eq('owner_uid', _userId);
+    if (error) {
+      console.warn('[RegionSync] clearBookmarkedRegions error:', error);
+      throw error;
+    }
+  }
+
+  await AsyncStorage.removeItem(STORAGE_KEY);
+  _cachedRegions = [];
+  _snapshotListeners.forEach(cb => cb([]));
+  return [];
+};
+
 export const addRegion = async (name, address, lat, lon, pageIndex = 0) => {
   const regions = await getBookmarkedRegions();
   const newRegion = {

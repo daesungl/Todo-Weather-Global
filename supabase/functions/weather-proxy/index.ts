@@ -24,6 +24,8 @@ const ALLOWED_PATHS: Record<string, string[]> = {
   weatherapi: [
     'v1/forecast.json',
     'v1/current.json',
+    'v1/astronomy.json',
+    'v1/marine.json',
   ],
   vworld: [
     'req/address',

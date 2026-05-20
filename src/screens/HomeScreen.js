@@ -189,6 +189,8 @@ const HomeScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [addingRegionKey, setAddingRegionKey] = useState(null);
+  const isAddingRegionRef = useRef(false);
   const modalPanY = useRef(new Animated.Value(height)).current;
   const [adHidden, setAdHidden] = useState(false);
   const [isScrollEnabled, setIsScrollEnabled] = useState(true);
@@ -311,26 +313,35 @@ const HomeScreen = ({ navigation }) => {
 
   const isKoreanQuery = (query) => /[가-힣]/.test(query);
 
+  // 검색어 자체의 문자 스크립트 기반으로 언어 감지 (앱 언어 설정과 무관)
+  const detectQueryLanguage = (query) => {
+    if (/[぀-ゟ゠-ヿ]/.test(query)) return 'ja';
+    if (/[一-鿿豈-﫿]/.test(query)) return i18n.language.startsWith('zh') ? i18n.language : 'zh-CN';
+    if (/[가-힣ㄱ-ㆎ]/.test(query)) return 'ko';
+    return 'en';
+  };
+
   const performSearch = async (query) => {
     setIsSearching(true);
     try {
       const isKorean = isKoreanQuery(query);
       const isShortKorean = isKorean && query.trim().length === 1;
+      const queryLang = detectQueryLanguage(query);
 
       if (isShortKorean) {
         // 한 글자 한국어: Nominatim만 사용 (VWorld는 국내 결과 범람 가능)
-        const globalResults = await searchLocations(query, i18n.language);
+        const globalResults = await searchLocations(query, queryLang);
         setSearchResults(globalResults);
       } else if (isKorean) {
         // 한국어 쿼리: VWorld(국내) + Nominatim 병렬 검색
         const [domesticResults, globalResults] = await Promise.all([
           searchPlaces(query),
-          searchLocations(query, i18n.language),
+          searchLocations(query, queryLang),
         ]);
         setSearchResults([...domesticResults, ...globalResults]);
       } else {
-        // 영어/일본어/중국어 등: Nominatim만 사용 (앱 언어 기준 결과 반환)
-        const globalResults = await searchLocations(query, i18n.language);
+        // 영어/일본어/중국어 등: 검색어 언어 기준으로 결과 반환
+        const globalResults = await searchLocations(query, queryLang);
         setSearchResults(globalResults);
       }
     } catch (e) {
@@ -512,14 +523,37 @@ const HomeScreen = ({ navigation }) => {
     );
   };
 
+  const getRegionAddKey = (item) => `${item?.id || ''}:${item?.name || ''}:${item?.lat || ''}:${item?.lon || ''}`;
+
+  const isSameRegion = (region, item) => {
+    const nameA = String(region?.name || '').trim().toLowerCase();
+    const nameB = String(item?.name || '').trim().toLowerCase();
+    const addressA = String(region?.address || '').trim().toLowerCase();
+    const addressB = String(item?.address || '').trim().toLowerCase();
+    const latA = Number(region?.lat);
+    const latB = Number(item?.lat);
+    const lonA = Number(region?.lon);
+    const lonB = Number(item?.lon);
+    const hasCoords = Number.isFinite(latA) && Number.isFinite(latB) && Number.isFinite(lonA) && Number.isFinite(lonB);
+    const sameCoords = hasCoords && Math.abs(latA - latB) < 0.000001 && Math.abs(lonA - lonB) < 0.000001;
+
+    return sameCoords || (nameA && nameA === nameB && addressA === addressB);
+  };
+
   const handleAddRegion = async (item) => {
+    if (isAddingRegionRef.current) return;
+
+    const regionKey = getRegionAddKey(item);
+    isAddingRegionRef.current = true;
+    setAddingRegionKey(regionKey);
+
     try {
       let finalItem = { ...item };
 
       // 주(State)나 국가(Country) 단위 결과인 경우 대표 도시 좌표로 보정
       if (item.isRegion) {
         setIsSearching(true);
-        const representative = await getRepresentativeCoordinates(item.name, item.rawType, i18n.language);
+        const representative = await getRepresentativeCoordinates(item.name, item.rawType, detectQueryLanguage(item.name));
         setIsSearching(false);
         if (representative) {
           finalItem = {
@@ -529,6 +563,12 @@ const HomeScreen = ({ navigation }) => {
           };
           console.log(`[HomeScreen] Location corrected: ${item.name} -> ${representative.name} coordinates`);
         }
+      }
+
+      if (regionsRef.current.some(region => isSameRegion(region, finalItem))) {
+        closeSearchModal();
+        showToast(t('home.region_add_duplicate', '이미 추가된 관심 지역입니다.'));
+        return;
       }
 
       if (displayRegions.filter(r => !r.inactive).length >= limits.regions) {
@@ -561,6 +601,8 @@ const HomeScreen = ({ navigation }) => {
       console.error('[HomeScreen] add region error:', error);
       showToast(t('home.region_add_failed', '관심 지역 추가에 실패했습니다.'));
     } finally {
+      isAddingRegionRef.current = false;
+      setAddingRegionKey(null);
       setIsSearching(false);
     }
   };
@@ -902,8 +944,18 @@ const HomeScreen = ({ navigation }) => {
                 ) : (
                   <>
                     {searchResults.length > 0 ? (
-                      searchResults.map((item) => (
-                        <TouchableOpacity key={item.id} style={styles.resultItem} onPress={() => handleAddRegion(item)}>
+                      searchResults.map((item) => {
+                        const regionKey = getRegionAddKey(item);
+                        const isAddingThisRegion = addingRegionKey === regionKey;
+                        const isAddLocked = !!addingRegionKey;
+
+                        return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[styles.resultItem, isAddLocked && styles.resultItemDisabled]}
+                          onPress={() => handleAddRegion(item)}
+                          disabled={isAddLocked}
+                        >
                           <MapPin size={18} color={item.type === 'domestic' ? Colors.primary : Colors.outline} />
                           <View style={styles.resultTextCol}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -916,8 +968,10 @@ const HomeScreen = ({ navigation }) => {
                             </View>
                             <Text style={styles.resultSub}>{item.address}</Text>
                           </View>
+                          {isAddingThisRegion && <ActivityIndicator size="small" color={Colors.primary} />}
                         </TouchableOpacity>
-                      ))
+                      );
+                      })
                     ) : searchQuery.length >= 2 ? (
                       <View style={styles.emptySearch}>
                         <Text style={styles.emptyText}>{t('search.no_results')}</Text>
@@ -1294,6 +1348,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.outlineVariant,
     gap: 14
   },
+  resultItemDisabled: { opacity: 0.55 },
   resultTextCol: { flex: 1 },
   resultName: { fontSize: 16, fontWeight: '700', color: Colors.text },
   resultSub: { fontSize: 13, color: Colors.outline, marginTop: 2 },

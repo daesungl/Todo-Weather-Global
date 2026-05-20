@@ -254,6 +254,25 @@ export const saveTasks = async (tasks) => {
   }
 };
 
+export const clearTasks = async () => {
+  if (_userId) {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('owner_uid', _userId);
+    if (error) {
+      console.warn('[TaskSync] clearTasks error:', error);
+      throw error;
+    }
+  }
+
+  _pendingDeleteIds = new Set();
+  await AsyncStorage.multiRemove([TASKS_STORAGE_KEY, PENDING_DELETES_KEY]);
+  _cachedTasks = [];
+  _snapshotListeners.forEach((cb) => cb([]));
+  return [];
+};
+
 export const addTask = async (taskData) => {
   const tasks = await getTasks();
   const now = new Date().toISOString();

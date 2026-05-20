@@ -288,12 +288,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
       // Minimum loading time for "演出" (visual effect)
       const minDelay = new Promise(resolve => setTimeout(resolve, 1200));
 
-      // AirQuality re-fetch
+      // AirQuality re-fetch (날씨 데이터에 이미 있으면 스킵)
       let airData = null;
       const isDomestic = lat > 32 && lat < 39 && lon > 124 && lon < 132;
-      const address = initialData.locationName || '';
+      const address = initialData.addressName || '';
 
-      if (isDomestic) {
+      const alreadyHasAir = initialData.airQuality && initialData.airQuality !== '--';
+      if (isDomestic && !alreadyHasAir) {
         try {
           console.log(`[${address}] 대기질 데이터 ( AirKorea ) 조회 중`);
           const result = await AirService.fetchAirQuality(lat, lon, address);

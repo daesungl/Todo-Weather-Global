@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Alert, Linking, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, Animated, Dimensions, Pressable, Linking, Switch, Platform } from 'react-native';
 import { TouchableOpacity, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,10 @@ import { useUnits } from '../contexts/UnitContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Image } from 'react-native';
+import { clearBookmarkedRegions } from '../services/weather/RegionSyncService';
+import { clearTasks } from '../services/task/TaskSyncService';
+import { clearFlows } from '../services/FlowSyncService';
+import ToastStack, { useToastStack } from './ToastStack';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.82;
@@ -24,9 +28,99 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const [isShowing, setIsShowing] = useState(visible);
   const [activeSubMenu, setActiveSubMenu] = useState(null);
+  const [resetModalMode, setResetModalMode] = useState(null);
+  const [isResetting, setIsResetting] = useState(false);
   const pendingNavRef = useRef(null);
+  const { toasts, showToast, handleToastDone } = useToastStack();
 
   const currentLang = i18n.language;
+
+  const resetActionLabels = {
+    weather: t('menu.reset_weather') || 'Weather Reset',
+    todo: t('menu.reset_todo') || 'Todo Reset',
+    flow: t('menu.reset_flow') || 'Plan Reset',
+    all: t('menu.reset_all') || 'Reset All',
+  };
+
+  const finishReset = (type) => {
+    setResetModalMode(null);
+    onReset?.();
+    showToast(t(`menu.reset_${type}_success_msg`, t('menu.reset_success_msg')));
+    setTimeout(() => onClose(), 950);
+  };
+
+  const handleResetAction = async (type) => {
+    if (isResetting) return;
+    if (['weather', 'todo', 'flow', 'all'].includes(type)) {
+      setResetModalMode(`confirm:${type}`);
+      return;
+    }
+  };
+
+  const executeResetAction = async (type) => {
+    if (isResetting) return;
+    setIsResetting(true);
+    try {
+      if (type === 'weather') {
+        const keys = await AsyncStorage.getAllKeys();
+        const weatherCacheKeys = keys.filter(k => k.startsWith('@weather_cache_'));
+        if (weatherCacheKeys.length > 0) await AsyncStorage.multiRemove(weatherCacheKeys);
+        finishReset(type);
+        return;
+      }
+
+      if (type === 'todo') {
+        await clearTasks();
+        await AsyncStorage.removeItem('@user_holiday_countries');
+        finishReset(type);
+        return;
+      }
+
+      if (type === 'flow') {
+        await clearFlows();
+        finishReset(type);
+      }
+    } catch (error) {
+      console.warn('[MenuModal] reset failed:', error);
+      setResetModalMode(null);
+      showToast(t('menu.reset_failed_msg', 'Failed to reset data.'));
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleResetAll = async () => {
+    if (isResetting) return;
+    setIsResetting(true);
+    try {
+      await Promise.all([
+        clearBookmarkedRegions(),
+        clearTasks(),
+        clearFlows(),
+      ]);
+      const keys = await AsyncStorage.getAllKeys();
+      const appKeys = keys.filter(k =>
+        k.startsWith('@weather_cache_') ||
+        k === '@tasks_v1' ||
+        k === '@todo_weather_flows' ||
+        k.startsWith('@todo_weather_flows_') ||
+        k.startsWith('@todo_weather_shared_flows_') ||
+        k.startsWith('@flows_global_schema_migrated_') ||
+        k.startsWith('@tasks_migrated_') ||
+        k.startsWith('@regions_migrated_') ||
+        k === '@save_wBookmark' ||
+        k === '@user_holiday_countries'
+      );
+      if (appKeys.length > 0) await AsyncStorage.multiRemove(appKeys);
+      finishReset('all');
+    } catch (error) {
+      console.warn('[MenuModal] reset all failed:', error);
+      setResetModalMode(null);
+      showToast(t('menu.reset_failed_msg', 'Failed to reset data.'));
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   const handleMenuItemPress = async (id) => {
     if (id === 'profile') {
@@ -52,74 +146,7 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
       return;
     }
     if (id === 'reset') {
-      Alert.alert(
-        t('menu.reset') || 'Data Management',
-        t('menu.reset_sub') || 'Select the data you want to reset',
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { 
-            text: t('menu.reset_weather') || 'Weather Reset', 
-            onPress: async () => {
-              const keys = await AsyncStorage.getAllKeys();
-              const weatherCacheKeys = keys.filter(k => k.startsWith('@weather_cache_'));
-              if (weatherCacheKeys.length > 0) await AsyncStorage.multiRemove(weatherCacheKeys);
-              Alert.alert(t('common.info'), t('menu.reset_success_msg'));
-              onClose();
-              onReset?.();
-            } 
-          },
-          { 
-            text: t('menu.reset_todo') || 'Todo Reset', 
-            onPress: async () => {
-              const todoKeys = ['@tasks_v1', '@user_holiday_countries'];
-              await AsyncStorage.multiRemove(todoKeys);
-              Alert.alert(t('common.info'), t('menu.reset_success_msg'));
-              onClose();
-              onReset?.();
-            } 
-          },
-          { 
-            text: t('menu.reset_flow') || 'Plan Reset',
-            onPress: async () => {
-              await AsyncStorage.removeItem('@todo_weather_flows');
-              Alert.alert(t('common.info'), t('menu.reset_success_msg'));
-              onClose();
-              onReset?.();
-            } 
-          },
-          { 
-            text: t('menu.reset_all') || 'Reset All', 
-            style: 'destructive',
-            onPress: async () => {
-              Alert.alert(
-                t('menu.reset_all'),
-                t('menu.reset_all_msg'),
-                [
-                  { text: t('common.cancel'), style: 'cancel' },
-                  { 
-                    text: t('common.confirm'), 
-                    style: 'destructive',
-                    onPress: async () => {
-                      const keys = await AsyncStorage.getAllKeys();
-                      const appKeys = keys.filter(k => 
-                        k.startsWith('@weather_cache_') || 
-                        k === '@tasks_v1' || 
-                        k === '@todo_weather_flows' ||
-                        k === '@save_wBookmark' ||
-                        k === '@user_holiday_countries'
-                      );
-                      if (appKeys.length > 0) await AsyncStorage.multiRemove(appKeys);
-                      Alert.alert(t('common.info'), t('menu.reset_success_msg'));
-                      onClose();
-                      onReset?.();
-                    }
-                  }
-                ]
-              );
-            } 
-          }
-        ]
-      );
+      setResetModalMode('options');
     } else {
       onClose();
     }
@@ -178,6 +205,91 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
     } catch (_) {}
     i18n.changeLanguage(lang);
     setActiveSubMenu(null);
+  };
+
+  const renderResetDialog = () => {
+    if (!resetModalMode) return null;
+    const confirmType = resetModalMode.startsWith('confirm:')
+      ? resetModalMode.split(':')[1]
+      : null;
+    const isConfirm = !!confirmType;
+
+    return (
+      <Modal transparent visible={!!resetModalMode} animationType="fade" onRequestClose={() => setResetModalMode(null)}>
+        <View style={styles.resetDialogLayer}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setResetModalMode(null)}
+          />
+          <Pressable style={styles.resetDialog} onPress={() => {}}>
+            <Text style={styles.resetDialogTitle}>
+              {isConfirm ? resetActionLabels[confirmType] : t('menu.reset')}
+            </Text>
+            <Text style={styles.resetDialogMessage}>
+              {isConfirm
+                ? t(`menu.reset_${confirmType}_msg`, `${resetActionLabels[confirmType]}을(를) 정말 초기화하시겠습니까? 이 작업은 취소할 수 없습니다.`)
+                : t('menu.reset_sub')}
+            </Text>
+
+            {isConfirm ? (
+              <>
+                <Pressable
+                  style={({ pressed }) => [styles.resetDialogButton, styles.resetDialogDangerButton, (pressed || isResetting) && styles.resetDialogButtonPressed]}
+                  onPress={() => (
+                    confirmType === 'all'
+                      ? handleResetAll()
+                      : executeResetAction(confirmType)
+                  )}
+                  disabled={isResetting}
+                >
+                  <Text style={styles.resetDialogDangerText}>{t('common.confirm')}</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.resetDialogButton, (pressed || isResetting) && styles.resetDialogButtonPressed]}
+                  onPress={() => setResetModalMode('options')}
+                  disabled={isResetting}
+                >
+                  <Text style={styles.resetDialogButtonText}>{t('common.cancel')}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Pressable
+                  style={({ pressed }) => [styles.resetDialogButton, pressed && styles.resetDialogButtonPressed]}
+                  onPress={() => handleResetAction('weather')}
+                >
+                  <Text style={styles.resetDialogButtonText}>{t('menu.reset_weather') || 'Weather Reset'}</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.resetDialogButton, pressed && styles.resetDialogButtonPressed]}
+                  onPress={() => handleResetAction('todo')}
+                >
+                  <Text style={styles.resetDialogButtonText}>{t('menu.reset_todo') || 'Todo Reset'}</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.resetDialogButton, pressed && styles.resetDialogButtonPressed]}
+                  onPress={() => handleResetAction('flow')}
+                >
+                  <Text style={styles.resetDialogButtonText}>{t('menu.reset_flow') || 'Plan Reset'}</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.resetDialogButton, styles.resetDialogDangerButton, pressed && styles.resetDialogButtonPressed]}
+                  onPress={() => handleResetAction('all')}
+                >
+                  <Text style={styles.resetDialogDangerText}>{t('menu.reset_all') || 'Reset All'}</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.resetDialogButton, pressed && styles.resetDialogButtonPressed]}
+                  onPress={() => setResetModalMode(null)}
+                >
+                  <Text style={styles.resetDialogButtonText}>{t('common.cancel')}</Text>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </View>
+      </Modal>
+    );
   };
 
   const menuItems = [
@@ -474,6 +586,8 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
           </View>
           </GestureHandlerRootView>
         </Animated.View>
+        {renderResetDialog()}
+        <ToastStack toasts={toasts} onDone={handleToastDone} />
       </View>
     </Modal>
   );
@@ -482,6 +596,72 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+  },
+  resetDialogLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.22)',
+    paddingHorizontal: 24,
+  },
+  resetDialog: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    backgroundColor: 'rgba(250, 253, 255, 0.96)',
+    padding: 18,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 18 },
+        shadowOpacity: 0.22,
+        shadowRadius: 28,
+      },
+      android: { elevation: 18 },
+    }),
+  },
+  resetDialogTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  resetDialogMessage: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.textSecondary,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  resetDialogButton: {
+    minHeight: 54,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.09)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  resetDialogDangerButton: {
+    backgroundColor: 'rgba(255, 59, 48, 0.08)',
+  },
+  resetDialogButtonPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.99 }],
+  },
+  resetDialogButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  resetDialogDangerText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.error,
+    textAlign: 'center',
   },
   backdropPressable: {
     ...StyleSheet.absoluteFillObject,
