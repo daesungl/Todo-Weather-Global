@@ -66,6 +66,24 @@ const getTodayScheduleStats = (tasks = [], flows = []) => {
 
   const directCompleted = todayTasks.filter(task => task.isCompleted).length;
   const flowCompleted = todaySteps.filter(isFlowStepCompleted).length;
+  const schedules = [
+    ...todayTasks.map(task => ({
+      title: task.title,
+      memo: task.memo,
+      time: task.time,
+      isCompleted: task.isCompleted,
+      locationName: task.locationName,
+      weatherRegion: task.weatherRegion,
+    })),
+    ...todaySteps.map(step => ({
+      title: step.activity,
+      memo: step.memo,
+      time: step.time,
+      isCompleted: isFlowStepCompleted(step),
+      region: step.region,
+      locationName: step.region?.name,
+    })),
+  ].sort((a, b) => String(a.time || '99:99').localeCompare(String(b.time || '99:99')));
 
   return {
     total: todayTasks.length + todaySteps.length,
@@ -74,6 +92,7 @@ const getTodayScheduleStats = (tasks = [], flows = []) => {
     directCompleted,
     flowTotal: todaySteps.length,
     flowCompleted,
+    schedules,
   };
 };
 
@@ -751,6 +770,7 @@ const HomeScreen = ({ navigation }) => {
           completedDirectTasksCount={taskStats.directCompleted}
           flowStepsCount={taskStats.flowTotal}
           completedFlowStepsCount={taskStats.flowCompleted}
+          schedules={taskStats.schedules || []}
         />
 
         {!isPremium && !adHidden ? (

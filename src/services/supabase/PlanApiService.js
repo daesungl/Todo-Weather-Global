@@ -48,6 +48,11 @@ export const listPlans = async () => {
   return data?.plans || [];
 };
 
+export const deleteAccount = async () =>
+  request('/account', {
+    method: 'DELETE',
+  });
+
 export const getPlanSteps = async (planId) => {
   const data = await request(`/plans/${encodeURIComponent(planId)}/steps`);
   return data?.steps || [];

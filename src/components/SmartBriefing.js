@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Umbrella, Sun, Thermometer, CheckCircle2, ListTodo, CloudSnow } from 'lucide-react-native';
+import { Sparkles, Umbrella, Sun, Thermometer, CheckCircle2, ListTodo, CloudSnow, Shirt } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
+import { getOutfitAdvice } from '../utils/outfitAdvice';
 
 const SmartBriefing = ({
   weather,
@@ -80,12 +81,14 @@ const SmartBriefing = ({
         count: remainingTasks
     });
 
-    return { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks, footerText };
+    const outfitAdvice = getOutfitAdvice({ weather });
+
+    return { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks, footerText, outfitAdvice };
   }, [weather, tasksCount, completedCount, directTasksCount, completedDirectTasksCount, flowStepsCount, completedFlowStepsCount, t]);
 
   if (!briefingData) return null;
 
-  const { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks, footerText } = briefingData;
+  const { greeting, alertText, weatherSummary, SuggestIcon, iconColor, remainingTasks, footerText, outfitAdvice } = briefingData;
 
   return (
     <View style={styles.container}>
@@ -113,6 +116,37 @@ const SmartBriefing = ({
               <ListTodo size={14} color={Colors.textSecondary} />
               <Text style={styles.footerText}>{footerText}</Text>
           </View>
+      )}
+
+      {outfitAdvice && (
+        <View style={styles.outfitBox}>
+          <View style={styles.outfitHeader}>
+            <View style={styles.outfitIcon}>
+              <Shirt size={15} color={Colors.primary} />
+            </View>
+            <Text style={styles.outfitTitle}>{t('outfit.title', '오늘의 외출 준비')}</Text>
+          </View>
+          <Text style={styles.outfitSummary} numberOfLines={2}>
+            {outfitAdvice.mode === 'next'
+              ? t('outfit.summary_next', {
+                time: t(outfitAdvice.timeLabelKey),
+                outfit: t(outfitAdvice.outfitKey, '가벼운 레이어드'),
+                defaultValue: '{{time}} 외출을 위해 {{outfit}}을 준비해두면 좋아요.',
+              })
+              : t('outfit.summary_default', {
+                outfit: t(outfitAdvice.outfitKey, '가벼운 레이어드'),
+                defaultValue: '오늘은 {{outfit}}이 좋아요.',
+              })}
+          </Text>
+          <View style={styles.outfitChips}>
+            {outfitAdvice.carryKeys.map(key => (
+              <View key={key} style={styles.outfitChip}>
+                <Text style={styles.outfitChipText}>{t(key)}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.outfitNote} numberOfLines={2}>{t(outfitAdvice.noteKey)}</Text>
+        </View>
       )}
     </View>
   );
@@ -181,7 +215,65 @@ const styles = StyleSheet.create({
       ...Typography.label,
       fontSize: 11,
       color: Colors.textSecondary,
-  }
+  },
+  outfitBox: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceContainerHigh,
+  },
+  outfitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  outfitIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EAF7FC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outfitTitle: {
+    ...Typography.bodySmall,
+    fontSize: 14,
+    color: Colors.text,
+    fontWeight: '800',
+  },
+  outfitSummary: {
+    ...Typography.bodySmall,
+    fontSize: 14,
+    color: Colors.text,
+    fontWeight: '700',
+    lineHeight: 21,
+  },
+  outfitChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  outfitChip: {
+    borderRadius: 999,
+    backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  outfitChipText: {
+    ...Typography.label,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '700',
+  },
+  outfitNote: {
+    ...Typography.bodySmall,
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.textSecondary,
+    marginTop: 8,
+  },
 });
 
 export default SmartBriefing;

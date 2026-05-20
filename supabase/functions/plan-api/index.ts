@@ -297,6 +297,55 @@ const clearUnreadPlanBadge = async (uid: string, planId: string) => {
   return true;
 };
 
+const deleteAccountData = async (uid: string) => {
+  const { data: ownedPlans, error: ownedPlansError } = await admin
+    .from('plans')
+    .select('id')
+    .eq('owner_uid', uid);
+  if (ownedPlansError) throw ownedPlansError;
+
+  const ownedPlanIds = (ownedPlans || [])
+    .map((row: Record<string, unknown>) => String(row.id || ''))
+    .filter(Boolean);
+
+  if (ownedPlanIds.length > 0) {
+    await admin.from('plans').delete().in('id', ownedPlanIds).throwOnError();
+  }
+
+  const { data: sharedMemberships, error: sharedMembershipsError } = await admin
+    .from('plan_members')
+    .select('plan_id')
+    .eq('uid', uid);
+  if (sharedMembershipsError) throw sharedMembershipsError;
+
+  const sharedPlanIds = [...new Set((sharedMemberships || [])
+    .map((row: Record<string, unknown>) => String(row.plan_id || ''))
+    .filter(Boolean)
+    .filter(planId => !ownedPlanIds.includes(planId)))];
+
+  if (sharedPlanIds.length > 0) {
+    await admin.from('plan_members').delete().eq('uid', uid).in('plan_id', sharedPlanIds).throwOnError();
+    await Promise.all(sharedPlanIds.map(planId =>
+      admin.rpc('refresh_plan_member_count', { target_plan_id: planId }).throwOnError()
+    ));
+  }
+
+  await Promise.all([
+    admin.from('tasks').delete().eq('owner_uid', uid).throwOnError(),
+    admin.from('regions').delete().eq('owner_uid', uid).throwOnError(),
+    admin.from('plan_comments').delete().eq('uid', uid).throwOnError(),
+    admin.from('plan_step_notification_prefs').delete().eq('uid', uid).throwOnError(),
+    admin.from('unread_plan_badges').delete().eq('uid', uid).throwOnError(),
+    admin.from('user_badge_state').delete().eq('uid', uid).throwOnError(),
+    admin.from('user_push_tokens').delete().eq('uid', uid).throwOnError(),
+  ]);
+
+  await admin.from('profiles').delete().eq('uid', uid).throwOnError();
+
+  const { error: authDeleteError } = await admin.auth.admin.deleteUser(uid);
+  if (authDeleteError) throw authDeleteError;
+};
+
 const pruneInaccessibleUnreadBadges = async (uid: string) => {
   const { data: badges, error: badgesError } = await admin
     .from('unread_plan_badges')
@@ -383,6 +432,11 @@ Deno.serve(async (req) => {
         .eq('uid', user.uid);
       if (error) throw error;
       return json({ badges: data || [] });
+    }
+
+    if (req.method === 'DELETE' && path[0] === 'account') {
+      await deleteAccountData(user.uid);
+      return json({ ok: true });
     }
 
     if (req.method === 'PUT' && path[0] === 'me' && path[1] === 'display-name') {

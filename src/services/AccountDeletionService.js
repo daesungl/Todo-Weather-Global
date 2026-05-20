@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabaseConfig';
-import { listPlans, deletePlan, leavePlan } from './supabase/PlanApiService';
+import { deleteAccount } from './supabase/PlanApiService';
 
 const accountCacheKeys = (uid) => [
   '@tasks_v1',
@@ -31,28 +31,11 @@ export const deleteCurrentUserAccount = async () => {
 
   const uid = session.user.id;
 
-  // 플랜 삭제 (owner) 또는 탈퇴 (member)
-  try {
-    const plans = await listPlans();
-    await Promise.allSettled(
-      plans.map(plan =>
-        plan.role === 'owner' ? deletePlan(plan.id) : leavePlan(plan.id)
-      )
-    );
-  } catch (e) {
-    console.warn('[AccountDeletion] Failed to delete/leave plans:', e);
-  }
-
-  // 프로필 삭제
-  try {
-    await supabase.from('profiles').delete().eq('uid', uid);
-  } catch (e) {
-    console.warn('[AccountDeletion] Failed to delete profile:', e);
-  }
+  // Auth 계정 삭제는 service role이 필요한 작업이라 Edge Function에서 데이터 정리와 함께 처리한다.
+  await deleteAccount();
 
   // 로컬 캐시 삭제
   await clearLocalAccountCaches(uid);
 
-  // 로그아웃 (Supabase auth user 삭제는 admin API 필요 — 추후 Edge Function으로 처리)
   await supabase.auth.signOut();
 };
