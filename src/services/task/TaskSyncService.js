@@ -3,6 +3,8 @@ import { supabase } from '../../config/supabaseConfig';
 
 const TASKS_STORAGE_KEY = '@tasks_v1';
 const PENDING_DELETES_KEY = '@tasks_pending_deletes_v1';
+const getTasksStorageKey = (uid = _userId) => uid ? `${TASKS_STORAGE_KEY}_${uid}` : TASKS_STORAGE_KEY;
+const getPendingDeletesStorageKey = (uid = _userId) => uid ? `${PENDING_DELETES_KEY}_${uid}` : PENDING_DELETES_KEY;
 
 let _userId = null;
 let _snapshotListeners = new Set();
@@ -12,7 +14,7 @@ let _pendingDeleteIds = new Set();
 
 const _loadPendingDeletes = async () => {
   try {
-    const json = await AsyncStorage.getItem(PENDING_DELETES_KEY);
+    const json = await AsyncStorage.getItem(getPendingDeletesStorageKey());
     const ids = json ? JSON.parse(json) : [];
     _pendingDeleteIds = new Set(Array.isArray(ids) ? ids : []);
   } catch {
@@ -22,7 +24,7 @@ const _loadPendingDeletes = async () => {
 
 const _savePendingDeletes = async () => {
   try {
-    await AsyncStorage.setItem(PENDING_DELETES_KEY, JSON.stringify([..._pendingDeleteIds]));
+    await AsyncStorage.setItem(getPendingDeletesStorageKey(), JSON.stringify([..._pendingDeleteIds]));
   } catch {}
 };
 
@@ -89,8 +91,11 @@ const toDbObj = (appObj) => {
 
 const _loadLocalTasks = async () => {
   try {
-    const json = await AsyncStorage.getItem(TASKS_STORAGE_KEY);
-    const tasks = json ? JSON.parse(json) : [];
+    const storageKey = getTasksStorageKey();
+    const json = await AsyncStorage.getItem(storageKey);
+    const legacyJson = storageKey !== TASKS_STORAGE_KEY ? await AsyncStorage.getItem(TASKS_STORAGE_KEY) : null;
+    const sourceJson = json || legacyJson;
+    const tasks = sourceJson ? JSON.parse(sourceJson) : [];
     return Array.isArray(tasks) ? tasks : [];
   } catch (e) {
     console.error('[TaskSync] local task cache error:', e);
@@ -172,6 +177,7 @@ const _startSubscription = async (uid) => {
       .map(toCamelCase)
       .filter(t => !_pendingDeleteIds.has(t.id));
     _cachedTasks = tasks;
+    AsyncStorage.setItem(getTasksStorageKey(uid), JSON.stringify(tasks)).catch(() => {});
     _snapshotListeners.forEach((cb) => cb(tasks));
   };
 
@@ -193,7 +199,7 @@ export const initTaskSync = async (uid) => {
     const localTasks = await _loadLocalTasks();
     _cachedTasks = localTasks;
     _snapshotListeners.forEach((cb) => cb(localTasks));
-    _startSubscription(uid);
+    await _startSubscription(uid);
   } else {
     if (_subscription) {
       supabase.removeChannel(_subscription);
@@ -223,6 +229,7 @@ export const getTasks = async () => {
       if (!error) {
         const tasks = (data || []).map(toCamelCase);
         _cachedTasks = tasks;
+        AsyncStorage.setItem(getTasksStorageKey(_userId), JSON.stringify(tasks)).catch(() => {});
         return tasks;
       }
     } catch (e) {
@@ -241,13 +248,14 @@ export const saveTasks = async (tasks) => {
         .map((t) => t.id);
       await _batchWrite(_userId, arr, toDelete);
       _cachedTasks = arr;
+      AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(arr)).catch(() => {});
       return true;
     } catch (e) {
       console.warn('[TaskSync] saveTasks error:', e);
     }
   }
   try {
-    await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(arr));
+    await AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(arr));
     return true;
   } catch (e) {
     return false;
@@ -267,7 +275,7 @@ export const clearTasks = async () => {
   }
 
   _pendingDeleteIds = new Set();
-  await AsyncStorage.multiRemove([TASKS_STORAGE_KEY, PENDING_DELETES_KEY]);
+  await AsyncStorage.multiRemove([getTasksStorageKey(), getPendingDeletesStorageKey()]);
   _cachedTasks = [];
   _snapshotListeners.forEach((cb) => cb([]));
   return [];
@@ -292,7 +300,7 @@ export const addTask = async (taskData) => {
   }
 
   _cachedTasks = updated;
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -313,7 +321,7 @@ export const toggleTaskCompletion = async (taskId) => {
   }
 
   _cachedTasks = updated;
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -339,7 +347,7 @@ export const deleteTask = async (taskId) => {
 
   _cachedTasks = updated;
   _snapshotListeners.forEach((cb) => cb(updated));
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -357,7 +365,7 @@ export const updateTask = async (taskId, updates) => {
   }
 
   _cachedTasks = updated;
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -400,7 +408,7 @@ export const addRepeatTasks = async (taskData, repeat, repeatEndDate) => {
   }
 
   _cachedTasks = updated;
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -436,7 +444,7 @@ export const deleteRepeatTasks = async (taskId, scope) => {
 
   _cachedTasks = updated;
   _snapshotListeners.forEach((cb) => cb(updated));
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -502,7 +510,7 @@ export const updateRepeatSeriesEndDate = async (taskId, newRepeatEndDate) => {
   }
 
   _cachedTasks = updated;
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -534,7 +542,7 @@ export const convertRepeatTaskToSingle = async (taskId, updates) => {
   }
 
   _cachedTasks = updated;
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };
 
@@ -585,6 +593,6 @@ export const updateRepeatTasks = async (taskId, updates, scope) => {
   }
 
   _cachedTasks = updated;
-  AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+  AsyncStorage.setItem(getTasksStorageKey(), JSON.stringify(updated)).catch(() => {});
   return updated;
 };

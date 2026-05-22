@@ -102,6 +102,9 @@ const MenuModal = ({ visible, onClose, onReset, navigation }) => {
       const appKeys = keys.filter(k =>
         k.startsWith('@weather_cache_') ||
         k === '@tasks_v1' ||
+        k.startsWith('@tasks_v1_') ||
+        k === '@tasks_pending_deletes_v1' ||
+        k.startsWith('@tasks_pending_deletes_v1_') ||
         k === '@todo_weather_flows' ||
         k.startsWith('@todo_weather_flows_') ||
         k.startsWith('@todo_weather_shared_flows_') ||

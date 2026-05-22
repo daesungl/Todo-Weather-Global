@@ -4,6 +4,9 @@ import { deleteAccount } from './supabase/PlanApiService';
 
 const accountCacheKeys = (uid) => [
   '@tasks_v1',
+  `@tasks_v1_${uid}`,
+  '@tasks_pending_deletes_v1',
+  `@tasks_pending_deletes_v1_${uid}`,
   '@save_wBookmark',
   '@todo_weather_flows',
   `@todo_weather_flows_${uid}`,

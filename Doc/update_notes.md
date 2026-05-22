@@ -1,7 +1,48 @@
+## v1.1.7
 
+<en-US>
+- Outfit Guide: Get simple clothing recommendations based on current weather
+  conditions — no more guessing what to wear.
+- New Languages: Japanese, Traditional Chinese (Taiwan), and Simplified Chinese are now supported.
+- Moon Rise & Set Info: Lunar rise and set times are now displayed in the weather detail view.
+- Bug Fixes & UX Improvements
+</en-US>
+<ko-KR>
+- 오늘의 옷차림 추천: 현재 날씨를 기반으로 간단한 코디 가이드를 제공합니다.
+- 언어 추가: 일본어, 번체 중국어(대만), 간체 중국어, 포르투갈어, 스페인어가 새롭게 지원됩니다.
+- 월출·월몰 정보: 날씨 상세 화면에서 달이 뜨고 지는 시간을 확인할 수 있습니다.
+- 버그 수정 및 최적화
+</ko-KR>
 
+## 앱 설명
 
+Todo Weather brings your tasks and the weather together in one place.
 
+Plan your day knowing exactly what the weather will be — not just outside right now, but at the specific time and place each task happens. Move things around when rain is coming. Pack smarter. Show up prepared.
+
+What you can do:
+
+Weather-aware tasks
+See the forecast for each task's time and location. Get nudges to reschedule when conditions change.
+
+Plan — Journey Planner
+Build multi-day itineraries with weather built in at every stop. Great for trips, camping, or any time your plans depend on the sky. Share your routes as images.
+
+Global weather data
+Current conditions and forecasts for cities worldwide, sourced from reliable meteorological providers.
+
+Air quality & details
+UV index, visibility, humidity, wind, AQI, and fine dust (PM2.5/PM10) — everything in one view.
+
+Clean, comfortable design
+Light and dark modes. Smooth and easy to navigate.
+
+---
+
+UV index, visibility, humidity, wind, AQI, and fine dust (PM2.5/PM10) — everything in one view.
+
+Clean, comfortable design
+Light and dark modes. Smooth and easy to navigate.
 
 ## v.1.1.3
 
@@ -27,8 +68,6 @@ We’ve optimized the guest experience, making it easier for everyone to start i
 
 Thank you for choosing our app! We’re always working to enhance your experience based on your feedback.
 
-
-
 ## v.1.1.2
 
 [한국어 / Korean]
@@ -48,7 +87,6 @@ We’ve focused on making collaboration easier and enhancing the visual experien
 • New App Badge for Shared Plans: Stay in the loop! You’ll now see a notification badge on the app icon whenever there’s an update to your shared plans. • Refined Plan Card UI: We’ve redesigned our plan cards to be more intuitive and aesthetically pleasing. Managing your schedule has never looked this good. • Bug Fixes & Stability: We’ve squashed several pesky bugs and improved overall performance for a smoother, more reliable experience.
 
 Thank you for using our app! We’re always working to make your experience even better.
-
 
 ## appstore 프로모션 메시지
 
