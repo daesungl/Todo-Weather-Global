@@ -123,6 +123,10 @@
     "region_add_failed": "新增地區失敗。",
     "region_delete_success": "地區已刪除。",
     "region_delete_failed": "刪除地區失敗。",
+    "weather_retry": "重試",
+    "weather_retry_hint": "無法取得天氣資訊。",
+    "weather_retry_success": "天氣資訊已更新。",
+    "weather_retry_failed": "無法取得天氣資訊。請稍後再試。",
     "tasks_count": "今天有 {{count}} 個待辦事項",
     "tasks_upcoming": "下一個：{{time}} 的 {{task}}",
     "premium_only_limit": "新增更多地區需要 Premium 訂閱。（免費最多 3 個）"

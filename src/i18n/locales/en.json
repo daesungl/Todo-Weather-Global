@@ -144,6 +144,10 @@
     "region_add_failed": "Failed to add region.",
     "region_delete_success": "Region deleted.",
     "region_delete_failed": "Failed to delete region.",
+    "weather_retry": "Retry",
+    "weather_retry_hint": "Couldn’t load weather.",
+    "weather_retry_success": "Weather updated.",
+    "weather_retry_failed": "Couldn’t load weather. Please try again shortly.",
     "tasks_count": "You have {{count}} tasks today",
     "tasks_upcoming": "Next: {{task}} at {{time}}",
     "premium_only_limit": "Premium subscription is required to add more regions. (Max 3 for free)"

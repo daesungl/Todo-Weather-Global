@@ -16,7 +16,7 @@ import Constants from 'expo-constants';
 import { BannerAdSize } from 'react-native-google-mobile-ads';
 import AdBanner from '../components/AdBanner';
 import AirService from '../services/weather/AirService';
-import WeatherService from '../services/weather/WeatherService';
+import WeatherService, { isWeatherDataUsable } from '../services/weather/WeatherService';
 import { fetchExtraMetrics } from '../services/weather/GlobalService';
 import { saveCache } from '../services/StorageService';
 
@@ -108,8 +108,9 @@ const WeatherDetailScreen = ({ navigation, route }) => {
   const [weatherData, setWeatherData] = useState({ ...defaultData, ...correctDayNight(initialData) });
 
   // 전체 데이터 로딩 상태 (initialData가 없을 때 사용)
-  const needsFullLoad = !initialData?.temp || initialData?.temp === '--°';
+  const needsFullLoad = !isWeatherDataUsable(initialData);
   const [loadingFull, setLoadingFull] = useState(needsFullLoad && (!!route.params?.region?.lat || !!initialData?.lat));
+  const [weatherLoadFailed, setWeatherLoadFailed] = useState(false);
 
   const hasAccurateAQInit = !!initialData?.pollutants &&
     initialData?.aqiValue !== '--' &&
@@ -168,12 +169,13 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
     const angle = Math.PI - (progress * Math.PI);
     const radius = 60;
+    const horizonBottom = 8;
     const x = radius * Math.cos(angle);
     const y = radius * Math.sin(angle);
 
     return {
       left: 72 + x - 6,
-      bottom: y - 6
+      bottom: horizonBottom + y - 6
     };
   };
 
@@ -192,20 +194,23 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     const region = route.params?.region;
     const lat = initialData?.lat || region?.lat;
     const lon = initialData?.lon || region?.lon;
-    const name = initialData?.locationName || region?.name;
+    const initialName = initialData?.locationName;
+    const displayName = route.params?.locationName
+      || region?.name
+      || (initialName && initialName !== 'Error Loading' && initialName !== '--' ? initialName : '');
+    const cacheRegionId = route.params?.regionId || region?.id || displayName || '';
     const address = initialData?.addressName && initialData.addressName !== '--'
       ? initialData.addressName
       : (region?.address || '');
 
     // Home/Flow 모두 동일한 캐시키 규칙 적용 (WeatherService와 일치)
     // Home: route.params.regionId = region.id, Flow: name 사용
-    const regionId = route.params?.regionId || name || '';
-    if (lat && lon && regionId) {
-      weatherCacheKeyRef.current = `weather_v6_${parseFloat(lat).toFixed(4)}_${parseFloat(lon).toFixed(4)}_${regionId}`;
+    if (lat && lon && cacheRegionId) {
+      weatherCacheKeyRef.current = `weather_v6_${parseFloat(lat).toFixed(4)}_${parseFloat(lon).toFixed(4)}_${cacheRegionId}`;
     }
 
     if (needsFullLoad && lat && lon) {
-      loadFullWeatherData(lat, lon, name, address);
+      loadFullWeatherData(lat, lon, cacheRegionId, address, false, displayName);
     }
 
     const interaction = InteractionManager.runAfterInteractions(() => {
@@ -227,7 +232,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     return () => interaction.cancel();
   }, [initialData?.lat, initialData?.lon, route.params?.region]);
 
-  const loadFullWeatherData = async (lat, lon, name, address = '') => {
+  const loadFullWeatherData = async (lat, lon, cacheRegionId, address = '', force = false, displayName = '') => {
     // 위경도가 유효한 숫자인지 엄격히 체크
     const numLat = parseFloat(lat);
     const numLon = parseFloat(lon);
@@ -240,12 +245,26 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
     try {
       setLoadingFull(true);
+      setWeatherLoadFailed(false);
       // WeatherService 내부와 동일한 캐시키 규칙: weather_v6_lat_lon_regionId
-      weatherCacheKeyRef.current = `weather_v6_${numLat.toFixed(4)}_${numLon.toFixed(4)}_${name}`;
-      console.log(`[WeatherDetail] Fetching full weather for ${name} (${numLat}, ${numLon})`);
-      const data = await WeatherService.getWeather(numLat, numLon, false, name, address);
+      weatherCacheKeyRef.current = `weather_v6_${numLat.toFixed(4)}_${numLon.toFixed(4)}_${cacheRegionId}`;
+      console.log(`[WeatherDetail] Fetching full weather for ${displayName || cacheRegionId} (${numLat}, ${numLon})`);
+      let data = await WeatherService.getWeather(numLat, numLon, force, cacheRegionId, address);
 
-      if (data) {
+      if (!force && !isWeatherDataUsable(data)) {
+        if (__DEV__) {
+          console.warn('[WeatherDetail] Initial weather load incomplete. Retrying once before showing failure.', {
+            cacheRegionId,
+            temp: data?.temp,
+            hourly: data?.hourlyForecast?.length || 0,
+            daily: data?.dailyForecast?.length || 0,
+          });
+        }
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        data = await WeatherService.getWeather(numLat, numLon, true, cacheRegionId, address);
+      }
+
+      if (isWeatherDataUsable(data)) {
         // 캐시된 데이터의 addressName이 locationName과 같으면 잘못 저장된 것 → 교정 후 캐시 재저장
         if (address && data.addressName && data.addressName === data.locationName) {
           data.addressName = address;
@@ -257,9 +276,10 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             ...prev,
             ...data,
             // 서버 데이터가 부실하더라도 우리가 알고 있는 이름은 지킨다
-            locationName: (data.locationName && data.locationName !== 'Error Loading' && data.locationName !== '--')
-              ? data.locationName
-              : (name || prev.locationName || '--')
+            locationName: displayName
+              || (data.locationName && data.locationName !== 'Error Loading' && data.locationName !== '--'
+                ? data.locationName
+                : (prev.locationName || '--'))
           };
           // 온도가 숫자로만 왔을 경우 기호 추가
           if (updated.temp && typeof updated.temp === 'number') {
@@ -272,9 +292,12 @@ const WeatherDetailScreen = ({ navigation, route }) => {
 
         // 대기질 데이터 연동
         loadAsyncData(numLat, numLon, true);
+      } else {
+        setWeatherLoadFailed(true);
       }
     } catch (err) {
       console.error('[WeatherDetail] Full load error:', err);
+      setWeatherLoadFailed(true);
     } finally {
       setLoadingFull(false);
     }
@@ -370,6 +393,17 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     const lon = weatherData.lon;
     if (lat && lon) {
       loadAsyncData(lat, lon, true);
+    }
+  };
+
+  const handleRetryFullWeather = () => {
+    const lat = route.params?.region?.lat || initialData?.lat || weatherData.lat;
+    const lon = route.params?.region?.lon || initialData?.lon || weatherData.lon;
+    const displayName = route.params?.locationName || route.params?.region?.name || weatherData.locationName;
+    const cacheRegionId = route.params?.regionId || route.params?.region?.id || displayName;
+    const address = route.params?.region?.address || weatherData.addressName || '';
+    if (lat && lon) {
+      loadFullWeatherData(lat, lon, cacheRegionId, address, true, displayName);
     }
   };
 
@@ -693,7 +727,7 @@ const WeatherDetailScreen = ({ navigation, route }) => {
     />
   );
 
-  const isLoading = loadingFull || (!weatherData.temp && !weatherData.locationName && !route.params?.region);
+  const isLoading = loadingFull || (needsFullLoad && !weatherLoadFailed && !isWeatherDataUsable(weatherData));
 
   if (isLoading) {
     return (
@@ -707,6 +741,27 @@ const WeatherDetailScreen = ({ navigation, route }) => {
             {route.params.region.name}
           </Text>
         )}
+      </View>
+    );
+  }
+
+  if (weatherLoadFailed && !isWeatherDataUsable(weatherData)) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#E6F7FF', paddingHorizontal: Spacing.xl }]}>
+        <AlertTriangle size={40} color="#F59E0B" style={{ marginBottom: Spacing.md }} />
+        <Text style={{ fontSize: 18, color: Colors.text, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>
+          {t('home.weather_retry_hint', '날씨 정보를 가져오지 못했어요.')}
+        </Text>
+        <Text style={{ fontSize: 14, color: Colors.textSecondary, fontWeight: '600', textAlign: 'center', lineHeight: 20, marginBottom: Spacing.lg }}>
+          {t('home.weather_retry_failed', '날씨 정보를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.')}
+        </Text>
+        <TouchableOpacity style={styles.retryFullButton} onPress={handleRetryFullWeather}>
+          <RefreshCw size={16} color="white" strokeWidth={2.5} />
+          <Text style={styles.retryFullButtonText}>{t('home.weather_retry', '다시 시도')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={goBack} style={{ marginTop: Spacing.md, padding: 12 }}>
+          <Text style={{ fontSize: 14, color: Colors.textSecondary, fontWeight: '700' }}>{t('common.close', '닫기')}</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -1091,9 +1146,9 @@ const styles = StyleSheet.create({
   sunSide: { width: 70 },
   sunLabel: { fontSize: 11, color: Colors.textSecondary },
   sunTime: { fontSize: 13, fontWeight: '800' },
-  sunGraphic: { width: 144, height: 60, overflow: 'hidden' },
-  sunHorizon: { width: 144, height: 1, backgroundColor: Colors.outline, position: 'absolute', bottom: 0 },
-  sunArc: { width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: Colors.outline, borderStyle: 'dashed', position: 'absolute', bottom: -60, left: 12 },
+  sunGraphic: { width: 144, height: 80, overflow: 'hidden' },
+  sunHorizon: { width: 144, height: 1, backgroundColor: Colors.outline, position: 'absolute', bottom: 8 },
+  sunArc: { width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: Colors.outline, borderStyle: 'dashed', position: 'absolute', bottom: -52, left: 12 },
   sunPoint: { width: 12, height: 12, borderRadius: 6, position: 'absolute' },
   sunGlow: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255, 184, 0, 0.2)', position: 'absolute', top: -4, left: -4 },
   moonRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.surfaceContainer, gap: 12 },
@@ -1135,6 +1190,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.textSecondary,
     letterSpacing: 0.5,
+  },
+  retryFullButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 22,
+    borderRadius: 24,
+    backgroundColor: Colors.primary,
+  },
+  retryFullButtonText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: 'white',
   },
 });
 

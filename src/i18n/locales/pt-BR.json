@@ -72,6 +72,10 @@
     "region_add_duplicate": "Esta região já foi adicionada.",
     "region_add_failed": "Falha ao adicionar região.", "region_delete_success": "Região excluída.",
     "region_delete_failed": "Falha ao excluir região.",
+    "weather_retry": "Tentar novamente",
+    "weather_retry_hint": "Não foi possível carregar o clima.",
+    "weather_retry_success": "Clima atualizado.",
+    "weather_retry_failed": "Não foi possível carregar o clima. Tente novamente em instantes.",
     "tasks_count": "Você tem {{count}} tarefas hoje",
     "tasks_upcoming": "Próximo: {{task}} às {{time}}",
     "premium_only_limit": "É necessária assinatura Premium para adicionar mais regiões. (Máx 3 grátis)"

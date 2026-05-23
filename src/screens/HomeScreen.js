@@ -10,12 +10,12 @@ import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
 import { useUnits } from '../contexts/UnitContext';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Sun, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Trash2, Search, X, Navigation, AlertTriangle, CloudSun, CloudMoon, Moon, Umbrella } from 'lucide-react-native';
+import { Sun, Circle, Plus, MapPin, Calendar, MoreVertical, Wind, Droplets, Compass, Menu, Lock, Pencil, Settings, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Trash2, Search, X, Navigation, AlertTriangle, CloudSun, CloudMoon, Moon, Umbrella, RefreshCw } from 'lucide-react-native';
 import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import ToastStack, { useToastStack } from '../components/ToastStack';
-import { getWeather } from '../services/weather/WeatherService';
+import { getWeather, isWeatherDataUsable } from '../services/weather/WeatherService';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions, subscribeToRegions } from '../services/weather/RegionSyncService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
@@ -204,6 +204,8 @@ const HomeScreen = ({ navigation }) => {
     return regions.map((r, i) => ({ ...r, inactive: i >= limits.regions }));
   }, [regions, isPremium, limits.regions]);
   const [regionsWeather, setRegionsWeather] = useState({});
+  const [loadingRegionIds, setLoadingRegionIds] = useState(() => new Set());
+  const [retryingRegionId, setRetryingRegionId] = useState(null);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -377,8 +379,13 @@ const HomeScreen = ({ navigation }) => {
       const cached = await AsyncStorage.getItem(CURRENT_WEATHER_CACHE_KEY);
       if (cached) {
         cachedWeather = JSON.parse(cached);
-        setCurrentWeather(cachedWeather);
-        setLoading(false);
+        if (isWeatherDataUsable(cachedWeather)) {
+          setCurrentWeather(cachedWeather);
+          setLoading(false);
+        } else {
+          cachedWeather = null;
+          AsyncStorage.removeItem(CURRENT_WEATHER_CACHE_KEY).catch(() => {});
+        }
       }
     } catch (_) {}
 
@@ -417,7 +424,9 @@ const HomeScreen = ({ navigation }) => {
       }
       const data = await getWeather(lat, lon);
       setCurrentWeather(data);
-      AsyncStorage.setItem(CURRENT_WEATHER_CACHE_KEY, JSON.stringify(data)).catch(() => {});
+      if (isWeatherDataUsable(data)) {
+        AsyncStorage.setItem(CURRENT_WEATHER_CACHE_KEY, JSON.stringify(data)).catch(() => {});
+      }
     } catch (err) {
       console.error('Initial Weather Fetch Error:', err);
     } finally {
@@ -452,9 +461,11 @@ const HomeScreen = ({ navigation }) => {
         lat = SEOUL_FALLBACK_COORDS.lat;
         lon = SEOUL_FALLBACK_COORDS.lon;
       }
-      const data = await getWeather(lat, lon);
+      const data = await getWeather(lat, lon, true);
       setCurrentWeather(data);
-      AsyncStorage.setItem(CURRENT_WEATHER_CACHE_KEY, JSON.stringify(data)).catch(() => {});
+      if (isWeatherDataUsable(data)) {
+        AsyncStorage.setItem(CURRENT_WEATHER_CACHE_KEY, JSON.stringify(data)).catch(() => {});
+      }
     } catch (e) {
       console.error('[HomeScreen] Refresh error:', e);
     } finally {
@@ -462,12 +473,65 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const fetchRegionWeather = async (region) => {
+  const fetchRegionWeather = async (region, force = false, showResultToast = false) => {
+    setLoadingRegionIds(prev => {
+      const next = new Set(prev);
+      next.add(region.id);
+      return next;
+    });
     try {
-      const w = await getWeather(region.lat, region.lon, false, region.id, region.address);
-      setRegionsWeather(prev => ({ ...prev, [region.id]: w }));
+      let w = await getWeather(region.lat, region.lon, force, region.id, region.address);
+      if (!force && !isWeatherDataUsable(w)) {
+        if (__DEV__) {
+          console.warn('[HomeScreen] Region weather incomplete. Retrying once before showing failure.', {
+            regionId: region.id,
+            name: region.name,
+            temp: w?.temp,
+            hourly: w?.hourlyForecast?.length || 0,
+            daily: w?.dailyForecast?.length || 0,
+          });
+        }
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        w = await getWeather(region.lat, region.lon, true, region.id, region.address);
+      }
+
+      setRegionsWeather(prev => {
+        const previous = prev[region.id];
+        if (!isWeatherDataUsable(w) && isWeatherDataUsable(previous)) {
+          return prev;
+        }
+        return { ...prev, [region.id]: w };
+      });
+      if (showResultToast) {
+        showToast(
+          isWeatherDataUsable(w)
+            ? t('home.weather_retry_success')
+            : t('home.weather_retry_failed')
+        );
+      }
+      return w;
     } catch (e) {
       console.error(`Failed to fetch weather for ${region.name}`, e);
+      if (showResultToast) {
+        showToast(t('home.weather_retry_failed'));
+      }
+      return null;
+    } finally {
+      setLoadingRegionIds(prev => {
+        const next = new Set(prev);
+        next.delete(region.id);
+        return next;
+      });
+    }
+  };
+
+  const handleRetryRegionWeather = async (region) => {
+    if (!region?.id || retryingRegionId === region.id) return;
+    setRetryingRegionId(region.id);
+    try {
+      await fetchRegionWeather(region, true, true);
+    } finally {
+      setRetryingRegionId(null);
     }
   };
 
@@ -613,7 +677,7 @@ const HomeScreen = ({ navigation }) => {
       regionsRef.current = updated;
       setRegions(updated);
       const newest = updated[updated.length - 1];
-      fetchRegionWeather(newest);
+      await fetchRegionWeather(newest);
       closeSearchModal();
       showToast(t('home.region_add_success', '관심 지역이 추가되었습니다.'));
     } catch (error) {
@@ -801,6 +865,15 @@ const HomeScreen = ({ navigation }) => {
               activationDistance={20}
               renderItem={({ item: region, drag, isActive }) => {
                 const weather = regionsWeather[region.id];
+                const currentHourWeather = weather?.hourlyForecast?.[0] || {};
+                const cardPop = currentHourWeather.pop || '0%';
+                const cardPcp = currentHourWeather.pcp || weather?.pcp || '0mm';
+                const cardWindSpeed = currentHourWeather.wind || weather?.windSpeed;
+                const cardWindDeg = currentHourWeather.windDeg ?? weather?.windDeg ?? 0;
+                const cardHumidity = currentHourWeather.hum || weather?.humidity || '0%';
+                const isRegionLoading = loadingRegionIds.has(region.id);
+                const weatherFailed = !!weather && !isRegionLoading && !isWeatherDataUsable(weather);
+                const isRetrying = retryingRegionId === region.id;
                 return (
                   <ScaleDecorator>
                     {region.inactive ? (
@@ -844,7 +917,14 @@ const HomeScreen = ({ navigation }) => {
                       >
                         <View style={styles.regionCardHeader}>
                           <View style={styles.regionNameContainer}>
-                            {weather?.alert && <AlertTriangle size={18} color="#E53935" fill="#FFEB3B" style={{ marginRight: 8 }} />}
+                            {(weatherFailed || weather?.alert) && (
+                              <AlertTriangle
+                                size={18}
+                                color={weatherFailed ? '#F59E0B' : '#E53935'}
+                                fill={weatherFailed ? Colors.surfaceContainer : '#FFEB3B'}
+                                style={{ marginRight: 8 }}
+                              />
+                            )}
                             <View style={{ flex: 1 }}>
                               <Text style={styles.regionNameText} numberOfLines={1} ellipsizeMode="tail">
                                 {region.name}
@@ -868,29 +948,61 @@ const HomeScreen = ({ navigation }) => {
                             ) : (
                               <ActivityIndicator size="small" color={Colors.outline} />
                             )}
-                            <Text style={styles.regionTempText}>{formatTemp(weather?.temp)}</Text>
+                            <Text style={styles.regionTempText}>
+                              {isRegionLoading ? '--°' : formatTemp(weather?.temp)}
+                            </Text>
                           </View>
 
-                          <View style={styles.metricsContainer}>
-                            <View style={styles.metricRow}>
-                              <Umbrella size={14} color={Colors.primary} />
-                              <Text style={styles.metricLabelText}>{weather?.hourlyForecast?.[0]?.pop || '0%'}</Text>
+                          {isRegionLoading ? (
+                            <View style={styles.regionRetryBlock}>
+                              <ActivityIndicator size="small" color={Colors.primary} />
+                              <Text style={styles.regionRetryHint} numberOfLines={2}>
+                                {t('common.loading', '불러오는 중...')}
+                              </Text>
                             </View>
-                            <View style={styles.metricRow}>
-                              <Umbrella size={14} color={(weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline} />
-                              <Text style={[styles.metricLabelText, { color: (weather?.pcp && weather.pcp !== '0mm') ? Colors.primary : Colors.outline }]}>{weather?.pcp || '0mm'}</Text>
+                          ) : weatherFailed ? (
+                            <View style={styles.regionRetryBlock}>
+                              <Text style={styles.regionRetryHint} numberOfLines={2}>
+                                {t('home.weather_retry_hint')}
+                              </Text>
+                              <TouchableOpacity
+                                style={[styles.regionRetryButton, isRetrying && styles.regionRetryButtonDisabled]}
+                                onPress={(event) => {
+                                  event?.stopPropagation?.();
+                                  handleRetryRegionWeather(region);
+                                }}
+                                disabled={isRetrying}
+                              >
+                                {isRetrying ? (
+                                  <ActivityIndicator size="small" color={Colors.primary} />
+                                ) : (
+                                  <RefreshCw size={14} color={Colors.primary} strokeWidth={2.5} />
+                                )}
+                                <Text style={styles.regionRetryText}>{t('home.weather_retry')}</Text>
+                              </TouchableOpacity>
                             </View>
-                            <View style={styles.metricRow}>
-                              <View style={{ transform: [{ rotate: `${(weather?.windDeg || 0) - 45}deg` }] }}>
-                                <Navigation size={14} color={Colors.outline} />
+                          ) : (
+                            <View style={styles.metricsContainer}>
+                              <View style={styles.metricRow}>
+                                <Umbrella size={14} color={Colors.primary} />
+                                <Text style={styles.metricLabelText}>{cardPop}</Text>
                               </View>
-                              <Text style={styles.metricLabelText}>{weather?.windSpeed ? formatWind(weather.windSpeed) : '--'}</Text>
+                              <View style={styles.metricRow}>
+                                <Umbrella size={14} color={(cardPcp && cardPcp !== '0mm') ? Colors.primary : Colors.outline} />
+                                <Text style={[styles.metricLabelText, { color: (cardPcp && cardPcp !== '0mm') ? Colors.primary : Colors.outline }]}>{cardPcp}</Text>
+                              </View>
+                              <View style={styles.metricRow}>
+                                <View style={{ transform: [{ rotate: `${cardWindDeg - 45}deg` }] }}>
+                                  <Navigation size={14} color={Colors.outline} />
+                                </View>
+                                <Text style={styles.metricLabelText}>{cardWindSpeed ? formatWind(cardWindSpeed) : '--'}</Text>
+                              </View>
+                              <View style={styles.metricRow}>
+                                <Droplets size={14} color={Colors.outline} />
+                                <Text style={styles.metricLabelText}>{cardHumidity}</Text>
+                              </View>
                             </View>
-                            <View style={styles.metricRow}>
-                              <Droplets size={14} color={Colors.outline} />
-                              <Text style={styles.metricLabelText}>{weather?.humidity || '0%'}</Text>
-                            </View>
-                          </View>
+                          )}
                         </View>
                       </TouchableOpacity>
                     )}
@@ -1213,6 +1325,37 @@ const styles = StyleSheet.create({
   metricsContainer: {
     alignItems: 'flex-start',
     gap: 4,
+  },
+  regionRetryBlock: {
+    alignItems: 'flex-end',
+    maxWidth: 142,
+    gap: 8,
+  },
+  regionRetryHint: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    textAlign: 'right',
+  },
+  regionRetryButton: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: Colors.surfaceContainer,
+  },
+  regionRetryButtonDisabled: {
+    opacity: 0.65,
+  },
+  regionRetryText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.primary,
   },
   metricRow: {
     flexDirection: 'row',

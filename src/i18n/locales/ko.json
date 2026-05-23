@@ -144,6 +144,10 @@
     "region_add_failed": "관심 지역 추가에 실패했습니다.",
     "region_delete_success": "관심 지역이 삭제되었습니다.",
     "region_delete_failed": "관심 지역 삭제에 실패했습니다.",
+    "weather_retry": "다시 시도",
+    "weather_retry_hint": "날씨 정보를 가져오지 못했어요.",
+    "weather_retry_success": "날씨 정보를 업데이트했습니다.",
+    "weather_retry_failed": "날씨 정보를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.",
     "tasks_count": "오늘 할 일이 {{count}}개 있습니다",
     "tasks_upcoming": "다음: {{task}} ({{time}})",
     "premium_only_limit": "더 많은 지역을 추가하려면 프리미엄 구독이 필요합니다. (최대 3개)"

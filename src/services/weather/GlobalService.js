@@ -62,6 +62,9 @@ export const fetchGlobalWeather = async (lat, lon) => {
     });
 
     const data = response.data;
+    if (!data?.current || !Array.isArray(data?.forecast?.forecastday) || data.forecast.forecastday.length === 0) {
+      throw new Error(`WeatherAPI response missing forecast data: ${JSON.stringify(data?.error || data).slice(0, 300)}`);
+    }
     const current = data.current;
     const today = data.forecast.forecastday[0];
 
@@ -192,6 +195,15 @@ export const fetchGlobalWeather = async (lat, lon) => {
         .filter(Boolean).join(', '),
     };
   } catch (error) {
+    if (__DEV__) {
+      console.warn('[GlobalService] WeatherAPI fetch failed:', {
+        lat,
+        lon,
+        status: error?.response?.status,
+        data: error?.response?.data,
+        message: error?.message,
+      });
+    }
     return null;
   }
 };

@@ -123,6 +123,10 @@
     "region_add_failed": "地域の追加に失敗しました。",
     "region_delete_success": "地域を削除しました。",
     "region_delete_failed": "地域の削除に失敗しました。",
+    "weather_retry": "再試行",
+    "weather_retry_hint": "天気情報を取得できませんでした。",
+    "weather_retry_success": "天気情報を更新しました。",
+    "weather_retry_failed": "天気情報を取得できませんでした。しばらくしてから再試行してください。",
     "tasks_count": "今日のタスクが{{count}}件あります",
     "tasks_upcoming": "次: {{task}} ({{time}})",
     "premium_only_limit": "地域をさらに追加するにはプレミアム登録が必要です。（無料は最大3件）"

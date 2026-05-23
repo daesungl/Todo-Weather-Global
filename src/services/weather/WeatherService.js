@@ -4,9 +4,25 @@ import { fetchSunInfo } from './SunService';
 import { fetchGlobalWeather } from './GlobalService';
 import AirService from './AirService';
 
-import { getCache, saveCache } from '../StorageService';
+import { getCache, saveCache, removeCache } from '../StorageService';
 
 const _inFlight = new Map();
+
+const isFiniteTemp = (value) => {
+  const parsed = Number.parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
+  return Number.isFinite(parsed) && parsed > -90 && parsed < 90;
+};
+
+export const isWeatherDataUsable = (data) => {
+  if (!data || typeof data !== 'object') return false;
+  if (!isFiniteTemp(data.temp)) return false;
+  if (!Array.isArray(data.hourlyForecast) || data.hourlyForecast.length === 0) return false;
+  if (!Array.isArray(data.dailyForecast) || data.dailyForecast.length === 0) return false;
+
+  const firstHour = data.hourlyForecast[0] || {};
+  const hasHourlyTemp = firstHour.temp === undefined || isFiniteTemp(firstHour.temp);
+  return hasHourlyTemp;
+};
 
 /**
  * Main Weather Engine
@@ -30,39 +46,50 @@ export const getWeather = (lat, lon, force = false, regionId = '', providedAddre
     if (!force) {
       const cachedData = await getCache(cacheKey);
       if (cachedData) {
-        // 캐시된 데이터를 현재 시각 기준으로 isDay 재계산
-        // tzOffsetMs가 있으면 해당 지역 현지 시간 사용, 없으면 KST 폴백 (구 캐시 호환)
-        const now = new Date();
-        let offsetMs;
-        if (cachedData.tzOffsetMs !== undefined) {
-          // 신규 캐시: 저장된 현지 타임존 오프셋 사용
-          offsetMs = cachedData.tzOffsetMs;
-        } else if (cachedData.lon !== undefined) {
-          // 구 캐시(tzOffsetMs 없음): 경도 기반 근사 타임존 (15° = 1시간)
-          offsetMs = Math.round(cachedData.lon / 15) * 3600000;
+        if (!isWeatherDataUsable(cachedData)) {
+          console.warn('[WeatherService] Ignoring incomplete cached weather data', {
+            cacheKey,
+            source: cachedData.source,
+            temp: cachedData.temp,
+            hourlyCount: cachedData.hourlyForecast?.length || 0,
+            dailyCount: cachedData.dailyForecast?.length || 0,
+          });
+          removeCache(cacheKey).catch(() => {});
         } else {
-          // 최후 폴백: KST
-          offsetMs = 9 * 60 * 60 * 1000;
-        }
-        const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
-        cachedData.isDay = localHour >= 6 && localHour < 18;
+          // 캐시된 데이터를 현재 시각 기준으로 isDay 재계산
+          // tzOffsetMs가 있으면 해당 지역 현지 시간 사용, 없으면 KST 폴백 (구 캐시 호환)
+          const now = new Date();
+          let offsetMs;
+          if (cachedData.tzOffsetMs !== undefined) {
+            // 신규 캐시: 저장된 현지 타임존 오프셋 사용
+            offsetMs = cachedData.tzOffsetMs;
+          } else if (cachedData.lon !== undefined) {
+            // 구 캐시(tzOffsetMs 없음): 경도 기반 근사 타임존 (15° = 1시간)
+            offsetMs = Math.round(cachedData.lon / 15) * 3600000;
+          } else {
+            // 최후 폴백: KST
+            offsetMs = 9 * 60 * 60 * 1000;
+          }
+          const localHour = new Date(now.getTime() + offsetMs).getUTCHours();
+          cachedData.isDay = localHour >= 6 && localHour < 18;
 
-        // isDay 변화에 따라 condKey도 교정 (맑음 ↔ 맑은 밤)
-        if (!cachedData.isDay && (cachedData.condKey === 'sunny' || cachedData.condKey === 'clear' || cachedData.condKey === 'mostly_sunny')) {
-          cachedData.condKey = 'clear_night';
-        } else if (cachedData.isDay && cachedData.condKey === 'clear_night') {
-          cachedData.condKey = 'sunny';
-        }
-        
-        // Ensure addressName exists for subtitle display
-        if (!cachedData.addressName && cachedData.locationName) {
-          cachedData.addressName = cachedData.locationName;
-        }
+          // isDay 변화에 따라 condKey도 교정 (맑음 ↔ 맑은 밤)
+          if (!cachedData.isDay && (cachedData.condKey === 'sunny' || cachedData.condKey === 'clear' || cachedData.condKey === 'mostly_sunny')) {
+            cachedData.condKey = 'clear_night';
+          } else if (cachedData.isDay && cachedData.condKey === 'clear_night') {
+            cachedData.condKey = 'sunny';
+          }
 
-        // Save corrected isDay/condKey back to cache so next read is already correct
-        saveCache(cacheKey, cachedData).catch(() => {});
+          // Ensure addressName exists for subtitle display
+          if (!cachedData.addressName && cachedData.locationName) {
+            cachedData.addressName = cachedData.locationName;
+          }
 
-        return cachedData;
+          // Save corrected isDay/condKey back to cache so next read is already correct
+          saveCache(cacheKey, cachedData).catch(() => {});
+
+          return cachedData;
+        }
       }
     }
 
@@ -112,7 +139,7 @@ export const getWeather = (lat, lon, force = false, regionId = '', providedAddre
           fetchKMAWarning(region, city).catch(() => null)
         ]);
 
-          if (kma && kma.temp !== '--°') {
+          if (isWeatherDataUsable(kma)) {
             console.log(`[${address}] 날씨 데이터 ( KMA ) 조회 완료`);
             const result = { 
               ...kma, 
@@ -147,6 +174,9 @@ export const getWeather = (lat, lon, force = false, regionId = '', providedAddre
       const globalName = address || 'Global Location';
       console.log(`[${globalName}] 날씨 데이터 ( weatherAPI ) 조회 중`);
       const weatherData = await fetchGlobalWeather(lat, lon);
+      if (!isWeatherDataUsable(weatherData)) {
+        throw new Error(`WeatherAPI data invalid or empty: temp=${weatherData?.temp}, hourly=${weatherData?.hourlyForecast?.length || 0}, daily=${weatherData?.dailyForecast?.length || 0}`);
+      }
 
       // address 없을 때 WeatherAPI가 반환한 도시명으로 폴백 (e.g. "Cupertino, California, United States")
       const resolvedName = address || weatherData?.apiLocationName || 'Global Location';
@@ -171,13 +201,17 @@ export const getWeather = (lat, lon, force = false, regionId = '', providedAddre
       return result;
     } catch (globalErr) {
       const globalName = address || 'Global Location';
-      console.error(`[${globalName}] 날씨 데이터 ( weatherAPI ) 조회 실패 (에러코드: ${globalErr.response?.status || globalErr.message})`);
-      console.error('[WeatherService] Critical: Global Path failed too!', globalErr);
+      if (__DEV__) {
+        console.warn(`[${globalName}] 날씨 데이터 ( weatherAPI ) 조회 실패 (에러코드: ${globalErr.response?.status || globalErr.message})`);
+        console.warn('[WeatherService] Global Path failed too. Returning fallback weather.', globalErr);
+      }
       throw globalErr; // Ultimate failure handled by outer catch
     }
 
   } catch (error) {
-    console.error('[WeatherService] Final Engine Error:', error);
+    if (__DEV__) {
+      console.warn('[WeatherService] Final Engine fallback:', error);
+    }
     return {
       source: 'System Fallback',
       temp: '--°',

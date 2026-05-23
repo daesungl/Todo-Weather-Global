@@ -63,6 +63,10 @@
     "locked_slot_guide": "需要升级高级版槽位", "upgrade": "升级",
     "add_region": "添加地区", "region_add_success": "地区已添加。", "region_add_duplicate": "此地区已添加。", "region_add_failed": "添加地区失败。",
     "region_delete_success": "地区已删除。", "region_delete_failed": "删除地区失败。",
+    "weather_retry": "重试",
+    "weather_retry_hint": "无法获取天气信息。",
+    "weather_retry_success": "天气信息已更新。",
+    "weather_retry_failed": "无法获取天气信息。请稍后再试。",
     "tasks_count": "今天有 {{count}} 个任务", "tasks_upcoming": "下一个：{{task}} 于 {{time}}",
     "premium_only_limit": "添加更多地区需要高级版订阅。（免费版最多 3 个）"
   },
