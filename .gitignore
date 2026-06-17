@@ -16,6 +16,7 @@ expo-env.d.ts
 
 # EAS
 .eas/
+build.log
 build-*.ipa
 build-*.apk
 
@@ -43,6 +44,7 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+supabase/.temp/
 supabase/prod/config.json
 
 # private docs
