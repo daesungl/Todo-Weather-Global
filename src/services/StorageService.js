@@ -44,6 +44,22 @@ export const getCache = async (key, expiry = DEFAULT_EXPIRY) => {
 };
 
 /**
+ * 만료 여부와 상관없이 마지막으로 저장된 캐시 데이터를 불러옵니다.
+ */
+export const getStaleCache = async (key) => {
+  try {
+    const rawData = await AsyncStorage.getItem(`${CACHE_PREFIX}${key}`);
+    if (!rawData) return null;
+
+    const cache = JSON.parse(rawData);
+    return cache?.data || null;
+  } catch (error) {
+    console.error('[Storage] Stale Get Error:', error);
+    return null;
+  }
+};
+
+/**
  * 특정 키의 캐시를 삭제합니다.
  */
 export const removeCache = async (key) => {
@@ -57,6 +73,7 @@ export const removeCache = async (key) => {
 const StorageService = {
   saveCache,
   getCache,
+  getStaleCache,
   removeCache
 };
 

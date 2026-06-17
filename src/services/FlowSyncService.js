@@ -328,6 +328,21 @@ const _flowFromParts = (flowId) => {
   return flow;
 };
 
+const _saveFlowsToLocalCache = async (uid, flows = []) => {
+  if (!uid) return;
+  try {
+    const safeFlows = (Array.isArray(flows) ? flows : [])
+      .filter(f => f?.id && _isValidPlanId(f.id))
+      .filter(f => !_deletedFlowIds.has(String(f.id)));
+    const ownFlows = safeFlows.filter(f => !f._ownerUid || f._role === 'owner');
+    const sharedFlows = safeFlows.filter(f => f._ownerUid && f._role !== 'owner');
+    await AsyncStorage.setItem(getFlowsStorageKey(uid), JSON.stringify(ownFlows));
+    await AsyncStorage.setItem(getSharedFlowsStorageKey(uid), JSON.stringify(sharedFlows));
+  } catch (e) {
+    console.warn('[FlowSync] Failed to save local flow cache:', e);
+  }
+};
+
 const _mergeAndNotify = (fromRemote = false) => {
   const merged = Array.from(_flowRefs.keys())
     .map(_flowFromParts)
@@ -335,11 +350,7 @@ const _mergeAndNotify = (fromRemote = false) => {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   _cachedFlows = merged;
-  if (_userId) {
-    const sharedFlows = merged.filter(f => f._ownerUid);
-    AsyncStorage.setItem(getSharedFlowsStorageKey(_userId), JSON.stringify(sharedFlows))
-      .catch(e => console.warn('[FlowSync] Failed to save shared flows:', e));
-  }
+  _saveFlowsToLocalCache(_userId, merged);
 
   _isRemoteUpdate = fromRemote;
   _snapshotListeners.forEach(cb => cb(merged));
@@ -389,6 +400,7 @@ const _loadRemoteFlows = async (uid) => {
   _cachedFlows = plansWithSteps
     .map(plan => ({ ...plan, steps: _sortSteps(_filterDeletedSteps(plan.id, plan.steps || [])) }))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  _saveFlowsToLocalCache(uid, _cachedFlows);
   return _cachedFlows;
 };
 
@@ -738,6 +750,17 @@ export const reorderFlows = async (orderedFlows) => {
 export const getFlows = async () => {
   if (_userId) {
     if (_cachedFlows !== null) return _cachedFlows;
+
+    const localFlows = await getLocalCachedFlows();
+    if (localFlows.length > 0) {
+      _cachedFlows = localFlows;
+      _loadRemoteFlows(_userId)
+        .then(flows => {
+          _snapshotListeners.forEach(cb => cb(flows));
+        })
+        .catch(e => console.warn('[FlowSync] getFlows background refresh error:', e));
+      return localFlows;
+    }
 
     try {
       return await _loadRemoteFlows(_userId);

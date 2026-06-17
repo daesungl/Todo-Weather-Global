@@ -24,6 +24,9 @@ export const isWeatherDataUsable = (data) => {
   return hasHourlyTemp;
 };
 
+export const getWeatherCacheKey = (lat, lon, regionId = '') =>
+  `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
+
 /**
  * Main Weather Engine
  * Strategy: Cache Check -> VWorld (Check Location) -> KMA (Local) -> Global (Fallback)
@@ -36,7 +39,7 @@ export const getWeather = (lat, lon, force = false, regionId = '', providedAddre
       coordBasedIsKorea: lat >= 33 && lat <= 39 && lon >= 124 && lon <= 132,
     });
   }
-  const cacheKey = `weather_v6_${lat.toFixed(4)}_${lon.toFixed(4)}_${regionId}`;
+  const cacheKey = getWeatherCacheKey(lat, lon, regionId);
 
   if (!force && _inFlight.has(cacheKey)) return _inFlight.get(cacheKey);
 

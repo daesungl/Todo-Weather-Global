@@ -15,10 +15,11 @@ import { Colors, Spacing, Typography } from '../theme';
 import MenuModal from '../components/MenuModal';
 import MainHeader from '../components/MainHeader';
 import ToastStack, { useToastStack } from '../components/ToastStack';
-import { getWeather, isWeatherDataUsable } from '../services/weather/WeatherService';
+import { getWeather, getWeatherCacheKey, isWeatherDataUsable } from '../services/weather/WeatherService';
 import { getBookmarkedRegions, removeRegion, addRegion, saveBookmarkedRegions, subscribeToRegions } from '../services/weather/RegionSyncService';
 import { searchPlaces } from '../services/weather/VWorldService';
 import { searchLocations, getRepresentativeCoordinates } from '../services/weather/GlobalService';
+import { getStaleCache } from '../services/StorageService';
 
 import { BANNER_UNIT_ID } from '../constants/AdUnits';
 import AdBanner from '../components/AdBanner';
@@ -480,6 +481,16 @@ const HomeScreen = ({ navigation }) => {
       return next;
     });
     try {
+      const cacheKey = getWeatherCacheKey(region.lat, region.lon, region.id);
+      const staleWeather = await getStaleCache(cacheKey);
+      if (isWeatherDataUsable(staleWeather)) {
+        setRegionsWeather(prev => (
+          isWeatherDataUsable(prev[region.id])
+            ? prev
+            : { ...prev, [region.id]: staleWeather }
+        ));
+      }
+
       let w = await getWeather(region.lat, region.lon, force, region.id, region.address);
       if (!force && !isWeatherDataUsable(w)) {
         if (__DEV__) {
@@ -499,6 +510,9 @@ const HomeScreen = ({ navigation }) => {
         const previous = prev[region.id];
         if (!isWeatherDataUsable(w) && isWeatherDataUsable(previous)) {
           return prev;
+        }
+        if (!isWeatherDataUsable(w) && isWeatherDataUsable(staleWeather)) {
+          return { ...prev, [region.id]: staleWeather };
         }
         return { ...prev, [region.id]: w };
       });
@@ -535,14 +549,14 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // 현재 페이지의 지역만 위에서 아래로 순차 로딩
+  // 현재 페이지의 지역만 병렬 로딩해 카드 표시 지연을 줄임
   const loadPageWeather = async (pageIndex, regionList) => {
     loadingPageRef.current = pageIndex;
     const pageRegions = regionList.filter(r => r.pageIndex === pageIndex);
-    for (const region of pageRegions) {
-      if (loadingPageRef.current !== pageIndex) break; // 페이지 변경 시 중단
-      await fetchRegionWeather(region);
-    }
+    await Promise.all(pageRegions.map(region => {
+      if (loadingPageRef.current !== pageIndex) return Promise.resolve();
+      return fetchRegionWeather(region);
+    }));
   };
 
   const loadRegions = async () => {
@@ -872,6 +886,7 @@ const HomeScreen = ({ navigation }) => {
                 const cardWindDeg = currentHourWeather.windDeg ?? weather?.windDeg ?? 0;
                 const cardHumidity = currentHourWeather.hum || weather?.humidity || '0%';
                 const isRegionLoading = loadingRegionIds.has(region.id);
+                const hasUsableWeather = isWeatherDataUsable(weather);
                 const weatherFailed = !!weather && !isRegionLoading && !isWeatherDataUsable(weather);
                 const isRetrying = retryingRegionId === region.id;
                 return (
@@ -949,11 +964,11 @@ const HomeScreen = ({ navigation }) => {
                               <ActivityIndicator size="small" color={Colors.outline} />
                             )}
                             <Text style={styles.regionTempText}>
-                              {isRegionLoading ? '--°' : formatTemp(weather?.temp)}
+                              {hasUsableWeather ? formatTemp(weather?.temp) : '--°'}
                             </Text>
                           </View>
 
-                          {isRegionLoading ? (
+                          {isRegionLoading && !hasUsableWeather ? (
                             <View style={styles.regionRetryBlock}>
                               <ActivityIndicator size="small" color={Colors.primary} />
                               <Text style={styles.regionRetryHint} numberOfLines={2}>
